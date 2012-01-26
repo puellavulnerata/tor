@@ -55,7 +55,8 @@ int entry_guard_register_connect_status(const char *digest, int succeeded,
                                         int mark_relay_status, time_t now);
 void entry_nodes_should_be_added(void);
 int entry_list_is_constrained(const or_options_t *options);
-const node_t *choose_random_entry(cpath_build_state_t *state, int dirfetch);
+const node_t *choose_random_entry(cpath_build_state_t *state,
+                                  dirinfo_type_t dirinfo);
 int entry_guards_parse_state(or_state_t *state, int set, char **msg);
 void entry_guards_update_state(or_state_t *state);
 int getinfo_helper_entry_guards(control_connection_t *conn,

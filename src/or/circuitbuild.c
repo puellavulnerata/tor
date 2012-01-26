@@ -3712,7 +3712,7 @@ choose_good_entry_server(uint8_t purpose, cpath_build_state_t *state)
       (purpose != CIRCUIT_PURPOSE_TESTING || options->BridgeRelay)) {
     /* This request is for an entry server to use for a regular circuit,
      * and we use entry guard nodes.  Just return one of the guard nodes.  */
-    return choose_random_entry(state, 0);
+    return choose_random_entry(state, NO_DIRINFO);
   }
 
   excluded = smartlist_new();
@@ -4686,13 +4686,26 @@ node_understands_microdescriptors(const node_t *node)
   return 0;
 }
 
+/** Return true iff <b>node</b> is able to answer directory questions
+ * of type <b>dirinfo</b>. */
+static int
+node_can_handle_dirinfo(const node_t *node, dirinfo_type_t dirinfo)
+{
+  if ((dirinfo & MICRODESC_DIRINFO) &&
+      !node_understands_microdescriptors(node))
+    return 0;
+  return 1;
+}
+
 /** Pick a live (up and listed) entry guard from entry_guards. If
  * <b>state</b> is non-NULL, this is for a specific circuit --
  * make sure not to pick this circuit's exit or any node in the
  * exit's family. If <b>state</b> is NULL, we're looking for a random
- * guard (likely a bridge). */
+ * guard (likely a bridge). If <b>dirinfo</b> is not NO_DIRINFO, then
+ * only select from nodes that know how to answer directory questions
+ * of that type. */
 const node_t *
-choose_random_entry(cpath_build_state_t *state, int dirfetch)
+choose_random_entry(cpath_build_state_t *state, dirinfo_type_t dirinfo)
 {
   const or_options_t *options = get_options();
   smartlist_t *live_entry_guards = smartlist_new();
@@ -4730,8 +4743,8 @@ choose_random_entry(cpath_build_state_t *state, int dirfetch)
         continue; /* don't pick the same node for entry and exit */
       if (consider_exit_family && smartlist_isin(exit_family, node))
         continue; /* avoid relays that are family members of our exit */
-      if (dirfetch && we_use_microdescriptors_for_circuits(options) &&
-          !node_understands_microdescriptors(node))
+      if (dirinfo != NO_DIRINFO &&
+          !node_can_handle_dirinfo(node, dirinfo))
         continue; /* this node won't be able to answer our dir questions */
 #if 0 /* since EntryNodes is always strict now, this clause is moot */
       if (options->EntryNodes &&
@@ -5724,7 +5737,7 @@ int
 any_bridge_descriptors_known(void)
 {
   tor_assert(get_options()->UseBridges);
-  return choose_random_entry(NULL, 0)!=NULL ? 1 : 0;
+  return choose_random_entry(NULL, NO_DIRINFO)!=NULL ? 1 : 0;
 }
 
 /** Return 1 if there are any directory conns fetching bridge descriptors
