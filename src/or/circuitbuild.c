@@ -293,7 +293,7 @@ circuit_build_times_close_quantile(void)
              CBT_DEFAULT_CLOSE_QUANTILE,
              CBT_MIN_CLOSE_QUANTILE,
              CBT_MAX_CLOSE_QUANTILE);
-  
+
   log_debug(LD_CIRC,
             "circuit_build_times_close_quantile() called, cbtclosequantile is"
             " %d", param);
@@ -364,7 +364,7 @@ circuit_build_times_initial_timeout(void)
                                           CBT_DEFAULT_TIMEOUT_INITIAL_VALUE,
                                           CBT_MIN_TIMEOUT_INITIAL_VALUE,
                                           CBT_MAX_TIMEOUT_INITIAL_VALUE);
-  
+
   log_debug(LD_CIRC,
             "circuit_build_times_initial_timeout() called, cbtinitialtimeout "
             "is %d",
