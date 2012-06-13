@@ -212,8 +212,8 @@ circuit_build_times_default_num_xm_modes(void)
 
   if (!(get_options()->LearnCircuitBuildTimeout)) {
     log_debug(LD_BUG,
-              "circuit_build_times_default_num_xm_modes() called, cbtnummodes is"
-              " %d",
+              "circuit_build_times_default_num_xm_modes() called, cbtnummodes"
+              " is %d",
               num);
   }
 
@@ -268,7 +268,8 @@ circuit_build_times_quantile_cutoff(void)
 
   if (!(get_options()->LearnCircuitBuildTimeout)) {
     log_debug(LD_BUG,
-              "circuit_build_times_quantile_cutoff() called, cbtquantile is %d",
+              "circuit_build_times_quantile_cutoff() called, cbtquantile"
+              " is %d",
               num);
   }
 
@@ -305,8 +306,8 @@ circuit_build_times_close_quantile(void)
 
   if (!(get_options()->LearnCircuitBuildTimeout)) {
     log_debug(LD_BUG,
-              "circuit_build_times_close_quantile() called, cbtclosequantile is"
-              " %d", param);
+              "circuit_build_times_close_quantile() called, cbtclosequantile"
+              " is %d", param);
   }
 
   if (param < min) {
@@ -382,8 +383,8 @@ circuit_build_times_initial_timeout(void)
 
   if (!(get_options()->LearnCircuitBuildTimeout)) {
     log_debug(LD_BUG,
-              "circuit_build_times_initial_timeout() called, cbtinitialtimeout "
-              "is %d",
+              "circuit_build_times_initial_timeout() called, "
+              "cbtinitialtimeout is %d",
               param);
   }
 
