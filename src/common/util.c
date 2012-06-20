@@ -3339,14 +3339,14 @@ format_helper_exit_status(unsigned char child_state, int saved_errno,
 
   goto done;
 
-err:
+ err:
   /*
    * In error exit, just write a '\0' in the first char so whatever called
    * this at least won't fall off the end.
    */
   *hex_errno = '\0';
 
-done:
+ done:
   return;
 }
 
