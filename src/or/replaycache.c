@@ -12,10 +12,7 @@
 #include "or.h"
 #include "replaycache.h"
 
-/*
- * void replaycache_free(replaycache_t *r)
- *
- * Free the replaycache r and all of its entries.
+/** Free the replaycache r and all of its entries.
  */
 
 void
@@ -31,10 +28,7 @@ replaycache_free(replaycache_t *r)
   tor_free(r);
 }
 
-/*
- * replaycache_t * replaycache_new(time_t horizon, time_t interval)
- *
- * Allocate a new, empty replay detection cache, where horizon is the time
+/** Allocate a new, empty replay detection cache, where horizon is the time
  * for entries to age out and interval is the time after which the cache
  * should be scrubbed for old entries.
  */
@@ -57,32 +51,16 @@ replaycache_new(time_t horizon, time_t interval)
   }
 
   r = tor_malloc(sizeof(*r));
-  if (!r) {
-    log_info(LD_BUG, "replaycache_new() saw tor_malloc() fail.");
-    goto err;
-  }
-
   r->scrub_interval = interval;
   r->scrubbed = 0;
   r->horizon = horizon;
-
   r->digests_seen = digestmap_new();
-
-  if (!(r->digests_seen)) {
-    tor_free(r);
-    r = NULL;
-    log_info(LD_BUG, "replaycache_new() saw digestmap_new() fail.");
-  }
 
  err:
   return r;
 }
 
-/*
- * int replaycache_add_and_test_internal(
- *     time_t present, replaycache_t *r, const void *data, int len)
- *
- * See documentation for replaycache_add_and_test()
+/** See documentation for replaycache_add_and_test()
  */
 
 int
@@ -135,11 +113,7 @@ replaycache_add_and_test_internal(
   return rv;
 }
 
-/*
- * void replaycache_scrub_if_needed_internal(
- *     time_t present, replaycache_t *r)
- *
- * See documentation for replaycache_scrub_if_needed()
+/** See documentation for replaycache_scrub_if_needed()
  */
 
 void
@@ -192,10 +166,7 @@ replaycache_scrub_if_needed_internal(time_t present, replaycache_t *r)
   if (present > r->scrubbed) r->scrubbed = present;
 }
 
-/*
- * int replaycache_add_and_test(replaycache_t *r, const void *data, int len)
- *
- * Test the buffer of length len point to by data against the replay cache r;
+/** Test the buffer of length len point to by data against the replay cache r;
  * the digest of the buffer will be added to the cache at the current time,
  * and the function will return 1 if it was already seen within the cache's
  * horizon, or 0 otherwise.
@@ -207,10 +178,7 @@ replaycache_add_and_test(replaycache_t *r, const void *data, int len)
   return replaycache_add_and_test_internal(time(NULL), r, data, len);
 }
 
-/*
- * void replaycache_scrub_if_needed(replaycache_t *r)
- *
- * Scrub aged entries out of r if sufficiently long has elapsed since r was
+/** Scrub aged entries out of r if sufficiently long has elapsed since r was
  * last scrubbed.
  */
 
