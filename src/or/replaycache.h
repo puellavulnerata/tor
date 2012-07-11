@@ -46,7 +46,8 @@ replaycache_t * replaycache_new(time_t horizon, time_t interval);
  */
 
 int replaycache_add_and_test_internal(
-    time_t present, replaycache_t *r, const void *data, int len);
+    time_t present, replaycache_t *r, const void *data, int len,
+    time_t *elapsed);
 void replaycache_scrub_if_needed_internal(
     time_t present, replaycache_t *r);
 
@@ -57,6 +58,8 @@ void replaycache_scrub_if_needed_internal(
  */
 
 int replaycache_add_and_test(replaycache_t *r, const void *data, int len);
+int replaycache_add_test_and_elapsed(
+    replaycache_t *r, const void *data, int len, time_t *elapsed);
 void replaycache_scrub_if_needed(replaycache_t *r);
 
 #endif

@@ -44,7 +44,7 @@ test_replaycache_miss(void)
 
   result =
     replaycache_add_and_test_internal(1200, r, test_buffer,
-        strlen(test_buffer));
+        strlen(test_buffer), NULL);
   test_eq(result, 0);
 
  done:
@@ -65,12 +65,12 @@ test_replaycache_hit(void)
 
   result =
     replaycache_add_and_test_internal(1200, r, test_buffer,
-        strlen(test_buffer));
+        strlen(test_buffer), NULL);
   test_eq(result, 0);
 
   result =
     replaycache_add_and_test_internal(1300, r, test_buffer,
-        strlen(test_buffer));
+        strlen(test_buffer), NULL);
   test_eq(result, 1);
 
  done:
@@ -91,18 +91,46 @@ test_replaycache_age(void)
 
   result =
     replaycache_add_and_test_internal(1200, r, test_buffer,
-        strlen(test_buffer));
+        strlen(test_buffer), NULL);
   test_eq(result, 0);
 
   result =
     replaycache_add_and_test_internal(1300, r, test_buffer,
-        strlen(test_buffer));
+        strlen(test_buffer), NULL);
   test_eq(result, 1);
 
   result =
     replaycache_add_and_test_internal(3000, r, test_buffer,
-        strlen(test_buffer));
+        strlen(test_buffer), NULL);
   test_eq(result, 0);
+
+ done:
+  if (r) replaycache_free(r);
+
+  return;
+}
+
+static void
+test_replaycache_elapsed(void)
+{
+  replaycache_t *r = NULL;
+  int result;
+  time_t elapsed;
+
+  r = replaycache_new(600, 300);
+  test_assert(r != NULL);
+  if (!r) goto done;
+
+  result =
+    replaycache_add_and_test_internal(1200, r, test_buffer,
+        strlen(test_buffer), NULL);
+  test_eq(result, 0);
+
+  result =
+    replaycache_add_and_test_internal(1300, r, test_buffer,
+        strlen(test_buffer), &elapsed);
+  test_eq(result, 1);
+  test_eq(elapsed, 100);
 
  done:
   if (r) replaycache_free(r);
@@ -118,6 +146,7 @@ struct testcase_t replaycache_tests[] = {
   REPLAYCACHE_LEGACY(miss),
   REPLAYCACHE_LEGACY(hit),
   REPLAYCACHE_LEGACY(age),
+  REPLAYCACHE_LEGACY(elapsed),
   END_OF_TESTCASES
 };
 

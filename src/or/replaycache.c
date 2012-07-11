@@ -65,7 +65,8 @@ replaycache_new(time_t horizon, time_t interval)
 
 int
 replaycache_add_and_test_internal(
-    time_t present, replaycache_t *r, const void *data, int len)
+    time_t present, replaycache_t *r, const void *data, int len,
+    time_t *elapsed)
 {
   int rv = 0;
   char digest[DIGEST_LEN];
@@ -92,6 +93,15 @@ replaycache_add_and_test_internal(
     if (*access_time >= present - r->horizon) {
       /* replay cache hit, return 1 */
       rv = 1;
+      /* If we want to output an elapsed time, do so */
+      if (elapsed) {
+        if (present >= *access_time) {
+          *elapsed = present - *access_time;
+        } else {
+          /* We shouldn't really be seeing hits from the future, but... */
+          *elapsed = 0;
+        }
+      }
     }
     /*
      * If it's ahead of the cached time, update
@@ -175,7 +185,18 @@ replaycache_scrub_if_needed_internal(time_t present, replaycache_t *r)
 int
 replaycache_add_and_test(replaycache_t *r, const void *data, int len)
 {
-  return replaycache_add_and_test_internal(time(NULL), r, data, len);
+  return replaycache_add_and_test_internal(time(NULL), r, data, len, NULL);
+}
+
+/** Like replaycache_add_and_test(), but if it's a hit also return the time
+ * elapsed since this digest was last seen.
+ */
+
+int
+replaycache_add_test_and_elapsed(
+    replaycache_t *r, const void *data, int len, time_t *elapsed)
+{
+  return replaycache_add_and_test_internal(time(NULL), r, data, len, elapsed);
 }
 
 /** Scrub aged entries out of r if sufficiently long has elapsed since r was
