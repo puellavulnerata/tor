@@ -1163,9 +1163,7 @@ rend_service_introduce(origin_circuit_t *circuit, const uint8_t *request,
   }
 
   if (!intro_point->accepted_intro_rsa_parts) {
-    intro_point->accepted_intro_rsa_parts =
-      replaycache_new(REND_REPLAY_TIME_INTERVAL,
-                      REND_REPLAY_TIME_INTERVAL);
+    intro_point->accepted_intro_rsa_parts = replaycache_new(0, 0);
   }
 
   /* Check for replay of PK-encrypted portion. */
