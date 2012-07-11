@@ -138,6 +138,37 @@ test_replaycache_elapsed(void)
   return;
 }
 
+static void
+test_replaycache_noexpire(void)
+{
+  replaycache_t *r = NULL;
+  int result;
+
+  r = replaycache_new(0, 0);
+  test_assert(r != NULL);
+  if (!r) goto done;
+
+  result =
+    replaycache_add_and_test_internal(1200, r, test_buffer,
+        strlen(test_buffer), NULL);
+  test_eq(result, 0);
+
+  result =
+    replaycache_add_and_test_internal(1300, r, test_buffer,
+        strlen(test_buffer), NULL);
+  test_eq(result, 1);
+
+  result =
+    replaycache_add_and_test_internal(3000, r, test_buffer,
+        strlen(test_buffer), NULL);
+  test_eq(result, 1);
+
+ done:
+  if (r) replaycache_free(r);
+
+  return;
+}
+
 #define REPLAYCACHE_LEGACY(name) \
   { #name, legacy_test_helper, 0, &legacy_setup, test_replaycache_ ## name }
 
@@ -147,6 +178,7 @@ struct testcase_t replaycache_tests[] = {
   REPLAYCACHE_LEGACY(hit),
   REPLAYCACHE_LEGACY(age),
   REPLAYCACHE_LEGACY(elapsed),
+  REPLAYCACHE_LEGACY(noexpire),
   END_OF_TESTCASES
 };
 

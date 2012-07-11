@@ -38,8 +38,8 @@ replaycache_new(time_t horizon, time_t interval)
 {
   replaycache_t *r = NULL;
 
-  if (horizon <= 0) {
-    log_info(LD_BUG, "replaycache_new() called with non-positive"
+  if (horizon < 0) {
+    log_info(LD_BUG, "replaycache_new() called with negative"
         " horizon parameter");
     goto err;
   }
@@ -88,9 +88,10 @@ replaycache_add_and_test_internal(
   /* seen before? */
   if (access_time != NULL) {
     /*
-     * If it's far enough in the past, no hit.
+     * If it's far enough in the past, no hit.  If the horizon is zero, we
+     * never expire.
      */
-    if (*access_time >= present - r->horizon) {
+    if (*access_time >= present - r->horizon || r->horizon == 0) {
       /* replay cache hit, return 1 */
       rv = 1;
       /* If we want to output an elapsed time, do so */
@@ -144,6 +145,9 @@ replaycache_scrub_if_needed_internal(time_t present, replaycache_t *r)
 
   /* scrub time yet? (scrubbed == 0 indicates never scrubbed before) */
   if (present - r->scrubbed < r->scrub_interval && r->scrubbed > 0) return;
+
+  /* if we're never expiring, don't bother scrubbing */
+  if (r->horizon == 0) return;
 
   /* okay, scrub time */
   itr = digestmap_iter_init(r->digests_seen);
