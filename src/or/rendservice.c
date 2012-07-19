@@ -31,6 +31,10 @@ static origin_circuit_t *find_intro_circuit(rend_intro_point_t *intro,
                                             const char *pk_digest);
 static rend_intro_point_t *find_intro_point(origin_circuit_t *circ);
 
+static extend_info_t *find_rp_for_intro(
+    const rend_intro_cell_t *intro,
+    uint8_t *need_free_out, char **err_msg_out);
+
 static int intro_point_accepted_intro_count(rend_intro_point_t *intro);
 static int intro_point_should_expire_now(rend_intro_point_t *intro,
                                          time_t now);
@@ -1079,38 +1083,50 @@ rend_service_note_removing_intro_point(rend_service_t *service,
 /** Respond to an INTRODUCE2 cell by launching a circuit to the chosen
  * rendezvous point.
  */
- /* XXXX024 this function sure could use some organizing. -RD */
 int
 rend_service_introduce(origin_circuit_t *circuit, const uint8_t *request,
                        size_t request_len)
 {
-  int status = 0;
-  char *ptr, *r_cookie;
-  extend_info_t *extend_info = NULL;
+  /* Global status stuff */
+  int status = 0, result;
+  const or_options_t *options = get_options();
+  char *err_msg = NULL;
+  const char *stage_descr = NULL;
+  int reason = END_CIRC_REASON_TORPROTOCOL;
+  /* Service/circuit/key stuff we can learn before parsing */
+  char serviceid[REND_SERVICE_ID_LEN_BASE32+1];
+  rend_service_t *service = NULL;
+  rend_intro_point_t *intro_point = NULL;
+  crypto_pk_t *intro_key = NULL;
+  /* Parsed cell */
+  rend_intro_cell_t *parsed_req = NULL;
+  /* Rendezvous point */
+  extend_info_t *rp = NULL;
+  /*
+   * We need to look up and construct the extend_info_t for v0 and v1,
+   * but all the info is in the cell and it's constructed by the parser
+   * for v2 and v3, so freeing it would be a double-free.  Use this to
+   * keep track of whether we should free it.
+   */
+  uint8_t need_rp_free = 0;
+  /* XXX not handled yet */
   char buf[RELAY_PAYLOAD_SIZE];
   char keys[DIGEST_LEN+CPATH_KEY_MATERIAL_LEN]; /* Holds KH, Df, Db, Kf, Kb */
-  rend_service_t *service;
-  rend_intro_point_t *intro_point;
-  int r, i, v3_shift = 0;
-  size_t len, keylen;
+  int i;
   crypto_dh_t *dh = NULL;
   origin_circuit_t *launched = NULL;
   crypt_path_t *cpath = NULL;
-  char serviceid[REND_SERVICE_ID_LEN_BASE32+1];
   char hexcookie[9];
   int circ_needs_uptime;
-  int reason = END_CIRC_REASON_TORPROTOCOL;
-  crypto_pk_t *intro_key;
   char intro_key_digest[DIGEST_LEN];
-  int auth_type;
   size_t auth_len = 0;
   char auth_data[REND_DESC_COOKIE_LEN];
   time_t now = time(NULL);
   char diffie_hellman_hash[DIGEST_LEN];
   time_t elapsed;
   int replay;
-  const or_options_t *options = get_options();
 
+  /* Do some initial validation and logging before we parse the cell */
   if (circuit->_base.purpose != CIRCUIT_PURPOSE_S_INTRO) {
     log_warn(LD_PROTOCOL,
              "Got an INTRODUCE2 over a non-introduction circuit %d.",
@@ -1123,65 +1139,60 @@ rend_service_introduce(origin_circuit_t *circuit, const uint8_t *request,
 #endif
   tor_assert(circuit->rend_data);
 
+  /* We'll use this in a bazillion log messages */
   base32_encode(serviceid, REND_SERVICE_ID_LEN_BASE32+1,
                 circuit->rend_data->rend_pk_digest, REND_SERVICE_ID_LEN);
-  log_info(LD_REND, "Received INTRODUCE2 cell for service %s on circ %d.",
-           escaped(serviceid), circuit->_base.n_circ_id);
-
-  /* XXX begin cut */
-
-  /* min key length plus digest length plus nickname length */
-  if (request_len < DIGEST_LEN+REND_COOKIE_LEN+(MAX_NICKNAME_LEN+1)+
-      DH_KEY_LEN+42) {
-    log_warn(LD_PROTOCOL, "Got a truncated INTRODUCE2 cell on circ %d.",
-             circuit->_base.n_circ_id);
-    goto err;
-  }
-
-  /* XXX end cut */
 
   /* look up service depending on circuit. */
-  service = rend_service_get_by_pk_digest(
-                circuit->rend_data->rend_pk_digest);
+  service =
+    rend_service_get_by_pk_digest(circuit->rend_data->rend_pk_digest);
   if (!service) {
-    log_warn(LD_BUG, "Internal error: Got an INTRODUCE2 cell on an intro "
+    log_warn(LD_BUG,
+             "Internal error: Got an INTRODUCE2 cell on an intro "
              "circ for an unrecognized service %s.",
              escaped(serviceid));
     goto err;
   }
 
+  intro_point = find_intro_point(circuit);
+  if (intro_point == NULL) {
+    log_warn(LD_BUG,
+             "Internal error: Got an INTRODUCE2 cell on an "
+             "intro circ (for service %s) with no corresponding "
+             "rend_intro_point_t.",
+             escaped(serviceid));
+    goto err;
+  }
+
+  log_info(LD_REND, "Received INTRODUCE2 cell for service %s on circ %d.",
+           escaped(serviceid), circuit->_base.n_circ_id);
+
   /* use intro key instead of service key. */
   intro_key = circuit->intro_key;
 
-  /* XXX begin cut */
+  if (err_msg) tor_free(err_msg);
+  stage_descr = NULL;
 
-  /* first DIGEST_LEN bytes of request is intro or service pk digest */
-  crypto_pk_get_digest(intro_key, intro_key_digest);
-  if (tor_memneq(intro_key_digest, request, DIGEST_LEN)) {
-    base32_encode(serviceid, REND_SERVICE_ID_LEN_BASE32+1,
-                  (char*)request, REND_SERVICE_ID_LEN);
-    log_warn(LD_REND, "Got an INTRODUCE2 cell for the wrong service (%s).",
-             escaped(serviceid));
-    goto err;
+  stage_descr = "early parsing";
+  /* Early parsing pass (get pk, ciphertext); type 2 is INTRODUCE2 */
+  parsed_req =
+    rend_service_begin_parse_intro(request, request_len, 2, &err_msg);
+  if (!parsed_req) goto err;
+  else if (err_msg) {
+    log_info(LD_REND, "%s on circ %d.", err_msg, circuit->_base.n_circ_id);
+    tor_free(err_msg);
+  }
+  
+  stage_descr = "early validation";
+  /* Early validation of pk/ciphertext part */
+  result = rend_service_validate_intro_early(parsed_req, &err_msg);
+  if (result < 0) goto err;
+  else if (err_msg) {
+    log_info(LD_REND, "%s on circ %d.", err_msg, circuit->_base.n_circ_id);
+    tor_free(err_msg);
   }
 
-  keylen = crypto_pk_keysize(intro_key);
-  if (request_len < keylen+DIGEST_LEN) {
-    log_warn(LD_PROTOCOL,
-             "PK-encrypted portion of INTRODUCE2 cell was truncated.");
-    goto err;
-  }
-
-  /* XXX end cut */
-
-  intro_point = find_intro_point(circuit);
-  if (intro_point == NULL) {
-    log_warn(LD_BUG, "Internal error: Got an INTRODUCE2 cell on an intro circ "
-             "(for service %s) with no corresponding rend_intro_point_t.",
-             escaped(serviceid));
-    goto err;
-  }
-
+  /* make sure service replay caches are present */
   if (!service->accepted_intro_dh_parts) {
     service->accepted_intro_dh_parts =
       replaycache_new(REND_REPLAY_TIME_INTERVAL,
@@ -1192,162 +1203,72 @@ rend_service_introduce(origin_circuit_t *circuit, const uint8_t *request,
     intro_point->accepted_intro_rsa_parts = replaycache_new(0, 0);
   }
 
-  /* Check for replay of PK-encrypted portion. */
+  /* check for replay of PK-encrypted portion. */
   replay = replaycache_add_test_and_elapsed(
-      intro_point->accepted_intro_rsa_parts,
-      ((char*)request)+DIGEST_LEN, keylen,
-      &elapsed);
+    intro_point->accepted_intro_rsa_parts,
+    parsed_req->ciphertext, parsed_req->ciphertext_len,
+    &elapsed);
 
   if (replay) {
-    log_warn(LD_REND, "Possible replay detected! We received an "
-             "INTRODUCE2 cell with same PK-encrypted part %d seconds ago. "
-             "Dropping cell.", (int)elapsed);
-    goto err;
+    log_warn(LD_REND,
+             "Possible replay detected! We received an "
+             "INTRODUCE2 cell with same PK-encrypted part %d "
+             "seconds ago.  Dropping cell.",
+             (int)elapsed);
+     goto err;
   }
+  
+  stage_descr = "decryption";
+  /* Now try to decrypt it */
+  result = rend_service_decrypt_intro(parsed_req, intro_key, &err_msg);
+  if (result < 0) goto err;
+  else if (err_msg) {
+    log_info(LD_REND, "%s on circ %d.", err_msg, circuit->_base.n_circ_id);
+    tor_free(err_msg);
+  }
+
+  stage_descr = "late parsing";
+  /* Parse the plaintext */
+  result = rend_service_parse_intro_plaintext(parsed_req, &err_msg);
+  if (result < 0) goto err;
+  else if (err_msg) {
+    log_info(LD_REND, "%s on circ %d.", err_msg, circuit->_base.n_circ_id);
+    tor_free(err_msg);
+  }
+
+  stage_descr = "late validation";
+  /* Validate the parsed plaintext parts */
+  result = rend_service_validate_intro_late(parsed_req, &err_msg);
+  if (result < 0) goto err;
+  else if (err_msg) {
+    log_info(LD_REND, "%s on circ %d.", err_msg, circuit->_base.n_circ_id);
+    tor_free(err_msg);
+  }
+  stage_descr = NULL;
 
   /* Increment INTRODUCE2 counter */
   ++(intro_point->accepted_introduce2_count);
 
-  /* XXX begin cut */
-
-  /* Next N bytes is encrypted with service key */
-  note_crypto_pk_op(REND_SERVER);
-  r = crypto_pk_private_hybrid_decrypt(
-       intro_key,buf,sizeof(buf),
-       (char*)(request+DIGEST_LEN),request_len-DIGEST_LEN,
-       PK_PKCS1_OAEP_PADDING,1);
-  if (r<0) {
-    log_warn(LD_PROTOCOL, "Couldn't decrypt INTRODUCE2 cell.");
-    goto err;
-  }
-
-  len = r;
-  if (*buf == 3) {
-    /* Version 3 INTRODUCE2 cell. */
-    v3_shift = 1;
-    auth_type = buf[1];
-    switch (auth_type) {
-      case REND_BASIC_AUTH:
-        /* fall through */
-      case REND_STEALTH_AUTH:
-        auth_len = ntohs(get_uint16(buf+2));
-        if (auth_len != REND_DESC_COOKIE_LEN) {
-          log_info(LD_REND, "Wrong auth data size %d, should be %d.",
-                   (int)auth_len, REND_DESC_COOKIE_LEN);
-          goto err;
-        }
-        memcpy(auth_data, buf+4, sizeof(auth_data));
-        v3_shift += 2+REND_DESC_COOKIE_LEN;
-        break;
-      case REND_NO_AUTH:
-        break;
-      default:
-        log_info(LD_REND, "Unknown authorization type '%d'", auth_type);
-    }
-
-    /* Skip the timestamp field.  We no longer use it. */
-    v3_shift += 4;
-  }
-  if (*buf == 2 || *buf == 3) {
-    /* Version 2 INTRODUCE2 cell. */
-    int klen;
-    extend_info = tor_malloc_zero(sizeof(extend_info_t));
-    tor_addr_from_ipv4n(&extend_info->addr, get_uint32(buf+v3_shift+1));
-    extend_info->port = ntohs(get_uint16(buf+v3_shift+5));
-    memcpy(extend_info->identity_digest, buf+v3_shift+7,
-           DIGEST_LEN);
-    extend_info->nickname[0] = '$';
-    base16_encode(extend_info->nickname+1, sizeof(extend_info->nickname)-1,
-                  extend_info->identity_digest, DIGEST_LEN);
-
-    klen = ntohs(get_uint16(buf+v3_shift+7+DIGEST_LEN));
-    if ((int)len != v3_shift+7+DIGEST_LEN+2+klen+20+128) {
-      log_warn(LD_PROTOCOL, "Bad length %u for version %d INTRODUCE2 cell.",
-               (int)len, *buf);
-      reason = END_CIRC_REASON_TORPROTOCOL;
-      goto err;
-    }
-    extend_info->onion_key =
-        crypto_pk_asn1_decode(buf+v3_shift+7+DIGEST_LEN+2, klen);
-    if (!extend_info->onion_key) {
-      log_warn(LD_PROTOCOL, "Error decoding onion key in version %d "
-                            "INTRODUCE2 cell.", *buf);
-      reason = END_CIRC_REASON_TORPROTOCOL;
-      goto err;
-    }
-    ptr = buf+v3_shift+7+DIGEST_LEN+2+klen;
-    len -= v3_shift+7+DIGEST_LEN+2+klen;
-  } else {
-    char *rp_nickname;
-    size_t nickname_field_len;
-    const node_t *node;
-    int version;
-    if (*buf == 1) {
-      rp_nickname = buf+1;
-      nickname_field_len = MAX_HEX_NICKNAME_LEN+1;
-      version = 1;
-    } else {
-      nickname_field_len = MAX_NICKNAME_LEN+1;
-      rp_nickname = buf;
-      version = 0;
-    }
-    ptr=memchr(rp_nickname,0,nickname_field_len);
-    if (!ptr || ptr == rp_nickname) {
-      log_warn(LD_PROTOCOL,
-               "Couldn't find a nul-padded nickname in INTRODUCE2 cell.");
-      goto err;
-    }
-    if ((version == 0 && !is_legal_nickname(rp_nickname)) ||
-        (version == 1 && !is_legal_nickname_or_hexdigest(rp_nickname))) {
-      log_warn(LD_PROTOCOL, "Bad nickname in INTRODUCE2 cell.");
-      goto err;
-    }
-    /* Okay, now we know that a nickname is at the start of the buffer. */
-    ptr = rp_nickname+nickname_field_len;
-    len -= nickname_field_len;
-    len -= rp_nickname - buf; /* also remove header space used by version, if
-                               * any */
-    /* XXX end cut */
-
-    node = node_get_by_nickname(rp_nickname, 0);
-    if (!node) {
-      log_info(LD_REND, "Couldn't find router %s named in introduce2 cell.",
-               escaped_safe_str_client(rp_nickname));
-      /* XXXX Add a no-such-router reason? */
-      reason = END_CIRC_REASON_TORPROTOCOL;
-      goto err;
-    }
-
-    extend_info = extend_info_from_node(node, 0);
-  }
-
-  /* XXX begin cut */
-
-  if (len != REND_COOKIE_LEN+DH_KEY_LEN) {
-    log_warn(LD_PROTOCOL, "Bad length %u for INTRODUCE2 cell.", (int)len);
-    reason = END_CIRC_REASON_TORPROTOCOL;
-    goto err;
-  }
-
-  /* XXX end cut */
+  /* Find the rendezvous point */
+  rp = find_rp_for_intro(parsed_req, &need_rp_free, &err_msg);
+  if (!rp) goto err;
 
   /* Check if we'd refuse to talk to this router */
   if (options->StrictNodes &&
-      routerset_contains_extendinfo(options->ExcludeNodes, extend_info)) {
+      routerset_contains_extendinfo(options->ExcludeNodes, rp)) {
     log_warn(LD_REND, "Client asked to rendezvous at a relay that we "
              "exclude, and StrictNodes is set. Refusing service.");
     reason = END_CIRC_REASON_INTERNAL; /* XXX might leak why we refused */
     goto err;
   }
 
-  r_cookie = ptr;
-  base16_encode(hexcookie,9,r_cookie,4);
+  base16_encode(hexcookie, 9, (const char *)(parsed_req->rc), 4);
 
   /* Check whether there is a past request with the same Diffie-Hellman,
    * part 1. */
   replay = replaycache_add_test_and_elapsed(
       service->accepted_intro_dh_parts,
-      ptr+REND_COOKIE_LEN, DH_KEY_LEN,
+      parsed_req->dh, DH_KEY_LEN,
       &elapsed);
 
   if (replay) {
@@ -1393,7 +1314,8 @@ rend_service_introduce(origin_circuit_t *circuit, const uint8_t *request,
     reason = END_CIRC_REASON_INTERNAL;
     goto err;
   }
-  if (crypto_dh_compute_secret(LOG_PROTOCOL_WARN, dh, ptr+REND_COOKIE_LEN,
+  if (crypto_dh_compute_secret(LOG_PROTOCOL_WARN, dh,
+                               (char *)(parsed_req->dh),
                                DH_KEY_LEN, keys,
                                DIGEST_LEN+CPATH_KEY_MATERIAL_LEN)<0) {
     log_warn(LD_BUG, "Internal error: couldn't complete DH handshake");
@@ -1412,7 +1334,7 @@ rend_service_introduce(origin_circuit_t *circuit, const uint8_t *request,
     int flags = CIRCLAUNCH_NEED_CAPACITY | CIRCLAUNCH_IS_INTERNAL;
     if (circ_needs_uptime) flags |= CIRCLAUNCH_NEED_UPTIME;
     launched = circuit_launch_by_extend_info(
-                        CIRCUIT_PURPOSE_S_CONNECT_REND, extend_info, flags);
+                        CIRCUIT_PURPOSE_S_CONNECT_REND, rp, flags);
 
     if (launched)
       break;
@@ -1420,7 +1342,7 @@ rend_service_introduce(origin_circuit_t *circuit, const uint8_t *request,
   if (!launched) { /* give up */
     log_warn(LD_REND, "Giving up launching first hop of circuit to rendezvous "
              "point %s for service %s.",
-             safe_str_client(extend_info_describe(extend_info)),
+             safe_str_client(extend_info_describe(rp)),
              serviceid);
     reason = END_CIRC_REASON_CONNECTFAILED;
     goto err;
@@ -1428,7 +1350,7 @@ rend_service_introduce(origin_circuit_t *circuit, const uint8_t *request,
   log_info(LD_REND,
            "Accepted intro; launching circuit to %s "
            "(cookie %s) for service %s.",
-           safe_str_client(extend_info_describe(extend_info)),
+           safe_str_client(extend_info_describe(rp)),
            hexcookie, serviceid);
   tor_assert(launched->build_state);
   /* Fill in the circuit's state. */
@@ -1436,7 +1358,7 @@ rend_service_introduce(origin_circuit_t *circuit, const uint8_t *request,
   memcpy(launched->rend_data->rend_pk_digest,
          circuit->rend_data->rend_pk_digest,
          DIGEST_LEN);
-  memcpy(launched->rend_data->rend_cookie, r_cookie, REND_COOKIE_LEN);
+  memcpy(launched->rend_data->rend_cookie, parsed_req->rc, REND_COOKIE_LEN);
   strlcpy(launched->rend_data->onion_address, service->service_id,
           sizeof(launched->rend_data->onion_address));
 
@@ -1454,16 +1376,26 @@ rend_service_introduce(origin_circuit_t *circuit, const uint8_t *request,
   if (circuit_init_cpath_crypto(cpath,keys+DIGEST_LEN,1)<0)
     goto err;
   memcpy(cpath->handshake_digest, keys, DIGEST_LEN);
-  if (extend_info) extend_info_free(extend_info);
 
   goto done;
 
  err:
   status = -1;
+  if (!err_msg) {
+    if (stage_descr) {
+      tor_asprintf(&err_msg,
+                   "unknown %s error for INTRODUCE2", stage_descr);
+     } else {
+      err_msg = tor_strdup("unknown error for INTRODUCE2");
+     }
+  }
   if (dh) crypto_dh_free(dh);
-  if (launched)
+  if (launched) {
     circuit_mark_for_close(TO_CIRCUIT(launched), reason);
-  if (extend_info) extend_info_free(extend_info);
+  }
+  log_warn(LD_REND, "%s on circ %d", err_msg, circuit->_base.n_circ_id);
+  tor_free(err_msg);
+
  done:
   memset(keys, 0, sizeof(keys));
   memset(buf, 0, sizeof(buf));
@@ -1473,7 +1405,90 @@ rend_service_introduce(origin_circuit_t *circuit, const uint8_t *request,
   memset(auth_data, 0, sizeof(auth_data));
   memset(diffie_hellman_hash, 0, sizeof(diffie_hellman_hash));
 
+  /* Free the parsed cell */
+  if (parsed_req) {
+    rend_service_free_intro(parsed_req);
+    parsed_req = NULL;
+  }
+
+  /* Free rp if we must */
+  if (rp && need_rp_free) {
+    extend_info_free(rp);
+  }
+
   return status;
+}
+
+/** Given a parsed and decrypted INTRODUCE2, find the rendezvous point or
+ * return NULL and an error string if we can't.
+ */
+
+static extend_info_t *
+find_rp_for_intro(const rend_intro_cell_t *intro,
+                  uint8_t *need_free_out, char **err_msg_out)
+{
+  extend_info_t *rp = NULL;
+  char *err_msg = NULL;
+  const char *rp_nickname = NULL;
+  const node_t *node = NULL;
+  uint8_t need_free = 0;
+
+  if (!intro || !need_free_out) {
+    if (err_msg_out)
+      err_msg = tor_strdup("Bad parameters to find_rp_for_intro()");
+
+    goto err;
+  }
+
+  if (intro->version == 0 || intro->version == 1) {
+    if (intro->version == 1) rp_nickname = (const char *)(intro->u.v1.rp);
+    else rp_nickname = (const char *)(intro->u.v0.rp);
+
+    node = node_get_by_nickname(rp_nickname, 0);
+    if (!node) {
+      if (err_msg_out) {
+        tor_asprintf(&err_msg,
+                     "Couldn't find router %s named in INTRODUCE2 cell",
+                     escaped_safe_str_client(rp_nickname));
+      }
+
+      goto err;
+    }
+
+    rp = extend_info_from_node(node, 0);
+    if (!rp) {
+      if (err_msg_out) {
+        tor_asprintf(&err_msg,
+                     "Could build extend_info_t for router %s named "
+                     "in INTRODUCE2 cell",
+                     escaped_safe_str_client(rp_nickname));
+      }
+
+      goto err;
+    }
+    else need_free = 1;
+  } else if (intro->version == 2) rp = intro->u.v2.extend_info;
+  else if (intro->version == 3) rp = intro->u.v3.extend_info;
+  else {
+    if (err_msg_out) {
+      tor_asprintf(&err_msg,
+                   "Unknown version %d in INTRODUCE2 cell",
+                   (int)(intro->version));
+    }
+
+    goto err;
+  }
+
+  goto done;
+
+ err:
+  if (err_msg_out) *err_msg_out = err_msg;
+  else if (err_msg) tor_free(err_msg);
+
+ done:
+  if (rp && need_free_out) *need_free_out = need_free;
+
+  return rp;
 }
 
 /** Remove unnecessary parts from a rend_intro_cell_t - the ciphertext if
@@ -1815,7 +1830,7 @@ rend_service_parse_intro_for_v3(
     size_t plaintext_len,
     char **err_msg)
 {
-  ssize_t adjust, v2_ver_specific_len;
+  ssize_t adjust, v2_ver_specific_len, ts_offset;
 
   /* This should only be called on v3 cells */
   if (intro->version != 3) {
@@ -1845,8 +1860,24 @@ rend_service_parse_intro_for_v3(
     goto err;
   }
 
+  /*
+   * The rend_client_send_introduction() function over in rendclient.c is
+   * broken (i.e., fails to match the spec) in such a way that we can't
+   * change it without breaking the protocol.  Specifically, it doesn't
+   * emit auth_len when auth-type is REND_NO_AUTH, so everything is off
+   * by two bytes after that.  Calculate ts_offset and do everything from
+   * the timestamp on relative to that to handle this dain bramage.
+   */
+
   intro->u.v3.auth_type = buf[1];
-  intro->u.v3.auth_len = ntohs(get_uint16(buf + 2));
+  if (intro->u.v3.auth_type != REND_NO_AUTH) {
+    intro->u.v3.auth_len = ntohs(get_uint16(buf + 2));
+    ts_offset = 4 + intro->u.v3.auth_len;
+  }
+  else {
+    intro->u.v3.auth_len = 0;
+    ts_offset = 2;
+  }
 
   /* Check that auth len makes sense for this auth type */
   if (intro->u.v3.auth_type == REND_BASIC_AUTH ||
@@ -1865,8 +1896,8 @@ rend_service_parse_intro_for_v3(
       }
   }
 
-  /* Check that we actually auth_len */
-  if (plaintext_len < (size_t)(4 + intro->u.v3.auth_len)) {
+  /* Check that we actually have everything up to the timestamp */
+  if (plaintext_len < (size_t)(ts_offset)) {
     if (err_msg) {
       tor_asprintf(err_msg,
                    "truncated plaintext of encrypted parted of "
@@ -1878,9 +1909,14 @@ rend_service_parse_intro_for_v3(
     goto err;
   }
 
-  if (intro->u.v3.auth_len > 0) {
+  if (intro->u.v3.auth_type != REND_NO_AUTH &&
+      intro->u.v3.auth_len > 0) {
     /* Okay, we can go ahead and copy auth_data */
     intro->u.v3.auth_data = tor_malloc(intro->u.v3.auth_len);
+    /*
+     * We know we had an auth_len field in this case, so 4 is
+     * always right.
+     */
     memcpy(intro->u.v3.auth_data, buf + 4, intro->u.v3.auth_len);
   }
 
@@ -1888,15 +1924,15 @@ rend_service_parse_intro_for_v3(
    * Apparently we don't use the timestamp any more, but might as well copy
    * over just in case we ever care about it.
    */
-  intro->u.v3.timestamp = ntohl(get_uint32(buf + 4 + intro->u.v3.auth_len));
+  intro->u.v3.timestamp = ntohl(get_uint32(buf + ts_offset));
 
   /*
    * From here on, the format is as in v2, so we call the v2 parser with
-   * adjusted buffer and length.  We are 8 + auth_len octets in, but the
+   * adjusted buffer and length.  We are 4 + ts_offset octets in, but the
    * v2 parser expects to skip over a version byte at the start, so we
-   * adjust by 7 + auth_len.
+   * adjust by 3 + ts_offset.
    */
-  adjust = 7 + intro->u.v3.auth_len;
+  adjust = 3 + ts_offset;
 
   v2_ver_specific_len =
     rend_service_parse_intro_for_v2(intro,
@@ -2158,9 +2194,22 @@ int
 rend_service_validate_intro_early(const rend_intro_cell_t *intro,
                                   char **err_msg)
 {
+  int status = 0;
+
+  if (!intro) {
+    if (err_msg)
+      *err_msg =
+        tor_strdup("NULL intro cell passed to "
+                   "rend_service_validate_intro_early()");
+
+    status = -1;
+    goto err;
+  }
+
   /* TODO */
 
-  return -1;
+ err:
+  return status;
 }
 
 /** Do validity checks on a parsed intro cell after decryption; some of
@@ -2176,9 +2225,32 @@ int
 rend_service_validate_intro_late(const rend_intro_cell_t *intro,
                                  char **err_msg)
 {
-  /* TODO */
+  int status = 0;
 
-  return -1;
+  if (!intro) {
+    if (err_msg)
+      *err_msg =
+        tor_strdup("NULL intro cell passed to "
+                   "rend_service_validate_intro_late()");
+
+    status = -1;
+    goto err;
+  }
+
+  if (intro->version == 3 && intro->parsed) {
+    if (!(intro->u.v3.auth_type == REND_NO_AUTH ||
+          intro->u.v3.auth_type == REND_BASIC_AUTH ||
+          intro->u.v3.auth_type == REND_STEALTH_AUTH)) {
+      /* This is an informative message, not an error, as in the old code */
+      if (err_msg)
+        tor_asprintf(err_msg,
+                     "unknown authorization type %d",
+                     intro->u.v3.auth_type);
+    }
+  }
+
+ err:
+  return status;
 }
 
 /** Called when we fail building a rendezvous circuit at some point other
