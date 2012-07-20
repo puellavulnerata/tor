@@ -47,17 +47,17 @@ static ssize_t rend_service_parse_intro_for_v0_or_v1(
     rend_intro_cell_t *intro,
     const uint8_t *buf,
     size_t plaintext_len,
-    char **err_msg);
+    char **err_msg_out);
 static ssize_t rend_service_parse_intro_for_v2(
     rend_intro_cell_t *intro,
     const uint8_t *buf,
     size_t plaintext_len,
-    char **err_msg);
+    char **err_msg_out);
 static ssize_t rend_service_parse_intro_for_v3(
     rend_intro_cell_t *intro,
     const uint8_t *buf,
     size_t plaintext_len,
-    char **err_msg);
+    char **err_msg_out);
 
 /** Represents the mapping from a virtual port of a rendezvous service to
  * a real port on some IP.
@@ -1659,7 +1659,7 @@ rend_service_parse_intro_for_v0_or_v1(
     rend_intro_cell_t *intro,
     const uint8_t *buf,
     size_t plaintext_len,
-    char **err_msg)
+    char **err_msg_out)
 {
   const char *rp_nickname, *endptr;
   size_t nickname_field_len, ver_specific_len;
@@ -1673,8 +1673,8 @@ rend_service_parse_intro_for_v0_or_v1(
     rp_nickname = (const char *)buf;
     nickname_field_len = MAX_NICKNAME_LEN + 1;
   } else {
-    if (err_msg)
-      tor_asprintf(err_msg,
+    if (err_msg_out)
+      tor_asprintf(err_msg_out,
                    "rend_service_parse_intro_for_v0_or_v1() called with "
                    "bad version %d on INTRODUCE%d cell (this is a bug)",
                    intro->version,
@@ -1683,8 +1683,8 @@ rend_service_parse_intro_for_v0_or_v1(
   }
 
   if (plaintext_len < ver_specific_len) {
-    if (err_msg)
-      tor_asprintf(err_msg,
+    if (err_msg_out)
+      tor_asprintf(err_msg_out,
                    "short plaintext of encrypted part in v1 INTRODUCE%d "
                    "cell (%lu bytes, needed %lu)",
                    (int)(intro->type),
@@ -1695,8 +1695,8 @@ rend_service_parse_intro_for_v0_or_v1(
 
   endptr = memchr(rp_nickname, 0, nickname_field_len);
   if (!endptr || endptr == rp_nickname) {
-    if (err_msg) {
-      tor_asprintf(err_msg,
+    if (err_msg_out) {
+      tor_asprintf(err_msg_out,
                    "couldn't find a nul-padded nickname in "
                    "INTRODUCE%d cell",
                    (int)(intro->type));
@@ -1708,8 +1708,8 @@ rend_service_parse_intro_for_v0_or_v1(
        !is_legal_nickname(rp_nickname)) ||
       (intro->version == 1 &&
        !is_legal_nickname_or_hexdigest(rp_nickname))) {
-    if (err_msg) {
-      tor_asprintf(err_msg,
+    if (err_msg_out) {
+      tor_asprintf(err_msg_out,
                    "bad nickname in INTRODUCE%d cell",
                    (int)(intro->type));
     }
@@ -1736,7 +1736,7 @@ rend_service_parse_intro_for_v2(
     rend_intro_cell_t *intro,
     const uint8_t *buf,
     size_t plaintext_len,
-    char **err_msg)
+    char **err_msg_out)
 {
   unsigned int klen;
   extend_info_t *extend_info = NULL;
@@ -1749,8 +1749,8 @@ rend_service_parse_intro_for_v2(
    */
   if (!(intro->version == 2 ||
         intro->version == 3)) {
-    if (err_msg)
-      tor_asprintf(err_msg,
+    if (err_msg_out)
+      tor_asprintf(err_msg_out,
                    "rend_service_parse_intro_for_v2() called with "
                    "bad version %d on INTRODUCE%d cell (this is a bug)",
                    intro->version,
@@ -1760,8 +1760,8 @@ rend_service_parse_intro_for_v2(
 
   /* 7 == version, IP and port, DIGEST_LEN == id, 2 == key length */
   if (plaintext_len < 7 + DIGEST_LEN + 2) {
-    if (err_msg) {
-      tor_asprintf(err_msg,
+    if (err_msg_out) {
+      tor_asprintf(err_msg_out,
                    "truncated plaintext of encrypted parted of "
                    "version %d INTRODUCE%d cell",
                    intro->version,
@@ -1782,8 +1782,8 @@ rend_service_parse_intro_for_v2(
 
   /* 7 == version, IP and port, DIGEST_LEN == id, 2 == key length */
   if (plaintext_len < 7 + DIGEST_LEN + 2 + klen) {
-    if (err_msg) {
-      tor_asprintf(err_msg,
+    if (err_msg_out) {
+      tor_asprintf(err_msg_out,
                    "truncated plaintext of encrypted parted of "
                    "version %d INTRODUCE%d cell",
                    intro->version,
@@ -1796,8 +1796,8 @@ rend_service_parse_intro_for_v2(
   extend_info->onion_key =
     crypto_pk_asn1_decode((const char *)(buf + 7 + DIGEST_LEN + 2), klen);
   if (!extend_info->onion_key) {
-    if (err_msg) {
-      tor_asprintf(err_msg,
+    if (err_msg_out) {
+      tor_asprintf(err_msg_out,
                    "error decoding onion key in version %d "
                    "INTRODUCE%d cell",
                    intro->version,
@@ -1828,14 +1828,14 @@ rend_service_parse_intro_for_v3(
     rend_intro_cell_t *intro,
     const uint8_t *buf,
     size_t plaintext_len,
-    char **err_msg)
+    char **err_msg_out)
 {
   ssize_t adjust, v2_ver_specific_len, ts_offset;
 
   /* This should only be called on v3 cells */
   if (intro->version != 3) {
-    if (err_msg)
-      tor_asprintf(err_msg,
+    if (err_msg_out)
+      tor_asprintf(err_msg_out,
                    "rend_service_parse_intro_for_v3() called with "
                    "bad version %d on INTRODUCE%d cell (this is a bug)",
                    intro->version,
@@ -1849,8 +1849,8 @@ rend_service_parse_intro_for_v3(
    * 1 octet for version, 1 for auth_type, 2 for auth_len
    */
   if (plaintext_len < 4) {
-    if (err_msg) {
-      tor_asprintf(err_msg,
+    if (err_msg_out) {
+      tor_asprintf(err_msg_out,
                    "truncated plaintext of encrypted parted of "
                    "version %d INTRODUCE%d cell",
                    intro->version,
@@ -1883,8 +1883,8 @@ rend_service_parse_intro_for_v3(
   if (intro->u.v3.auth_type == REND_BASIC_AUTH ||
       intro->u.v3.auth_type == REND_STEALTH_AUTH) {
       if (intro->u.v3.auth_len != REND_DESC_COOKIE_LEN) {
-        if (err_msg) {
-          tor_asprintf(err_msg,
+        if (err_msg_out) {
+          tor_asprintf(err_msg_out,
                        "wrong auth data size %d for INTRODUCE%d cell, "
                        "should be %d",
                        (int)(intro->u.v3.auth_len),
@@ -1898,8 +1898,8 @@ rend_service_parse_intro_for_v3(
 
   /* Check that we actually have everything up to the timestamp */
   if (plaintext_len < (size_t)(ts_offset)) {
-    if (err_msg) {
-      tor_asprintf(err_msg,
+    if (err_msg_out) {
+      tor_asprintf(err_msg_out,
                    "truncated plaintext of encrypted parted of "
                    "version %d INTRODUCE%d cell",
                    intro->version,
@@ -1937,7 +1937,7 @@ rend_service_parse_intro_for_v3(
   v2_ver_specific_len =
     rend_service_parse_intro_for_v2(intro,
                                     buf + adjust, plaintext_len - adjust,
-                                    err_msg);
+                                    err_msg_out);
 
   /* Success in v2 parser */
   if (v2_ver_specific_len >= 0) return v2_ver_specific_len + adjust;
@@ -2192,13 +2192,13 @@ rend_service_parse_intro_plaintext(
 
 int
 rend_service_validate_intro_early(const rend_intro_cell_t *intro,
-                                  char **err_msg)
+                                  char **err_msg_out)
 {
   int status = 0;
 
   if (!intro) {
-    if (err_msg)
-      *err_msg =
+    if (err_msg_out)
+      *err_msg_out =
         tor_strdup("NULL intro cell passed to "
                    "rend_service_validate_intro_early()");
 
@@ -2223,13 +2223,13 @@ rend_service_validate_intro_early(const rend_intro_cell_t *intro,
 
 int
 rend_service_validate_intro_late(const rend_intro_cell_t *intro,
-                                 char **err_msg)
+                                 char **err_msg_out)
 {
   int status = 0;
 
   if (!intro) {
-    if (err_msg)
-      *err_msg =
+    if (err_msg_out)
+      *err_msg_out =
         tor_strdup("NULL intro cell passed to "
                    "rend_service_validate_intro_late()");
 
@@ -2242,8 +2242,8 @@ rend_service_validate_intro_late(const rend_intro_cell_t *intro,
           intro->u.v3.auth_type == REND_BASIC_AUTH ||
           intro->u.v3.auth_type == REND_STEALTH_AUTH)) {
       /* This is an informative message, not an error, as in the old code */
-      if (err_msg)
-        tor_asprintf(err_msg,
+      if (err_msg_out)
+        tor_asprintf(err_msg_out,
                      "unknown authorization type %d",
                      intro->u.v3.auth_type);
     }
