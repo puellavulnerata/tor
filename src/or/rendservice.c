@@ -1170,7 +1170,7 @@ rend_service_introduce(origin_circuit_t *circuit, const uint8_t *request,
   /* use intro key instead of service key. */
   intro_key = circuit->intro_key;
 
-  if (err_msg) tor_free(err_msg);
+  tor_free(err_msg);
   stage_descr = NULL;
 
   stage_descr = "early parsing";
@@ -1412,9 +1412,7 @@ rend_service_introduce(origin_circuit_t *circuit, const uint8_t *request,
   }
 
   /* Free rp if we must */
-  if (rp && need_rp_free) {
-    extend_info_free(rp);
-  }
+  if (need_rp_free) extend_info_free(rp);
 
   return status;
 }
@@ -1483,7 +1481,7 @@ find_rp_for_intro(const rend_intro_cell_t *intro,
 
  err:
   if (err_msg_out) *err_msg_out = err_msg;
-  else if (err_msg) tor_free(err_msg);
+  else tor_free(err_msg);
 
  done:
   if (rp && need_free_out) *need_free_out = need_free;
@@ -1500,15 +1498,13 @@ rend_service_compact_intro(rend_intro_cell_t *request)
 {
   if (!request) return;
 
-  if (request->ciphertext) {
-    if ((request->plaintext && request->plaintext_len > 0) ||
-        request->parsed) {
-      tor_free(request->ciphertext);
-      request->ciphertext_len = 0;
-    }
+  if ((request->plaintext && request->plaintext_len > 0) ||
+       request->parsed) {
+    tor_free(request->ciphertext);
+    request->ciphertext_len = 0;
   }
 
-  if (request->plaintext && request->parsed) {
+  if (request->parsed) {
     tor_free(request->plaintext);
     request->plaintext_len = 0;
   }
@@ -1525,11 +1521,9 @@ rend_service_free_intro(rend_intro_cell_t *request)
     return;
   }
 
-  /* Have ciphertext? */
-  if (request->ciphertext) {
-    tor_free(request->ciphertext);
-    request->ciphertext_len = 0;
-  }
+  /* Free ciphertext */
+  tor_free(request->ciphertext);
+  request->ciphertext_len = 0;
 
   /* Have plaintext? */
   if (request->plaintext) {
@@ -1550,20 +1544,17 @@ rend_service_free_intro(rend_intro_cell_t *request)
          */
         break;
       case 2:
-        if (request->u.v2.extend_info) {
-          extend_info_free(request->u.v2.extend_info);
-          request->u.v2.extend_info = NULL;
-        }
+        extend_info_free(request->u.v2.extend_info);
+        request->u.v2.extend_info = NULL;
         break;
       case 3:
         if (request->u.v3.auth_data) {
           memset(request->u.v3.auth_data, 0, request->u.v3.auth_len);
           tor_free(request->u.v3.auth_data);
         }
-        if (request->u.v2.extend_info) {
-          extend_info_free(request->u.v2.extend_info);
-          request->u.v2.extend_info = NULL;
-        }
+
+        extend_info_free(request->u.v2.extend_info);
+        request->u.v2.extend_info = NULL;
         break;
       default:
         log_info(LD_BUG,
@@ -1645,7 +1636,7 @@ rend_service_begin_parse_intro(const uint8_t *request,
 
  done:
   if (err_msg_out) *err_msg_out = err_msg;
-  else if (err_msg) tor_free(err_msg);
+  else tor_free(err_msg);
 
   return rv;
 }
@@ -1815,7 +1806,7 @@ rend_service_parse_intro_for_v2(
   return ver_specific_len;
 
  err:
-  if (extend_info) extend_info_free(extend_info);
+  extend_info_free(extend_info);
 
   return -1;
 }
@@ -2070,7 +2061,7 @@ rend_service_decrypt_intro(
 
  done:
   if (err_msg_out) *err_msg_out = err_msg;
-  else if (err_msg) tor_free(err_msg);
+  else tor_free(err_msg);
 
   /* clean up potentially sensitive material */
   memset(buf, 0, sizeof(buf));
@@ -2176,7 +2167,7 @@ rend_service_parse_intro_plaintext(
 
  done:
   if (err_msg_out) *err_msg_out = err_msg;
-  else if (err_msg) tor_free(err_msg);
+  else tor_free(err_msg);
 
   return status;
 }
