@@ -1864,6 +1864,7 @@ extern struct testcase_t dir_tests[];
 extern struct testcase_t microdesc_tests[];
 extern struct testcase_t pt_tests[];
 extern struct testcase_t config_tests[];
+extern struct testcase_t introduce_tests[];
 extern struct testcase_t replaycache_tests[];
 
 static struct testgroup_t testgroups[] = {
@@ -1878,6 +1879,7 @@ static struct testgroup_t testgroups[] = {
   { "pt/", pt_tests },
   { "config/", config_tests },
   { "replaycache/", replaycache_tests },
+  { "introduce/", introduce_tests },
   END_OF_GROUPS
 };
 
