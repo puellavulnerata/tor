@@ -1553,8 +1553,8 @@ rend_service_free_intro(rend_intro_cell_t *request)
           tor_free(request->u.v3.auth_data);
         }
 
-        extend_info_free(request->u.v2.extend_info);
-        request->u.v2.extend_info = NULL;
+        extend_info_free(request->u.v3.extend_info);
+        request->u.v3.extend_info = NULL;
         break;
       default:
         log_info(LD_BUG,
