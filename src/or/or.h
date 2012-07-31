@@ -1548,6 +1548,10 @@ static INLINE listener_connection_t *TO_LISTENER_CONN(connection_t *c)
   return DOWNCAST(listener_connection_t, c);
 }
 
+/* channel_t typedef; struct channel_s is in channel.h */
+
+typedef struct channel_s channel_t;
+
 /* Conditional macros to help write code that works whether bufferevents are
    disabled or not.
 
