@@ -17,6 +17,7 @@ endif
 
 libtor_a_SOURCES = \
 	buffers.c				\
+	channel.c				\
 	circuitbuild.c				\
 	circuitlist.c				\
 	circuituse.c				\
@@ -82,6 +83,7 @@ noinst_HEADERS = \
 	circuitbuild.h				\
 	circuitlist.h				\
 	circuituse.h				\
+	channel.h				\
 	command.h				\
 	config.h				\
 	connection.h				\
