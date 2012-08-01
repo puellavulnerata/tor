@@ -80,6 +80,7 @@ tor_LDADD = ./libtor.a ../common/libor.a ../common/libor-crypto.a \
 
 noinst_HEADERS = \
 	buffers.h				\
+	channel.h				\
 	circuitbuild.h				\
 	circuitlist.h				\
 	circuituse.h				\
