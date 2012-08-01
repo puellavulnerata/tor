@@ -212,8 +212,8 @@ channel_change_state(channel_t *chan, channel_state_t to_state)
   chan->state = to_state;
 }
 
-/** Use a listener's registered callback to process the queue of incoming channels
- */
+/** Use a listener's registered callback to process the queue of incoming
+ * channels. */
 
 void
 channel_process_incoming(channel_t *listener)
