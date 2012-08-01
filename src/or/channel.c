@@ -9,6 +9,109 @@
 #include "or.h"
 #include "channel.h"
 
+/** Indicate whether a given channel state is valid
+ */
+
+int
+channel_state_is_valid(channel_state_t state)
+{
+  int is_valid;
+
+  switch (state) {
+    case CHANNEL_STATE_CLOSED:
+    case CHANNEL_STATE_CLOSING:
+    case CHANNEL_STATE_ERROR:
+    case CHANNEL_STATE_MAINT:
+    case CHANNEL_STATE_OPENING:
+    case CHANNEL_STATE_OPEN:
+      is_valid = 1;
+      break;
+    case CHANNEL_STATE_LAST:
+    default:
+      is_valid = 0;
+  }
+
+  return is_valid;
+}
+
+/** Indicate whether a channel state transition is valid (see the state
+ * definitions and transition table in or.h at the channel_state_t typedef).
+ */
+
+int
+channel_state_can_transition(channel_state_t from, channel_state_t to)
+{
+  int is_valid;
+
+  switch (from) {
+    case CHANNEL_STATE_CLOSED:
+      is_valid = (to == CHANNEL_STATE_OPENING);
+      break;
+    case CHANNEL_STATE_CLOSING:
+      is_valid = (to == CHANNEL_STATE_CLOSED ||
+                  to == CHANNEL_STATE_ERROR);
+      break;
+    case CHANNEL_STATE_ERROR:
+      is_valid = 0;
+      break;
+    case CHANNEL_STATE_MAINT:
+      is_valid = (to == CHANNEL_STATE_CLOSING ||
+                  to == CHANNEL_STATE_ERROR ||
+                  to == CHANNEL_STATE_OPEN);
+      break;
+    case CHANNEL_STATE_OPENING:
+      is_valid = (to == CHANNEL_STATE_CLOSING ||
+                  to == CHANNEL_STATE_ERROR ||
+                  to == CHANNEL_STATE_OPEN);
+      break;
+    case CHANNEL_STATE_OPEN:
+      is_valid = (to == CHANNEL_STATE_CLOSING ||
+                  to == CHANNEL_STATE_ERROR ||
+                  to == CHANNEL_STATE_MAINT);
+      break;
+    case CHANNEL_STATE_LAST:
+    default:
+      is_valid = 0;
+  }
+
+  return is_valid;
+}
+
+/** Return a human-readable description for a channel state
+ */
+
+const char *
+channel_state_to_string(channel_state_t state)
+{
+  const char *descr;
+
+  switch (state) {
+    case CHANNEL_STATE_CLOSED:
+      descr = "closed";
+      break;
+    case CHANNEL_STATE_CLOSING:
+      descr = "closing";
+      break;
+    case CHANNEL_STATE_ERROR:
+      descr = "channel error";
+      break;
+    case CHANNEL_STATE_MAINT:
+      descr = "temporarily suspended for maintenance";
+      break;
+    case CHANNEL_STATE_OPENING:
+      descr = "opening";
+      break;
+    case CHANNEL_STATE_OPEN:
+      descr = "open";
+      break;
+    case CHANNEL_STATE_LAST:
+    default:
+      descr = "unknown or invalid channel state";
+  }
+
+  return descr;
+}
+
 /** Close a channel, invoking its close() method if it has one, and free the
  * channel_t. */
 
