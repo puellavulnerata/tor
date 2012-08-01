@@ -41,6 +41,14 @@ void channel_close(channel_t *chan);
 void channel_write_cell(const cell_t *cell, channel_t *chan);
 void channel_write_var_cell(const var_cell_t *cell, channel_t *chan);
 
+#ifdef _TOR_CHANNEL_INTERNAL
+
+/* Channel operations for subclasses and internal use only */
+
+void channel_change_state(channel_t *chan, channel_state_t to_state);
+
+#endif
+
 /* Helper functions to perform operations on channels */
 
 int channel_send_destroy(circid_t circ_id, channel_t *chan,
