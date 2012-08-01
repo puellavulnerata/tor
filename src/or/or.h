@@ -1560,9 +1560,20 @@ typedef enum {
    * Permitted transitions from:
    *   - CHANNEL_STATE_CLOSING
    * Permitted transitions to:
+   *   - CHANNEL_STATE_LISTENING
    *   - CHANNEL_STATE_OPENING
    */
   CHANNEL_STATE_CLOSED = 0,
+  /*
+   * Listening state - channel is listening for incoming connections
+   *
+   * Permitted transitions from:
+   *   - CHANNEL_STATE_CLOSED
+   * Permitted transitions to:
+   *   - CHANNEL_STATE_CLOSING
+   *   - CHANNEL_STATE_ERROR
+   */
+  CHANNEL_STATE_LISTENING,
   /*
    * Opening state - channel is trying to connect
    *
@@ -1614,6 +1625,7 @@ typedef enum {
    *
    * Permitted transitions from:
    *   - CHANNEL_STATE_CLOSING
+   *   - CHANNEL_STATE_LISTENING
    *   - CHANNEL_STATE_MAINT
    *   - CHANNEL_STATE_OPENING
    *   - CHANNEL_STATE_OPEN
