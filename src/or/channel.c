@@ -28,6 +28,7 @@ channel_state_is_valid(channel_state_t state)
     case CHANNEL_STATE_CLOSED:
     case CHANNEL_STATE_CLOSING:
     case CHANNEL_STATE_ERROR:
+    case CHANNEL_STATE_LISTENING:
     case CHANNEL_STATE_MAINT:
     case CHANNEL_STATE_OPENING:
     case CHANNEL_STATE_OPEN:
@@ -52,7 +53,8 @@ channel_state_can_transition(channel_state_t from, channel_state_t to)
 
   switch (from) {
     case CHANNEL_STATE_CLOSED:
-      is_valid = (to == CHANNEL_STATE_OPENING);
+      is_valid = (to == CHANNEL_STATE_LISTENING ||
+                  to == CHANNEL_STATE_OPENING);
       break;
     case CHANNEL_STATE_CLOSING:
       is_valid = (to == CHANNEL_STATE_CLOSED ||
@@ -60,6 +62,10 @@ channel_state_can_transition(channel_state_t from, channel_state_t to)
       break;
     case CHANNEL_STATE_ERROR:
       is_valid = 0;
+      break;
+    case CHANNEL_STATE_LISTENING:
+      is_valid = (to == CHANNEL_STATE_CLOSING ||
+                  to == CHANNEL_STATE_ERROR);
       break;
     case CHANNEL_STATE_MAINT:
       is_valid = (to == CHANNEL_STATE_CLOSING ||
@@ -102,6 +108,9 @@ channel_state_to_string(channel_state_t state)
     case CHANNEL_STATE_ERROR:
       descr = "channel error";
       break;
+    case CHANNEL_STATE_LISTENING:
+      descr = "listening";
+      break;
     case CHANNEL_STATE_MAINT:
       descr = "temporarily suspended for maintenance";
       break;
@@ -117,6 +126,33 @@ channel_state_to_string(channel_state_t state)
   }
 
   return descr;
+}
+
+/** Return the current registered listener for a channel
+ */
+
+void
+(* channel_get_listener(channel_t *chan))
+  (channel_t *, channel_t *)
+{
+  tor_assert(chan);
+
+  if (chan->state == CHANNEL_STATE_LISTENING) return chan->listener;
+  else return NULL;
+}
+
+/** Set the listener for a channel
+ */
+
+void
+channel_set_listener(channel_t *chan,
+                     void (*listener)(channel_t *, channel_t *) )
+{
+  tor_assert(chan);
+  tor_assert(chan->state == CHANNEL_STATE_LISTENING);
+
+  chan->listener = listener;
+  if (chan->listener) channel_process_incoming(chan);
 }
 
 /** Close a channel, invoking its close() method if it has one, and free the
@@ -174,6 +210,77 @@ channel_change_state(channel_t *chan, channel_state_t to_state)
   tor_assert(channel_state_can_transition(chan->state, to_state));
 
   chan->state = to_state;
+}
+
+/** Use a listener's registered callback to process the queue of incoming channels
+ */
+
+void
+channel_process_incoming(channel_t *listener)
+{
+  tor_assert(listener);
+  /*
+   * CHANNEL_STATE_CLOSING permitted because we drain the queue while
+   * closing a listener.
+   */
+  tor_assert(listener->state == CHANNEL_STATE_LISTENING ||
+             listener->state == CHANNEL_STATE_CLOSING);
+  tor_assert(listener->listener);
+
+  if (!(listener->incoming_list)) return;
+
+  SMARTLIST_FOREACH_BEGIN(listener->incoming_list, channel_t *, chan) {
+    listener->listener(listener, chan);
+    SMARTLIST_DEL_CURRENT(listener->incoming_list, chan);
+  } SMARTLIST_FOREACH_END(chan);
+
+  tor_assert(smartlist_len(listener->incoming_list) == 0);
+  smartlist_free(listener->incoming_list);
+  listener->incoming_list = NULL;
+}
+
+/** Internal and subclass use only function to queue an incoming channel from
+ * a listening one. */
+
+void
+channel_queue_incoming(channel_t *listener, channel_t *incoming)
+{
+  int need_to_queue = 0;
+
+  tor_assert(listener);
+  tor_assert(listener->state == CHANNEL_STATE_LISTENING);
+  tor_assert(incoming);
+  /*
+   * Other states are permitted because subclass might process activity
+   * on a channel at any time while it's queued, but a listener returning
+   * another listener makes no sense.
+   */
+  tor_assert(incoming->state != CHANNEL_STATE_LISTENING);
+
+  /* Do we need to queue it, or can we just call the listener right away? */
+  if (!(listener->listener)) need_to_queue = 1;
+  if (listener->incoming_list &&
+      (smartlist_len(listener->incoming_list) > 0)) need_to_queue = 1;
+
+  /* If we need to queue and have no queue, create one */
+  if (need_to_queue && !(listener->incoming_list)) {
+    listener->incoming_list = smartlist_new();
+  }
+
+  /* If we don't need to queue, process it right away */
+  if (!need_to_queue) {
+    tor_assert(listener->listener);
+    listener->listener(listener, incoming);
+  }
+  /*
+   * Otherwise, we need to queue; queue and then process the queue if
+   * we can.
+   */
+  else {
+    tor_assert(listener->incoming_list);
+    smartlist_add(listener->incoming_list, incoming);
+    if (listener->listener) channel_process_incoming(listener);
+  }
 }
 
 /** Write a destroy cell with circ ID <b>circ_id</b> and reason <b>reason</b>

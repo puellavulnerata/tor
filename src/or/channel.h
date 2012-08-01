@@ -24,6 +24,11 @@ struct channel_s {
   /* Current channel state */
   channel_state_t state;
 
+  /* Registered listen handler to call on incoming connection */
+  void (*listener)(channel_t *, channel_t *);
+  /* List of pending incoming connections */
+  smartlist_t *incoming_list;
+
   /*
    * Function pointers for channel ops
    */
@@ -48,11 +53,18 @@ void channel_close(channel_t *chan);
 void channel_write_cell(const cell_t *cell, channel_t *chan);
 void channel_write_var_cell(const var_cell_t *cell, channel_t *chan);
 
+/* Channel callback registrations */
+void (* channel_get_listener(channel_t *chan))(channel_t *, channel_t *);
+void channel_set_listener(channel_t *chan,
+                          void (*listener)(channel_t *, channel_t *) );
+
 #ifdef _TOR_CHANNEL_INTERNAL
 
 /* Channel operations for subclasses and internal use only */
 
 void channel_change_state(channel_t *chan, channel_state_t to_state);
+void channel_process_incoming(channel_t *listener);
+void channel_queue_incoming(channel_t *listener, channel_t *incoming);
 
 #endif
 
