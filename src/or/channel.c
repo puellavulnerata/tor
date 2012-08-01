@@ -6,6 +6,13 @@
  * \brief OR-to-OR channel abstraction layer
  **/
 
+/*
+ * Define this so channel.h gives us things only channel_t subclasses
+ * should touch.
+ */
+
+#define _TOR_CHANNEL_INTERNAL
+
 #include "or.h"
 #include "channel.h"
 
@@ -153,6 +160,20 @@ channel_write_var_cell(const var_cell_t *cell, channel_t *chan)
   tor_assert(chan->write_var_cell != NULL);
 
   chan->write_var_cell(cell, chan);
+}
+
+/** Internal and subclass use only function to change channel state,
+ * performing all transition validity checks. */
+
+void
+channel_change_state(channel_t *chan, channel_state_t to_state)
+{
+  tor_assert(chan);
+  tor_assert(channel_state_is_valid(chan->state));
+  tor_assert(channel_state_is_valid(to_state));
+  tor_assert(channel_state_can_transition(chan->state, to_state));
+
+  chan->state = to_state;
 }
 
 /** Write a destroy cell with circ ID <b>circ_id</b> and reason <b>reason</b>
