@@ -283,6 +283,102 @@ channel_queue_incoming(channel_t *listener, channel_t *incoming)
   }
 }
 
+/*
+ * Internal and subclass use only function to queue an incoming cell for the
+ * callback to handle.
+ */
+
+/* Cell queue structure */
+typedef struct cell_queue_entry_s cell_queue_entry_t;
+struct cell_queue_entry_s {
+  enum {
+    CELL_QUEUE_FIXED,
+    CELL_QUEUE_VAR
+  } type;
+  union {
+    struct {
+      cell_t *cell;
+    } fixed;
+    struct {
+      var_cell_t *var_cell;
+    } var;
+  } u;
+};
+
+void
+channel_queue_cell(channel_t *chan, cell_t *cell)
+{
+  int need_to_queue = 0;
+  cell_queue_entry_t *q;
+
+  tor_assert(chan);
+  tor_assert(cell);
+  tor_assert(chan->state = CHANNEL_STATE_OPEN);
+
+  /* Do we need to queue it, or can we just call the handler right away? */
+  if (!(chan->cell_handler)) need_to_queue = 1;
+  if (chan->cell_queue &&
+      (smartlist_len(chan->cell_queue) > 0)) need_to_queue = 1;
+
+  /* If we need to queue and have no queue, create one */
+  if (need_to_queue && !(chan->cell_queue)) {
+    chan->cell_queue = smartlist_new();
+  }
+
+  /* If we don't need to queue we can just call cell_handler */
+  if (!need_to_queue) {
+    tor_assert(chan->cell_handler);
+    chan->cell_handler(chan, cell);
+  } else {
+    /* Otherwise queue it and then process the queue if possible. */
+    tor_assert(chan->cell_queue);
+    q = tor_malloc(sizeof(*q));
+    q->type = CELL_QUEUE_FIXED;
+    q->u.fixed.cell = cell;
+    smartlist_add(chan->cell_queue, q);
+    if (chan->cell_handler || chan->var_cell_handler) {
+      channel_process_cells(chan);
+    }
+  }
+}
+
+void
+channel_queue_var_cell(channel_t *chan, var_cell_t *var_cell)
+{
+  int need_to_queue = 0;
+  cell_queue_entry_t *q;
+
+  tor_assert(chan);
+  tor_assert(var_cell);
+  tor_assert(chan->state = CHANNEL_STATE_OPEN);
+
+  /* Do we need to queue it, or can we just call the handler right away? */
+  if (!(chan->var_cell_handler)) need_to_queue = 1;
+  if (chan->cell_queue &&
+      (smartlist_len(chan->cell_queue) > 0)) need_to_queue = 1;
+
+  /* If we need to queue and have no queue, create one */
+  if (need_to_queue && !(chan->cell_queue)) {
+    chan->cell_queue = smartlist_new();
+  }
+
+  /* If we don't need to queue we can just call cell_handler */
+  if (!need_to_queue) {
+    tor_assert(chan->cell_handler);
+    chan->var_cell_handler(chan, var_cell);
+  } else {
+    /* Otherwise queue it and then process the queue if possible. */
+    tor_assert(chan->cell_queue);
+    q = tor_malloc(sizeof(*q));
+    q->type = CELL_QUEUE_VAR;
+    q->u.var.var_cell = var_cell;
+    smartlist_add(chan->cell_queue, q);
+    if (chan->cell_handler || chan->var_cell_handler) {
+      channel_process_cells(chan);
+    }
+  }
+}
+
 /** Write a destroy cell with circ ID <b>circ_id</b> and reason <b>reason</b>
  * onto channel <b>chan</b>.  Don't perform range-checking on reason:
  * we may want to propagate reasons from other cells.
