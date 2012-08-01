@@ -4969,7 +4969,6 @@ bridge_free(bridge_info_t *bridge)
   tor_free(bridge);
 }
 
-
 /** Return a bridge pointer if <b>ri</b> is one of our known bridges
  * (either by comparing keys if possible, else by comparing addr/port).
  * Else return NULL. */
