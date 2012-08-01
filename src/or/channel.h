@@ -21,11 +21,19 @@
  */
 
 struct channel_s {
+  /* Current channel state */
+  channel_state_t state;
   /* Function pointers for channel ops */
   void (*close)(channel_t *);
   void (*write_cell)(const cell_t *, channel_t *);
   void (*write_var_cell)(const var_cell_t *, channel_t *);
 };
+
+/* Channel state manipulations */
+
+int channel_state_is_valid(channel_state_t state);
+int channel_state_can_transition(channel_state_t from, channel_state_t to);
+const char * channel_state_to_string(channel_state_t state);
 
 /* Abstract channel operations */
 
