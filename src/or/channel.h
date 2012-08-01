@@ -23,9 +23,16 @@
 struct channel_s {
   /* Current channel state */
   channel_state_t state;
-  /* Function pointers for channel ops */
+
+  /*
+   * Function pointers for channel ops
+   */
+
+  /* Close an open channel */
   void (*close)(channel_t *);
+  /* Write a cell to an open channel */
   void (*write_cell)(const cell_t *, channel_t *);
+  /* Write a variable-length cell to an open channel */
   void (*write_var_cell)(const var_cell_t *, channel_t *);
 };
 
