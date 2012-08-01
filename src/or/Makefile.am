@@ -18,6 +18,7 @@ endif
 libtor_a_SOURCES = \
 	buffers.c				\
 	channel.c				\
+	channeltls.c				\
 	circuitbuild.c				\
 	circuitlist.c				\
 	circuituse.c				\
@@ -81,6 +82,7 @@ tor_LDADD = ./libtor.a ../common/libor.a ../common/libor-crypto.a \
 noinst_HEADERS = \
 	buffers.h				\
 	channel.h				\
+	channeltls.h				\
 	circuitbuild.h				\
 	circuitlist.h				\
 	circuituse.h				\
