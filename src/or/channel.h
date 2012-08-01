@@ -29,6 +29,12 @@ struct channel_s {
   /* List of pending incoming connections */
   smartlist_t *incoming_list;
 
+  /* Registered handlers for incoming cells */
+  void (*cell_handler)(channel_t *, cell_t *);
+  void (*var_cell_handler)(channel_t *, var_cell_t *);
+  /* List of incoming cells to handle */
+  smartlist_t *cell_queue;
+
   /*
    * Function pointers for channel ops
    */
@@ -54,17 +60,41 @@ void channel_write_cell(const cell_t *cell, channel_t *chan);
 void channel_write_var_cell(const var_cell_t *cell, channel_t *chan);
 
 /* Channel callback registrations */
+
+/* Listener callback */
 void (* channel_get_listener(channel_t *chan))(channel_t *, channel_t *);
 void channel_set_listener(channel_t *chan,
                           void (*listener)(channel_t *, channel_t *) );
+
+/* Incoming cell callbacks */
+void (* channel_get_cell_handler(channel_t *chan))
+  (channel_t *, cell_t *);
+void (* channel_get_var_cell_handler(channel_t *chan))
+  (channel_t *, var_cell_t *);
+void channel_set_cell_handler(channel_t *chan,
+                              void (*cell_handler)(channel_t *, cell_t *));
+void channel_set_cell_handlers(channel_t *chan,
+                               void (*cell_handler)(channel_t *, cell_t *),
+                               void (*var_cell_handler)(channel_t *,
+                                                        var_cell_t *));
+void channel_set_var_cell_handler(channel_t *chan,
+                                  void (*var_cell_handler)(channel_t *,
+                                                           var_cell_t *));
 
 #ifdef _TOR_CHANNEL_INTERNAL
 
 /* Channel operations for subclasses and internal use only */
 
 void channel_change_state(channel_t *chan, channel_state_t to_state);
+
+/* Incoming channel handling */
 void channel_process_incoming(channel_t *listener);
 void channel_queue_incoming(channel_t *listener, channel_t *incoming);
+
+/* Incoming cell handling */
+void channel_process_cells(channel_t *chan);
+void channel_queue_cell(channel_t *chan, cell_t *cell);
+void channel_queue_var_cell(channel_t *chan, var_cell_t *var_cell);
 
 #endif
 
