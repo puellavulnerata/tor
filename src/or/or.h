@@ -1552,6 +1552,82 @@ static INLINE listener_connection_t *TO_LISTENER_CONN(connection_t *c)
 
 typedef struct channel_s channel_t;
 
+/* channel states for channel_t */
+
+typedef enum {
+  /*
+   * Closed state - channel is inactive
+   *
+   * Permitted transitions from:
+   *   - CHANNEL_STATE_CLOSING
+   * Permitted transitions to:
+   *   - CHANNEL_STATE_OPENING
+   */
+  CHANNEL_STATE_CLOSED = 0,
+  /*
+   * Opening state - channel is trying to connect
+   *
+   * Permitted transitions from:
+   *   - CHANNEL_STATE_CLOSED
+   * Permitted transitions to:
+   *   - CHANNEL_STATE_CLOSING
+   *   - CHANNEL_STATE_ERROR
+   *   - CHANNEL_STATE_OPEN
+   */
+  CHANNEL_STATE_OPENING,
+  /*
+   * Open state - channel is active and ready for use
+   *
+   * Permitted transitions from:
+   *   - CHANNEL_STATE_MAINT
+   *   - CHANNEL_STATE_OPENING
+   * Permitted transitions to:
+   *   - CHANNEL_STATE_CLOSING
+   *   - CHANNEL_STATE_ERROR
+   *   - CHANNEL_STATE_MAINT
+   */
+  CHANNEL_STATE_OPEN,
+  /*
+   * Maintenance state - channel is temporarily offline for subclass specific
+   *   maintenance activities such as TLS renegotiation.
+   *
+   * Permitted transitions from:
+   *   - CHANNEL_STATE_OPEN
+   * Permitted transitions to:
+   *   - CHANNEL_STATE_CLOSING
+   *   - CHANNEL_STATE_ERROR
+   *   - CHANNEL_STATE_OPEN
+   */
+  CHANNEL_STATE_MAINT,
+  /*
+   * Closing state - channel is shutting down
+   *
+   * Permitted transitions from:
+   *   - CHANNEL_STATE_MAINT
+   *   - CHANNEL_STATE_OPEN
+   * Permitted transitions to:
+   *   - CHANNEL_STATE_CLOSED,
+   *   - CHANNEL_STATE_ERROR
+   */
+  CHANNEL_STATE_CLOSING,
+  /*
+   * Error state - channel has experienced a permanent error
+   *
+   * Permitted transitions from:
+   *   - CHANNEL_STATE_CLOSING
+   *   - CHANNEL_STATE_MAINT
+   *   - CHANNEL_STATE_OPENING
+   *   - CHANNEL_STATE_OPEN
+   * Permitted transitions to:
+   *   - None
+   */
+  CHANNEL_STATE_ERROR,
+  /*
+   * Placeholder for maximum state value
+   */
+  CHANNEL_STATE_LAST
+} channel_state_t;
+
 /* Conditional macros to help write code that works whether bufferevents are
    disabled or not.
 
