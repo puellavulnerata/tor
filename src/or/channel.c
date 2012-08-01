@@ -76,3 +76,4 @@ channel_send_destroy(circid_t circ_id, channel_t *chan, int reason)
 
   return 0;
 }
+
