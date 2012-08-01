@@ -84,6 +84,7 @@ src_or_tor_LDADD = src/or/libtor.a src/common/libor.a src/common/libor-crypto.a 
 
 ORHEADERS = \
 	src/or/buffers.h				\
+	src/or/channel.h				\
 	src/or/circuitbuild.h				\
 	src/or/circuitlist.h				\
 	src/or/circuituse.h				\
