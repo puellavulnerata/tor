@@ -354,6 +354,9 @@ channel_process_cells(channel_t *chan)
   }
 }
 
+/** Queue a fixed-length cell for processing, and process it if possible
+ */
+
 void
 channel_queue_cell(channel_t *chan, cell_t *cell)
 {
@@ -390,6 +393,9 @@ channel_queue_cell(channel_t *chan, cell_t *cell)
     }
   }
 }
+
+/** Queue a variable-length cell for processing, and process it if possible
+ */
 
 void
 channel_queue_var_cell(channel_t *chan, var_cell_t *var_cell)
