@@ -362,7 +362,7 @@ channel_queue_cell(channel_t *chan, cell_t *cell)
 
   tor_assert(chan);
   tor_assert(cell);
-  tor_assert(chan->state = CHANNEL_STATE_OPEN);
+  tor_assert(chan->state == CHANNEL_STATE_OPEN);
 
   /* Do we need to queue it, or can we just call the handler right away? */
   if (!(chan->cell_handler)) need_to_queue = 1;
@@ -399,7 +399,7 @@ channel_queue_var_cell(channel_t *chan, var_cell_t *var_cell)
 
   tor_assert(chan);
   tor_assert(var_cell);
-  tor_assert(chan->state = CHANNEL_STATE_OPEN);
+  tor_assert(chan->state == CHANNEL_STATE_OPEN);
 
   /* Do we need to queue it, or can we just call the handler right away? */
   if (!(chan->var_cell_handler)) need_to_queue = 1;
