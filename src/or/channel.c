@@ -155,6 +155,137 @@ channel_set_listener(channel_t *chan,
   if (chan->listener) channel_process_incoming(chan);
 }
 
+/** Return the fixed-length cell handler for a channel
+ */
+
+void
+(* channel_get_cell_handler(channel_t *chan))
+  (channel_t *, cell_t *)
+{
+  tor_assert(chan);
+
+  if (chan->state == CHANNEL_STATE_OPENING ||
+      chan->state == CHANNEL_STATE_OPEN ||
+      chan->state == CHANNEL_STATE_MAINT) {
+    return chan->cell_handler;
+  } else {
+    return NULL;
+  }
+}
+
+/** Return the variable-length cell handler for a channel
+ */
+
+void
+(* channel_get_var_cell_handler(channel_t *chan))
+  (channel_t *, var_cell_t *)
+{
+  tor_assert(chan);
+
+  if (chan->state == CHANNEL_STATE_OPENING ||
+      chan->state == CHANNEL_STATE_OPEN ||
+      chan->state == CHANNEL_STATE_MAINT) {
+    return chan->var_cell_handler;
+  } else {
+    return NULL;
+  }
+}
+
+/** Set the fixed-length cell handler for a channel
+ */
+
+void
+channel_set_cell_handler(channel_t *chan,
+                         void (*cell_handler)(channel_t *, cell_t *))
+{
+  int changed = 0;
+
+  tor_assert(chan);
+  tor_assert(chan->state == CHANNEL_STATE_OPENING ||
+             chan->state == CHANNEL_STATE_OPEN ||
+             chan->state == CHANNEL_STATE_MAINT);
+
+  /*
+   * Keep track whether we've changed it so we know if there's any point in
+   * re-running the queue.
+   */
+  if (cell_handler != chan->cell_handler) changed = 1;
+
+  /* Change it */
+  chan->cell_handler = cell_handler;
+
+  /* Re-run the queue if we have one and there's any reason to */
+  if (chan->cell_queue &&
+      (smartlist_len(chan->cell_queue) > 0) &&
+      changed &&
+      chan->cell_handler) channel_process_cells(chan);
+}
+
+/** Set both fixed- and variable-length cell handlers at once
+ */
+
+void
+channel_set_cell_handlers(channel_t *chan,
+                          void (*cell_handler)(channel_t *, cell_t *),
+                          void (*var_cell_handler)(channel_t *,
+                                                   var_cell_t *))
+{
+  int try_again = 0;
+
+  tor_assert(chan);
+  tor_assert(chan->state == CHANNEL_STATE_OPENING ||
+             chan->state == CHANNEL_STATE_OPEN ||
+             chan->state == CHANNEL_STATE_MAINT);
+
+  /* Should we try the queue? */
+  if (cell_handler &&
+      cell_handler != chan->cell_handler) try_again = 1;
+  if (var_cell_handler &&
+      var_cell_handler != chan->var_cell_handler) try_again = 1;
+
+  /* Change them */
+  chan->cell_handler = cell_handler;
+  chan->var_cell_handler = var_cell_handler;
+
+  /* Re-run the queue if we have one and there's any reason to */
+  if (chan->cell_queue &&
+      (smartlist_len(chan->cell_queue) > 0) &&
+      try_again &&
+      (chan->cell_handler ||
+       chan->var_cell_handler)) channel_process_cells(chan);
+}
+
+/** Set the variable-length cell handler for a channel
+ */
+
+void
+channel_set_var_cell_handler(channel_t *chan,
+                             void (*var_cell_handler)(channel_t *,
+                                                      var_cell_t *))
+{
+  int changed = 0;
+
+  tor_assert(chan);
+  tor_assert(chan->state == CHANNEL_STATE_OPENING ||
+             chan->state == CHANNEL_STATE_OPEN ||
+             chan->state == CHANNEL_STATE_MAINT);
+
+  /*
+   * Keep track whether we've changed it so we know if there's any point in
+   * re-running the queue.
+   */
+  if (var_cell_handler != chan->var_cell_handler) changed = 1;
+
+  /* Change it */
+  chan->var_cell_handler = var_cell_handler;
+
+  /* Re-run the queue if we have one and there's any reason to */
+  if (chan->cell_queue &&
+      (smartlist_len(chan->cell_queue) > 0) &&
+      changed &&
+      chan->var_cell_handler) channel_process_cells(chan);
+}
+
 /** Close a channel, invoking its close() method if it has one, and free the
  * channel_t. */
 
