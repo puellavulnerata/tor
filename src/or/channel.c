@@ -305,6 +305,55 @@ struct cell_queue_entry_s {
   } u;
 };
 
+/** Process as many queued cells as we can
+ */
+
+void
+channel_process_cells(channel_t *chan)
+{
+  tor_assert(chan);
+  tor_assert(chan->state == CHANNEL_STATE_CLOSING ||
+             chan->state == CHANNEL_STATE_MAINT ||
+             chan->state == CHANNEL_STATE_OPEN);
+
+  /* Nothing we can do if we have no registered cell handlers */
+  if (!(chan->cell_handler || chan->var_cell_handler)) return;
+  /* Nothing we can do if we have no cells */
+  if (!(chan->cell_queue)) return;
+
+  /*
+   * Process cells until we're done or find one we have no current handler
+   * for.
+   */
+  SMARTLIST_FOREACH_BEGIN(chan->cell_queue, cell_queue_entry_t *, q) {
+    tor_assert(q);
+    tor_assert(q->type == CELL_QUEUE_FIXED ||
+               q->type == CELL_QUEUE_VAR);
+    if (q->type == CELL_QUEUE_FIXED && chan->cell_handler) {
+      /* Handle a fixed-length cell */
+      tor_assert(q->u.fixed.cell);
+      chan->cell_handler(chan, q->u.fixed.cell);
+      SMARTLIST_DEL_CURRENT(chan->cell_queue, q);
+      tor_free(q);
+    } else if (q->type == CELL_QUEUE_VAR && chan->var_cell_handler) {
+      /* Handle a variable-length cell */
+      tor_assert(q->u.var.var_cell);
+      chan->var_cell_handler(chan, q->u.var.var_cell);
+      SMARTLIST_DEL_CURRENT(chan->cell_queue, q);
+      tor_free(q);
+    } else {
+      /* Can't handle this one */
+      break;
+    }
+  } SMARTLIST_FOREACH_END(chan);
+
+  /* If the list is empty, free it */
+  if (smartlist_len(chan->cell_queue) == 0 ) {
+    smartlist_free(chan->cell_queue);
+    chan->cell_queue = NULL;
+  }
+}
+
 void
 channel_queue_cell(channel_t *chan, cell_t *cell)
 {
