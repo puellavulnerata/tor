@@ -35,6 +35,9 @@ struct channel_s {
   /* List of incoming cells to handle */
   smartlist_t *cell_queue;
 
+  /* List of queued outgoing cells */
+  smartlist_t *outgoing_queue;
+
   /*
    * Function pointers for channel ops
    */
@@ -42,9 +45,9 @@ struct channel_s {
   /* Close an open channel */
   void (*close)(channel_t *);
   /* Write a cell to an open channel */
-  void (*write_cell)(const cell_t *, channel_t *);
+  void (*write_cell)(channel_t *, cell_t *);
   /* Write a variable-length cell to an open channel */
-  void (*write_var_cell)(const var_cell_t *, channel_t *);
+  void (*write_var_cell)(channel_t *, var_cell_t *);
 };
 
 /* Channel state manipulations */
@@ -56,8 +59,8 @@ const char * channel_state_to_string(channel_state_t state);
 /* Abstract channel operations */
 
 void channel_close(channel_t *chan);
-void channel_write_cell(const cell_t *cell, channel_t *chan);
-void channel_write_var_cell(const var_cell_t *cell, channel_t *chan);
+void channel_write_cell(channel_t *chan, cell_t *cell);
+void channel_write_var_cell(channel_t *chan, var_cell_t *cell);
 
 /* Channel callback registrations */
 
@@ -95,6 +98,9 @@ void channel_queue_incoming(channel_t *listener, channel_t *incoming);
 void channel_process_cells(channel_t *chan);
 void channel_queue_cell(channel_t *chan, cell_t *cell);
 void channel_queue_var_cell(channel_t *chan, var_cell_t *var_cell);
+
+/* Outgoing cell handling */
+void channel_flush_cells(channel_t *chan);
 
 #endif
 

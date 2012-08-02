@@ -16,6 +16,24 @@
 #include "or.h"
 #include "channel.h"
 
+/* Cell queue structure */
+
+typedef struct cell_queue_entry_s cell_queue_entry_t;
+struct cell_queue_entry_s {
+  enum {
+    CELL_QUEUE_FIXED,
+    CELL_QUEUE_VAR
+  } type;
+  union {
+    struct {
+      cell_t *cell;
+    } fixed;
+    struct {
+      var_cell_t *var_cell;
+    } var;
+  } u;
+};
+
 /** Indicate whether a given channel state is valid
  */
 
@@ -307,26 +325,66 @@ channel_close(channel_t *chan)
  * equivalent to connection_or_write_cell_to_buf(). */
 
 void
-channel_write_cell(const cell_t *cell, channel_t *chan)
+channel_write_cell(channel_t *chan, cell_t *cell)
 {
-  tor_assert(cell != NULL);
-  tor_assert(chan != NULL);
-  tor_assert(chan->write_cell != NULL);
+  cell_queue_entry_t *q;
 
-  chan->write_cell(cell, chan);
+  tor_assert(chan != NULL);
+  tor_assert(cell != NULL);
+  tor_assert(chan->write_cell != NULL);
+  /* Assert that the state makes sense for a cell write */
+  tor_assert(chan->state == CHANNEL_STATE_OPENING ||
+             chan->state == CHANNEL_STATE_OPEN ||
+             chan->state == CHANNEL_STATE_MAINT);
+
+  /* Can we send it right out? */
+  if (!(chan->outgoing_queue &&
+        (smartlist_len(chan->outgoing_queue) > 0)) &&
+      chan->state == CHANNEL_STATE_OPEN) {
+    chan->write_cell(chan, cell);
+  } else {
+    /* No, queue it */
+    if (!(chan->outgoing_queue)) chan->outgoing_queue = smartlist_new();
+    q = tor_malloc(sizeof(*q));
+    q->type = CELL_QUEUE_FIXED;
+    q->u.fixed.cell = cell;
+    smartlist_add(chan->outgoing_queue, q);
+    /* Try to process the queue? */
+    if (chan->state == CHANNEL_STATE_OPEN) channel_flush_cells(chan);
+  }
 }
 
 /** Write a var_cell_t to a channel using the write_var_cell() method. This
  * is equivalent to connection_or_write_var_cell_to_buf(). */
 
 void
-channel_write_var_cell(const var_cell_t *cell, channel_t *chan)
+channel_write_var_cell(channel_t *chan, var_cell_t *var_cell)
 {
-  tor_assert(cell != NULL);
-  tor_assert(chan != NULL);
-  tor_assert(chan->write_var_cell != NULL);
+  cell_queue_entry_t *q;
 
-  chan->write_var_cell(cell, chan);
+  tor_assert(chan != NULL);
+  tor_assert(var_cell != NULL);
+  tor_assert(chan->write_var_cell != NULL);
+  /* Assert that the state makes sense for a cell write */
+  tor_assert(chan->state == CHANNEL_STATE_OPENING ||
+             chan->state == CHANNEL_STATE_OPEN ||
+             chan->state == CHANNEL_STATE_MAINT);
+
+  /* Can we send it right out? */
+  if (!(chan->outgoing_queue &&
+        (smartlist_len(chan->outgoing_queue) > 0)) &&
+      chan->state == CHANNEL_STATE_OPEN) {
+    chan->write_var_cell(chan, var_cell);
+  } else {
+    /* No, queue it */
+    if (!(chan->outgoing_queue)) chan->outgoing_queue = smartlist_new();
+    q = tor_malloc(sizeof(*q));
+    q->type = CELL_QUEUE_VAR;
+    q->u.var.var_cell = var_cell;
+    smartlist_add(chan->outgoing_queue, q);
+    /* Try to process the queue? */
+    if (chan->state == CHANNEL_STATE_OPEN) channel_flush_cells(chan);
+  }
 }
 
 /** Internal and subclass use only function to change channel state,
@@ -418,23 +476,6 @@ channel_queue_incoming(channel_t *listener, channel_t *incoming)
  * Internal and subclass use only function to queue an incoming cell for the
  * callback to handle.
  */
-
-/* Cell queue structure */
-typedef struct cell_queue_entry_s cell_queue_entry_t;
-struct cell_queue_entry_s {
-  enum {
-    CELL_QUEUE_FIXED,
-    CELL_QUEUE_VAR
-  } type;
-  union {
-    struct {
-      cell_t *cell;
-    } fixed;
-    struct {
-      var_cell_t *var_cell;
-    } var;
-  } u;
-};
 
 /** Process as many queued cells as we can
  */
@@ -585,7 +626,7 @@ channel_send_destroy(circid_t circ_id, channel_t *chan, int reason)
   cell.payload[0] = (uint8_t) reason;
   log_debug(LD_OR,"Sending destroy (circID %d).", circ_id);
 
-  channel_write_cell(&cell, chan);
+  channel_write_cell(chan, &cell);
 
   return 0;
 }
