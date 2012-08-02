@@ -32,10 +32,10 @@ struct channel_tls_s {
 /* channel_tls_t method declarations */
 
 static void channel_tls_close_method(channel_t *chan);
-static void channel_tls_write_cell_method(const cell_t *cell,
-                                          channel_t *chan);
-static void channel_tls_write_var_cell_method(const var_cell_t *cell,
-                                              channel_t *chan);
+static void channel_tls_write_cell_method(channel_t *chan,
+                                          cell_t *cell);
+static void channel_tls_write_var_cell_method(channel_t *chan,
+                                              var_cell_t *var_cell);
 
 /** Launch a new OR connection to <b>addr</b>:<b>port</b> and expect to
  * handshake with an OR with identity digest <b>id_digest</b>.
