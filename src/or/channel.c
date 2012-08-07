@@ -169,6 +169,10 @@ channel_set_listener(channel_t *chan,
   tor_assert(chan);
   tor_assert(chan->state == CHANNEL_STATE_LISTENING);
 
+  log_debug(LD_CHANNEL,
+           "Setting listener callback for channel %p to %p",
+           chan, listener);
+
   chan->listener = listener;
   if (chan->listener) channel_process_incoming(chan);
 }
@@ -223,6 +227,10 @@ channel_set_cell_handler(channel_t *chan,
              chan->state == CHANNEL_STATE_OPEN ||
              chan->state == CHANNEL_STATE_MAINT);
 
+  log_debug(LD_CHANNEL,
+           "Setting cell_handler callback for channel %p to %p",
+           chan, cell_handler);
+
   /*
    * Keep track whether we've changed it so we know if there's any point in
    * re-running the queue.
@@ -254,6 +262,13 @@ channel_set_cell_handlers(channel_t *chan,
   tor_assert(chan->state == CHANNEL_STATE_OPENING ||
              chan->state == CHANNEL_STATE_OPEN ||
              chan->state == CHANNEL_STATE_MAINT);
+
+  log_debug(LD_CHANNEL,
+           "Setting cell_handler callback for channel %p to %p",
+           chan, cell_handler);
+  log_debug(LD_CHANNEL,
+           "Setting var_cell_handler callback for channel %p to %p",
+           chan, var_cell_handler);
 
   /* Should we try the queue? */
   if (cell_handler &&
@@ -288,6 +303,10 @@ channel_set_var_cell_handler(channel_t *chan,
              chan->state == CHANNEL_STATE_OPEN ||
              chan->state == CHANNEL_STATE_MAINT);
 
+  log_debug(LD_CHANNEL,
+           "Setting var_cell_handler callback for channel %p to %p",
+           chan, var_cell_handler);
+
   /*
    * Keep track whether we've changed it so we know if there's any point in
    * re-running the queue.
@@ -311,6 +330,10 @@ void
 channel_close(channel_t *chan)
 {
   tor_assert(chan != NULL);
+
+  log_debug(LD_CHANNEL,
+            "Closing channel %p",
+            chan);
 
   /*
    * No assert here since maybe the lower layer just needs to free the
@@ -336,6 +359,10 @@ channel_write_cell(channel_t *chan, cell_t *cell)
   tor_assert(chan->state == CHANNEL_STATE_OPENING ||
              chan->state == CHANNEL_STATE_OPEN ||
              chan->state == CHANNEL_STATE_MAINT);
+
+  log_debug(LD_CHANNEL,
+            "Writing cell_t %p to channel %p",
+            cell, chan);
 
   /* Can we send it right out? */
   if (!(chan->outgoing_queue &&
@@ -369,6 +396,10 @@ channel_write_var_cell(channel_t *chan, var_cell_t *var_cell)
   tor_assert(chan->state == CHANNEL_STATE_OPENING ||
              chan->state == CHANNEL_STATE_OPEN ||
              chan->state == CHANNEL_STATE_MAINT);
+
+  log_debug(LD_CHANNEL,
+            "Writing var_cell_t %p to channel %p",
+            var_cell, chan);
 
   /* Can we send it right out? */
   if (!(chan->outgoing_queue &&
@@ -407,6 +438,12 @@ channel_change_state(channel_t *chan, channel_state_t to_state)
    * CHANNEL_STATE_ERROR if not possible), so we assert for that here.
    */
 
+  log_debug(LD_CHANNEL,
+            "Changing state of channel %p from \"%s\" to \"%s\"",
+            chan,
+            channel_state_to_string(chan->state),
+            channel_state_to_string(to_state));
+
   chan->state = to_state;
 
   if (to_state == CHANNEL_STATE_OPEN) {
@@ -441,9 +478,17 @@ channel_process_incoming(channel_t *listener)
              listener->state == CHANNEL_STATE_CLOSING);
   tor_assert(listener->listener);
 
+  log_debug(LD_CHANNEL,
+            "Processing queue of incoming connections for listening "
+            "channel %p",
+            listener);
+
   if (!(listener->incoming_list)) return;
 
   SMARTLIST_FOREACH_BEGIN(listener->incoming_list, channel_t *, chan) {
+    log_debug(LD_CHANNEL,
+              "Handling incoming connection %p for listener %p",
+              chan, listener);
     listener->listener(listener, chan);
     SMARTLIST_DEL_CURRENT(listener->incoming_list, chan);
   } SMARTLIST_FOREACH_END(chan);
@@ -470,6 +515,10 @@ channel_queue_incoming(channel_t *listener, channel_t *incoming)
    * another listener makes no sense.
    */
   tor_assert(incoming->state != CHANNEL_STATE_LISTENING);
+
+  log_debug(LD_CHANNEL,
+            "Queueing incoming channel %p on listening channel %p",
+            incoming, listener);
 
   /* Do we need to queue it, or can we just call the listener right away? */
   if (!(listener->listener)) need_to_queue = 1;
@@ -513,6 +562,10 @@ channel_process_cells(channel_t *chan)
              chan->state == CHANNEL_STATE_MAINT ||
              chan->state == CHANNEL_STATE_OPEN);
 
+  log_debug(LD_CHANNEL,
+            "Processing as many incoming cells as we can for channel %p",
+            chan);
+
   /* Nothing we can do if we have no registered cell handlers */
   if (!(chan->cell_handler || chan->var_cell_handler)) return;
   /* Nothing we can do if we have no cells */
@@ -529,12 +582,18 @@ channel_process_cells(channel_t *chan)
     if (q->type == CELL_QUEUE_FIXED && chan->cell_handler) {
       /* Handle a fixed-length cell */
       tor_assert(q->u.fixed.cell);
+      log_debug(LD_CHANNEL,
+                "Processing incoming cell_t %p for channel %p",
+                q->u.fixed.cell, chan);
       chan->cell_handler(chan, q->u.fixed.cell);
       SMARTLIST_DEL_CURRENT(chan->cell_queue, q);
       tor_free(q);
     } else if (q->type == CELL_QUEUE_VAR && chan->var_cell_handler) {
       /* Handle a variable-length cell */
       tor_assert(q->u.var.var_cell);
+      log_debug(LD_CHANNEL,
+                "Processing incoming var_cell_t %p for channel %p",
+                q->u.var.var_cell, chan);
       chan->var_cell_handler(chan, q->u.var.var_cell);
       SMARTLIST_DEL_CURRENT(chan->cell_queue, q);
       tor_free(q);
@@ -577,6 +636,9 @@ channel_queue_cell(channel_t *chan, cell_t *cell)
   /* If we don't need to queue we can just call cell_handler */
   if (!need_to_queue) {
     tor_assert(chan->cell_handler);
+    log_debug(LD_CHANNEL,
+              "Directly handling incoming cell_t %p for channel %p",
+              cell, chan);
     chan->cell_handler(chan, cell);
   } else {
     /* Otherwise queue it and then process the queue if possible. */
@@ -584,6 +646,9 @@ channel_queue_cell(channel_t *chan, cell_t *cell)
     q = tor_malloc(sizeof(*q));
     q->type = CELL_QUEUE_FIXED;
     q->u.fixed.cell = cell;
+    log_debug(LD_CHANNEL,
+              "Queueing incoming cell_t %p for channel %p",
+              cell, chan);
     smartlist_add(chan->cell_queue, q);
     if (chan->cell_handler || chan->var_cell_handler) {
       channel_process_cells(chan);
@@ -617,6 +682,9 @@ channel_queue_var_cell(channel_t *chan, var_cell_t *var_cell)
   /* If we don't need to queue we can just call cell_handler */
   if (!need_to_queue) {
     tor_assert(chan->cell_handler);
+    log_debug(LD_CHANNEL,
+              "Directly handling incoming var_cell_t %p for channel %p",
+              var_cell, chan);
     chan->var_cell_handler(chan, var_cell);
   } else {
     /* Otherwise queue it and then process the queue if possible. */
@@ -624,6 +692,9 @@ channel_queue_var_cell(channel_t *chan, var_cell_t *var_cell)
     q = tor_malloc(sizeof(*q));
     q->type = CELL_QUEUE_VAR;
     q->u.var.var_cell = var_cell;
+    log_debug(LD_CHANNEL,
+              "Queueing incoming var_cell_t %p for channel %p",
+              var_cell, chan);
     smartlist_add(chan->cell_queue, q);
     if (chan->cell_handler || chan->var_cell_handler) {
       channel_process_cells(chan);
