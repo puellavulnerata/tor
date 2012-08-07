@@ -398,7 +398,32 @@ channel_change_state(channel_t *chan, channel_state_t to_state)
   tor_assert(channel_state_is_valid(to_state));
   tor_assert(channel_state_can_transition(chan->state, to_state));
 
+  /*
+   * We need to maintain the queues here for some transitions:
+   * when we enter CHANNEL_STATE_OPEN (especially from CHANNEL_STATE_MAINT)
+   * we may have a backlog of cells to transmit, so drain the queues in
+   * that case, and when going to CHANNEL_STATE_CLOSED the subclass
+   * should have made sure to finish sending things (or gone to
+   * CHANNEL_STATE_ERROR if not possible), so we assert for that here.
+   */
+
   chan->state = to_state;
+
+  if (to_state == CHANNEL_STATE_OPEN) {
+    /* Check for queued cells to process */
+    if (chan->cell_queue && smartlist_len(chan->cell_queue) > 0)
+      channel_process_cells(chan);
+    if (chan->outgoing_queue && smartlist_len(chan->outgoing_queue) > 0)
+      channel_flush_cells(chan);
+  } else if (to_state == CHANNEL_STATE_CLOSED) {
+    /* Assert that all queues are empty */
+    tor_assert(!(chan->cell_queue) ||
+                smartlist_len(chan->cell_queue) == 0);
+    tor_assert(!(chan->outgoing_queue) ||
+                smartlist_len(chan->outgoing_queue) == 0);
+    tor_assert(!(chan->incoming_list) ||
+                smartlist_len(chan->incoming_list) == 0);
+  }
 }
 
 /** Use a listener's registered callback to process the queue of incoming
