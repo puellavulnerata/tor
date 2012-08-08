@@ -342,7 +342,41 @@ channel_close(channel_t *chan)
    */
   if (chan->close) chan->close(chan);
 
+  channel_clear_remote_end(chan);
+
   tor_free(chan);
+}
+
+/** Clear the remote end metadata (identity_digest/nickname) of a channel */
+
+void
+channel_clear_remote_end(channel_t *chan)
+{
+  tor_assert(chan);
+
+  memset(chan->identity_digest, 0, sizeof(chan->identity_digest));
+  tor_free(chan->nickname);
+}
+
+/** Set the remote end metadata (identity_digest/nickname) of a channel */
+
+void
+channel_set_remote_end(channel_t *chan,
+                       const char *identity_digest,
+                       const char *nickname)
+{
+  tor_assert(chan);
+
+  if (identity_digest) {
+    memcpy(chan->identity_digest,
+           identity_digest,
+           sizeof(chan->identity_digest));
+  } else {
+    memset(chan->identity_digest, 0, sizeof(chan->identity_digest));
+  }
+
+  tor_free(chan->nickname);
+  if (nickname) chan->nickname = tor_strdup(nickname);
 }
 
 /** Write a cell to a channel using the write_cell() method.  This is
@@ -730,7 +764,7 @@ channel_send_destroy(circid_t circ_id, channel_t *chan, int reason)
 
 /** Connect to a given addr/port/digest; this eventually should get replaced
   * with something transport-independent that picks an appropriate subclass
-  * constructor to call. 
+  * constructor to call.
   */
 
 channel_t *
