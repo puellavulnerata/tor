@@ -79,117 +79,117 @@ HT_GENERATE(orconn_circid_map, orconn_circid_circuit_map_t, node,
             _orconn_circid_entry_hash, _orconn_circid_entries_eq, 0.6,
             malloc, realloc, free)
 
-/** The most recently returned entry from circuit_get_by_circid_orconn;
+/** The most recently returned entry from circuit_get_by_circid_chan;
  * used to improve performance when many cells arrive in a row from the
  * same circuit.
  */
-orconn_circid_circuit_map_t *_last_circid_orconn_ent = NULL;
+chan_circid_circuit_map_t *_last_circid_chan_ent = NULL;
 
 /** Implementation helper for circuit_set_{p,n}_circid_orconn: A circuit ID
  * and/or or_connection for circ has just changed from <b>old_conn, old_id</b>
  * to <b>conn, id</b>.  Adjust the conn,circid map as appropriate, removing
  * the old entry (if any) and adding a new one. */
 static void
-circuit_set_circid_orconn_helper(circuit_t *circ, int direction,
-                                 circid_t id,
-                                 or_connection_t *conn)
+circuit_set_circid_chan_helper(circuit_t *circ, int direction,
+                               circid_t id,
+                               channel_t *chan)
 {
-  orconn_circid_circuit_map_t search;
-  orconn_circid_circuit_map_t *found;
-  or_connection_t *old_conn, **conn_ptr;
+  chan_circid_circuit_map_t search;
+  chan_circid_circuit_map_t *found;
+  channel_t *old_chan, **chan_ptr;
   circid_t old_id, *circid_ptr;
   int was_active, make_active;
 
   if (direction == CELL_DIRECTION_OUT) {
-    conn_ptr = &circ->n_conn;
+    cha_ptr = &circ->n_conn;
     circid_ptr = &circ->n_circ_id;
     was_active = circ->next_active_on_n_conn != NULL;
     make_active = circ->n_conn_cells.n > 0;
   } else {
     or_circuit_t *c = TO_OR_CIRCUIT(circ);
-    conn_ptr = &c->p_conn;
+    cha_ptr = &c->p_conn;
     circid_ptr = &c->p_circ_id;
     was_active = c->next_active_on_p_conn != NULL;
     make_active = c->p_conn_cells.n > 0;
   }
-  old_conn = *conn_ptr;
+  old_chan = *chan_ptr;
   old_id = *circid_ptr;
 
-  if (id == old_id && conn == old_conn)
+  if (id == old_id && chan == old_chan)
     return;
 
-  if (_last_circid_orconn_ent &&
-      ((old_id == _last_circid_orconn_ent->circ_id &&
-        old_conn == _last_circid_orconn_ent->or_conn) ||
-       (id == _last_circid_orconn_ent->circ_id &&
-        conn == _last_circid_orconn_ent->or_conn))) {
-    _last_circid_orconn_ent = NULL;
+  if (_last_circid_chan_ent &&
+      ((old_id == _last_circid_chan_ent->circ_id &&
+        old_chan == _last_circid_chan_ent->chan) ||
+       (id == _last_circid_chan_ent->circ_id &&
+        chan == _last_circid_chan_ent->chan))) {
+    _last_circid_chan_ent = NULL;
   }
 
-  if (old_conn) { /* we may need to remove it from the conn-circid map */
-    tor_assert(old_conn->_base.magic == OR_CONNECTION_MAGIC);
+  if (old_chan) { /* we may need to remove it from the conn-circid map */
+    tor_assert(old_chan->_base.magic == OR_CONNECTION_MAGIC);
     search.circ_id = old_id;
-    search.or_conn = old_conn;
-    found = HT_REMOVE(orconn_circid_map, &orconn_circid_circuit_map, &search);
+    search.or_chan = old_chan;
+    found = HT_REMOVE(chan_circid_map, &chan_circid_circuit_map, &search);
     if (found) {
       tor_free(found);
-      --old_conn->n_circuits;
+      --old_chan->n_circuits;
     }
-    if (was_active && old_conn != conn)
-      make_circuit_inactive_on_conn(circ,old_conn);
+    if (was_active && old_chan != chan)
+      make_circuit_inactive_on_chan(circ,old_chan);
   }
 
   /* Change the values only after we have possibly made the circuit inactive
-   * on the previous conn. */
-  *conn_ptr = conn;
+   * on the previous chan. */
+  *chan_ptr = chan;
   *circid_ptr = id;
 
-  if (conn == NULL)
+  if (chan == NULL)
     return;
 
   /* now add the new one to the conn-circid map */
   search.circ_id = id;
-  search.or_conn = conn;
-  found = HT_FIND(orconn_circid_map, &orconn_circid_circuit_map, &search);
+  search.chan = chan;
+  found = HT_FIND(chan_circid_map, &chan_circid_circuit_map, &search);
   if (found) {
     found->circuit = circ;
   } else {
-    found = tor_malloc_zero(sizeof(orconn_circid_circuit_map_t));
+    found = tor_malloc_zero(sizeof(chan_circid_circuit_map_t));
     found->circ_id = id;
-    found->or_conn = conn;
+    found->chan = chan;
     found->circuit = circ;
-    HT_INSERT(orconn_circid_map, &orconn_circid_circuit_map, found);
+    HT_INSERT(chan_circid_map, &chan_circid_circuit_map, found);
   }
-  if (make_active && old_conn != conn)
-    make_circuit_active_on_conn(circ,conn);
+  if (make_active && old_chan != chan)
+    make_circuit_active_on_chan(circ,chan);
 
-  ++conn->n_circuits;
+  ++chan->n_circuits;
 }
 
 /** Set the p_conn field of a circuit <b>circ</b>, along
  * with the corresponding circuit ID, and add the circuit as appropriate
- * to the (orconn,id)-\>circuit map. */
+ * to the (chan,id)-\>circuit map. */
 void
-circuit_set_p_circid_orconn(or_circuit_t *circ, circid_t id,
-                            or_connection_t *conn)
+circuit_set_p_circid_chan(or_circuit_t *circ, circid_t id,
+                          channel_t *chan)
 {
-  circuit_set_circid_orconn_helper(TO_CIRCUIT(circ), CELL_DIRECTION_IN,
-                                   id, conn);
+  circuit_set_circid_chan_helper(TO_CIRCUIT(circ), CELL_DIRECTION_IN,
+                                 id, chan);
 
-  if (conn)
+  if (chan)
     tor_assert(bool_eq(circ->p_conn_cells.n, circ->next_active_on_p_conn));
 }
 
 /** Set the n_conn field of a circuit <b>circ</b>, along
  * with the corresponding circuit ID, and add the circuit as appropriate
- * to the (orconn,id)-\>circuit map. */
+ * to the (chan,id)-\>circuit map. */
 void
-circuit_set_n_circid_orconn(circuit_t *circ, circid_t id,
-                            or_connection_t *conn)
+circuit_set_n_circid_chan(circuit_t *circ, circid_t id,
+                          channel_t *chan)
 {
-  circuit_set_circid_orconn_helper(circ, CELL_DIRECTION_OUT, id, conn);
+  circuit_set_circid_chan_helper(circ, CELL_DIRECTION_OUT, id, chan);
 
-  if (conn)
+  if (chan)
     tor_assert(bool_eq(circ->n_conn_cells.n, circ->next_active_on_n_conn));
 }
 
