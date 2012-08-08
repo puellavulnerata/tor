@@ -100,7 +100,7 @@ static void
 channel_tls_write_cell_method(channel_t *chan, cell_t *cell)
 {
   channel_tls_t *tlschan = BASE_CHAN_TO_TLS(chan);
-  
+
   tor_assert(tlschan);
   tor_assert(cell);
   tor_assert(tlschan->conn);
@@ -114,7 +114,7 @@ static void
 channel_tls_write_var_cell_method(channel_t *chan, var_cell_t *var_cell)
 {
   channel_tls_t *tlschan = BASE_CHAN_TO_TLS(chan);
-  
+
   tor_assert(tlschan);
   tor_assert(var_cell);
   tor_assert(tlschan->conn);
