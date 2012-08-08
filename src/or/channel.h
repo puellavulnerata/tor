@@ -49,6 +49,15 @@ struct channel_s {
    * recent, we can rate limit it further. */
   time_t client_used;
 
+  /** Circuit ID generation stuff for use by circuitbuild.c */
+
+  /** When we send CREATE cells along this connection, which half of the
+   * space should we use? */
+  circ_id_type_t circ_id_type:2;
+  /** Which circ_id do we try to use next on this connection?  This is always
+   * in the range 0..1<<15-1. */
+  circid_t next_circ_id;
+
   /*
    * Function pointers for channel ops
    */
