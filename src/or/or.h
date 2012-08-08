@@ -1201,6 +1201,7 @@ typedef struct or_connection_t {
   int tls_error; /**< Last tor_tls error code. */
   /** When we last used this conn for any client traffic. If not
    * recent, we can rate limit it further. */
+  /* TODO channels - can we eliminate this since it's in channel_t ? */
   time_t client_used;
 
   tor_addr_t real_addr; /**< The actual address that this connection came from
@@ -1208,6 +1209,7 @@ typedef struct or_connection_t {
                        * getting overridden by the address from the router
                        * descriptor matching <b>identity_digest</b>. */
 
+  /* TODO channels - can we eliminate this since it's in channel_t ? */
   circ_id_type_t circ_id_type:2; /**< When we send CREATE cells along this
                                   * connection, which half of the space should
                                   * we use? */
@@ -1233,6 +1235,7 @@ typedef struct or_connection_t {
   unsigned int proxy_type:2; /**< One of PROXY_NONE...PROXY_SOCKS5 */
   uint8_t link_proto; /**< What protocol version are we using? 0 for
                        * "none negotiated yet." */
+  /* TODO channels - can we eliminate this since it's in channel_t ? */
   circid_t next_circ_id; /**< Which circ_id do we try to use next on
                           * this connection?  This is always in the
                           * range 0..1<<15-1. */
@@ -2611,9 +2614,9 @@ typedef struct circuit_t {
                    * ORIGIN_CIRCUIT_MAGIC or OR_CIRCUIT_MAGIC. */
 
   /** Queue of cells waiting to be transmitted on n_conn. */
-  cell_queue_t n_conn_cells;
-  /** The OR connection that is next in this circuit. */
-  or_connection_t *n_conn;
+  cell_queue_t n_chan_cells;
+  /** The channel that is next in this circuit. */
+  channel_t *n_chan;
   /** The circuit_id used in the next (forward) hop of this circuit. */
   circid_t n_circ_id;
 
@@ -2621,12 +2624,12 @@ typedef struct circuit_t {
    * the circuit has attached to a connection. */
   extend_info_t *n_hop;
 
-  /** True iff we are waiting for n_conn_cells to become less full before
+  /** True iff we are waiting for n_chan_cells to become less full before
    * allowing p_streams to add any more cells. (Origin circuit only.) */
-  unsigned int streams_blocked_on_n_conn : 1;
-  /** True iff we are waiting for p_conn_cells to become less full before
+  unsigned int streams_blocked_on_n_chan : 1;
+  /** True iff we are waiting for p_chan_cells to become less full before
    * allowing n_streams to add any more cells. (OR circuit only.) */
-  unsigned int streams_blocked_on_p_conn : 1;
+  unsigned int streams_blocked_on_p_chan : 1;
 
   uint8_t state; /**< Current status of this circuit. */
   uint8_t purpose; /**< Why are we creating this circuit? */
@@ -2641,10 +2644,10 @@ typedef struct circuit_t {
    * more. */
   int deliver_window;
 
-  /** For storage while n_conn is pending
+  /** For storage while n_chan is pending
     * (state CIRCUIT_STATE_OR_WAIT). When defined, it is always
     * length ONIONSKIN_CHALLENGE_LEN. */
-  char *n_conn_onionskin;
+  char *n_chan_onionskin;
 
   /** When was this circuit created?  We keep this timestamp with a higher
    * resolution than most so that the circuit-build-time tracking code can
@@ -2673,11 +2676,11 @@ typedef struct circuit_t {
   /** Next circuit in the doubly-linked ring of circuits waiting to add
    * cells to n_conn.  NULL if we have no cells pending, or if we're not
    * linked to an OR connection. */
-  struct circuit_t *next_active_on_n_conn;
+  struct circuit_t *next_active_on_n_chan;
   /** Previous circuit in the doubly-linked ring of circuits waiting to add
    * cells to n_conn.  NULL if we have no cells pending, or if we're not
    * linked to an OR connection. */
-  struct circuit_t *prev_active_on_n_conn;
+  struct circuit_t *prev_active_on_n_chan;
   struct circuit_t *next; /**< Next circuit in linked list of all circuits. */
 
   /** Unique ID for measuring tunneled network status requests. */
@@ -2828,20 +2831,20 @@ typedef struct or_circuit_t {
   circuit_t _base;
 
   /** Next circuit in the doubly-linked ring of circuits waiting to add
-   * cells to p_conn.  NULL if we have no cells pending, or if we're not
+   * cells to p_chan.  NULL if we have no cells pending, or if we're not
    * linked to an OR connection. */
-  struct circuit_t *next_active_on_p_conn;
+  struct circuit_t *next_active_on_p_chan;
   /** Previous circuit in the doubly-linked ring of circuits waiting to add
-   * cells to p_conn.  NULL if we have no cells pending, or if we're not
+   * cells to p_chan.  NULL if we have no cells pending, or if we're not
    * linked to an OR connection. */
-  struct circuit_t *prev_active_on_p_conn;
+  struct circuit_t *prev_active_on_p_chan;
 
   /** The circuit_id used in the previous (backward) hop of this circuit. */
   circid_t p_circ_id;
   /** Queue of cells waiting to be transmitted on p_conn. */
-  cell_queue_t p_conn_cells;
-  /** The OR connection that is previous in this circuit. */
-  or_connection_t *p_conn;
+  cell_queue_t p_chan_cells;
+  /** The channel that is previous in this circuit. */
+  channel_t *p_chan;
   /** Linked list of Exit streams associated with this circuit. */
   edge_connection_t *n_streams;
   /** Linked list of Exit streams associated with this circuit that are
