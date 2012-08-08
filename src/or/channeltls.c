@@ -82,6 +82,18 @@ channel_tls_connect(const tor_addr_t *addr, uint16_t port,
   return chan;
 }
 
+/** Close a channel_tls_t */
+
+static void
+channel_tls_close_method(channel_t *chan)
+{
+  channel_tls_t *tlschan = BASE_CHAN_TO_TLS(chan);
+
+  tor_assert(tlschan);
+
+  /* TODO */
+}
+
 /** Given a channel_tls_t and a cell_t, transmit the cell_t */
 
 static void
