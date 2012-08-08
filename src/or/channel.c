@@ -774,3 +774,13 @@ channel_connect(const tor_addr_t *addr, uint16_t port,
   return channel_tls_connect(addr, port, id_digest);
 }
 
+/** Mark a channel with the current time for rate-limiting tracking purposes */
+
+void
+channel_touched_by_client(channel_t *chan)
+{
+  tor_assert(chan);
+
+  chan->client_used = time(NULL);
+}
+
