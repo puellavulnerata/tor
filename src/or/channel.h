@@ -140,10 +140,11 @@ channel_t * channel_get_for_extend(const char *digest,
                                    int *launch_out);
 
 /*
- * Metadata queries
+ * Metadata queries/updates
  */
 
 const char * channel_get_remote_descr(channel_t *chan);
+void channel_touched_by_client(channel_t *chan);
 
 #endif
 
