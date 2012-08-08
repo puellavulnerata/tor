@@ -45,6 +45,10 @@ struct channel_s {
   /** Nickname of the OR on the other side, or NULL if none. */
   char *nickname;
 
+  /** When we last used this conn for any client traffic. If not
+   * recent, we can rate limit it further. */
+  time_t client_used;
+
   /*
    * Function pointers for channel ops
    */
