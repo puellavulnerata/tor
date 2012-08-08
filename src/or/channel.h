@@ -109,5 +109,13 @@ void channel_flush_cells(channel_t *chan);
 int channel_send_destroy(circid_t circ_id, channel_t *chan,
                          int reason);
 
+/*
+ * Outside abstract interfaces that should eventually get turned into
+ * something transport/address format independent.
+ */
+
+channel_t * channel_connect(const tor_addr_t *addr, uint16_t port,
+                            const char *id_digest);
+
 #endif
 

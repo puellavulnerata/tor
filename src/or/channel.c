@@ -15,6 +15,7 @@
 
 #include "or.h"
 #include "channel.h"
+#include "channeltls.h"
 
 /* Cell queue structure */
 
@@ -725,5 +726,17 @@ channel_send_destroy(circid_t circ_id, channel_t *chan, int reason)
   channel_write_cell(chan, &cell);
 
   return 0;
+}
+
+/** Connect to a given addr/port/digest; this eventually should get replaced
+  * with something transport-independent that picks an appropriate subclass
+  * constructor to call. 
+  */
+
+channel_t *
+channel_connect(const tor_addr_t *addr, uint16_t port,
+                const char *id_digest)
+{
+  return channel_tls_connect(addr, port, id_digest);
 }
 
