@@ -38,6 +38,13 @@ struct channel_s {
   /* List of queued outgoing cells */
   smartlist_t *outgoing_queue;
 
+  /** Hash of the public RSA key for the other side's identity key, or zeroes
+   * if the other side hasn't shown us a valid identity key.
+   */
+  char identity_digest[DIGEST_LEN];
+  /** Nickname of the OR on the other side, or NULL if none. */
+  char *nickname;
+
   /*
    * Function pointers for channel ops
    */
@@ -88,7 +95,13 @@ void channel_set_var_cell_handler(channel_t *chan,
 
 /* Channel operations for subclasses and internal use only */
 
+/* State/metadata setters */
+
 void channel_change_state(channel_t *chan, channel_state_t to_state);
+void channel_clear_remote_end(channel_t *chan);
+void channel_set_remote_end(channel_t *chan,
+                            const char *identity_digest,
+                            const char *nickname);
 
 /* Incoming channel handling */
 void channel_process_incoming(channel_t *listener);
@@ -116,6 +129,17 @@ int channel_send_destroy(circid_t circ_id, channel_t *chan,
 
 channel_t * channel_connect(const tor_addr_t *addr, uint16_t port,
                             const char *id_digest);
+
+channel_t * channel_get_for_extend(const char *digest,
+                                   const tor_addr_t *target_addr,
+                                   const char **msg_out,
+                                   int *launch_out);
+
+/*
+ * Metadata queries
+ */
+
+const char * channel_get_remote_descr(channel_t *chan);
 
 #endif
 
