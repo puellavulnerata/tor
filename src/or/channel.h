@@ -61,6 +61,14 @@ struct channel_s {
   /** How many circuits use this connection as p_conn or n_conn? */
   int n_circuits;
 
+ /** True iff this channel shouldn't get any new circs attached to it,
+  * because the connection is too old, or because there's a better one.
+  * More generally, this flag is used to note an unhealthy connection;
+  * for example, if a bad connection fails we shouldn't assume that the
+  * router itself has a problem.
+  */
+  unsigned int is_bad_for_new_circs:1;
+
   /*
    * Function pointers for channel ops
    */
@@ -160,6 +168,8 @@ int channel_is_local(channel_t *chan);
 int channel_matches_extend_info(channel_t *chan, extend_info_t *extend_info);
 int channel_nonopen_was_started_here(channel_t *chan);
 void channel_touched_by_client(channel_t *chan);
+time_t channel_when_last_drained(channel_t *chan);
+time_t channel_when_last_xmit(channel_t *chan);
 
 #endif
 

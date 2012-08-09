@@ -1226,6 +1226,7 @@ typedef struct or_connection_t {
    * for example, if a bad connection fails we shouldn't assume that the
    * router itself has a problem.
    */
+  /* TODO channels - can we eliminate this since it's in channel_t ? */
   unsigned int is_bad_for_new_circs:1;
   /** True iff we have decided that the other end of this connection
    * is a client.  Connections with this flag set should never be used
