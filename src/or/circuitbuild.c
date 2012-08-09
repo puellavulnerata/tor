@@ -1711,7 +1711,7 @@ get_unique_circ_id_by_chan(channel_t *chan)
       return 0;
     }
     test_circ_id |= high_bit;
-  } while (circuit_id_in_use_on_chan(test_circ_id, chan));
+  } while (circuit_id_in_use_on_channel(test_circ_id, chan));
   return test_circ_id;
 }
 
@@ -1892,7 +1892,7 @@ origin_circuit_init(uint8_t purpose, int flags)
 {
   /* sets circ->p_circ_id and circ->p_chan */
   origin_circuit_t *circ = origin_circuit_new();
-  circuit_set_state(TO_CIRCUIT(circ), CIRCUIT_STATE_OR_WAIT);
+  circuit_set_state(TO_CIRCUIT(circ), CIRCUIT_STATE_CHAN_WAIT);
   circ->build_state = tor_malloc_zero(sizeof(cpath_build_state_t));
   circ->build_state->onehop_tunnel =
     ((flags & CIRCLAUNCH_ONEHOP_TUNNEL) ? 1 : 0);
@@ -2016,7 +2016,7 @@ circuit_n_chan_done(channel_t *chan, int status)
             channel_get_remote_descr(chan), status);
 
   pending_circs = smartlist_new();
-  circuit_get_all_pending_on_chan(pending_circs, chan);
+  circuit_get_all_pending_on_channel(pending_circs, chan);
 
   SMARTLIST_FOREACH_BEGIN(pending_circs, circuit_t *, circ)
     {
@@ -2024,7 +2024,7 @@ circuit_n_chan_done(channel_t *chan, int status)
        * leaving them in in case it's possible for the status of a circuit to
        * change as we're going down the list. */
       if (circ->marked_for_close || circ->n_chan || !circ->n_hop ||
-          circ->state != CIRCUIT_STATE_OR_WAIT)
+          circ->state != CIRCUIT_STATE_CHAN_WAIT)
         continue;
 
       if (tor_digest_is_zero(circ->n_hop->identity_digest)) {
@@ -2478,7 +2478,7 @@ circuit_extend(cell_t *cell, circuit_t *circ)
 
     circ->n_chan_onionskin = tor_malloc(ONIONSKIN_CHALLENGE_LEN);
     memcpy(circ->n_chan_onionskin, onionskin, ONIONSKIN_CHALLENGE_LEN);
-    circuit_set_state(circ, CIRCUIT_STATE_OR_WAIT);
+    circuit_set_state(circ, CIRCUIT_STATE_CHAN_WAIT);
 
     if (should_launch) {
       /* we should try to open a connection */
