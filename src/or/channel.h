@@ -58,6 +58,9 @@ struct channel_s {
    * in the range 0..1<<15-1. */
   circid_t next_circ_id;
 
+  /** How many circuits use this connection as p_conn or n_conn? */
+  int n_circuits;
+
   /*
    * Function pointers for channel ops
    */
