@@ -444,9 +444,9 @@ typedef enum {
 #define CIRCUIT_STATE_BUILDING 0
 /** Circuit state: Waiting to process the onionskin. */
 #define CIRCUIT_STATE_ONIONSKIN_PENDING 1
-/** Circuit state: I'd like to deliver a create, but my n_conn is still
+/** Circuit state: I'd like to deliver a create, but my n_chan is still
  * connecting. */
-#define CIRCUIT_STATE_OR_WAIT 2
+#define CIRCUIT_STATE_CHAN_WAIT 2
 /** Circuit state: onionskin(s) processed, ready to send/receive cells. */
 #define CIRCUIT_STATE_OPEN 3
 
@@ -2645,7 +2645,7 @@ typedef struct circuit_t {
   int deliver_window;
 
   /** For storage while n_chan is pending
-    * (state CIRCUIT_STATE_OR_WAIT). When defined, it is always
+    * (state CIRCUIT_STATE_CHAN_WAIT). When defined, it is always
     * length ONIONSKIN_CHALLENGE_LEN. */
   char *n_chan_onionskin;
 

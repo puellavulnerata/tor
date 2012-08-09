@@ -2141,6 +2141,7 @@ dumpstats(int severity)
         }
       }
     }
+    /* TODO add dump for channels with circuit_dump_by_chan() */
     circuit_dump_by_conn(conn, severity); /* dump info about all the circuits
                                            * using this conn */
   } SMARTLIST_FOREACH_END(conn);
