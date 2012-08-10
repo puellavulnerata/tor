@@ -168,6 +168,7 @@ int channel_is_local(channel_t *chan);
 int channel_matches_extend_info(channel_t *chan, extend_info_t *extend_info);
 int channel_nonopen_was_started_here(channel_t *chan);
 void channel_touched_by_client(channel_t *chan);
+time_t channel_when_created(channel_t *chan);
 time_t channel_when_last_drained(channel_t *chan);
 time_t channel_when_last_xmit(channel_t *chan);
 
