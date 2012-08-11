@@ -135,3 +135,50 @@ channel_tls_write_var_cell_method(channel_t *chan, var_cell_t *var_cell)
   connection_or_write_var_cell_to_buf(var_cell, tlschan->conn);
 }
 
+/** Handle events on an or_connection_t in these functions */
+
+/** connection_or.c will call this when the or_connection_t associated
+ * with this channel_tls_t changes state. */
+
+void
+channel_tls_handle_state_change_on_orconn(channel_tls_t *chan,
+                                          or_connection_t *conn,
+                                          uint8_t old_state,
+                                          uint8_t state)
+{
+  channel_t *base_chan;
+
+  tor_assert(chan);
+  tor_assert(conn);
+  tor_assert(conn->chan == chan);
+  tor_assert(chan->conn == conn);
+  /* -Werror appeasement */
+  tor_assert(old_state == old_state);
+
+  base_chan = TLS_CHAN_TO_BASE(chan);
+
+  /* Make sure the base connection state makes sense - shouldn't be error,
+   * closed or listening. */
+
+  tor_assert(base_chan->state == CHANNEL_STATE_OPENING ||
+             base_chan->state == CHANNEL_STATE_OPEN ||
+             base_chan->state == CHANNEL_STATE_MAINT ||
+             base_chan->state == CHANNEL_STATE_CLOSING);
+
+  /* Did we just go to state open? */
+  if (state == OR_CONN_STATE_OPEN) {
+    /*
+     * We can go to CHANNEL_STATE_OPEN from CHANNEL_STATE_OPENING or
+     * CHANNEL_STATE_MAINT on this.
+     */
+    channel_change_state(base_chan, CHANNEL_STATE_OPEN);
+  } else {
+    /*
+     * Not open, so from CHANNEL_STATE_OPEN we go to CHANNEL_STATE_MAINT,
+     * otherwise no change.
+     */
+    if (base_chan->state == CHANNEL_STATE_OPEN) {
+      channel_change_state(base_chan, CHANNEL_STATE_MAINT);
+    }
+  }
+}
