@@ -43,6 +43,13 @@ static int connection_or_check_valid_tls_handshake(or_connection_t *conn,
 
 static void connection_or_tls_renegotiated_cb(tor_tls_t *tls, void *_conn);
 
+/*
+ * Call this when changing connection state, so notifications to the owning
+ * channel can be handled.
+ */
+
+static void connection_or_change_state(or_connection_t *conn, uint8_t state);
+
 #ifdef USE_BUFFEREVENTS
 static void connection_or_handle_event_cb(struct bufferevent *bufev,
                                           short event, void *arg);
@@ -282,6 +289,25 @@ connection_or_report_broken_states(int severity, int domain)
   smartlist_free(items);
 }
 
+/** Call this to change or_connection_t states, so the owning channel_tls_t can
+ * be notified.
+ */
+
+static void
+connection_or_change_state(or_connection_t *conn, uint8_t state)
+{
+  uint8_t old_state;
+
+  tor_assert(conn);
+
+  old_state = conn->_base.state;
+  conn->_base.state = state;
+
+  if (conn->chan)
+    channel_tls_handle_state_change_on_orconn(conn->chan, conn,
+                                              old_state, state);
+}
+
 /**************************************************************/
 
 /** Pack the cell_t host-order structure <b>src</b> into network-order
@@ -496,7 +522,7 @@ connection_or_finished_connecting(or_connection_t *or_conn)
     }
 
     connection_start_reading(conn);
-    conn->state = OR_CONN_STATE_PROXY_HANDSHAKING;
+    connection_or_change_state(conn, OR_CONN_STATE_PROXY_HANDSHAKING);
     return 0;
   }
 
@@ -1020,7 +1046,8 @@ connection_or_connect_failed(or_connection_t *conn,
 }
 
 /** Launch a new OR connection to <b>addr</b>:<b>port</b> and expect to
- * handshake with an OR with identity digest <b>id_digest</b>.
+ * handshake with an OR with identity digest <b>id_digest</b>.  Optionally,
+ * pass in a pointer to a channel using this connection.
  *
  * If <b>id_digest</b> is me, do nothing. If we're already connected to it,
  * return that connection. If the connect() is in progress, set the
@@ -1035,7 +1062,8 @@ connection_or_connect_failed(or_connection_t *conn,
  */
 or_connection_t *
 connection_or_connect(const tor_addr_t *_addr, uint16_t port,
-                      const char *id_digest)
+                      const char *id_digest,
+                      channel_tls_t *chan)
 {
   or_connection_t *conn;
   const or_options_t *options = get_options();
@@ -1060,7 +1088,8 @@ connection_or_connect(const tor_addr_t *_addr, uint16_t port,
 
   /* set up conn so it's got all the data we need to remember */
   connection_or_init_conn_from_address(conn, &addr, port, id_digest, 1);
-  conn->_base.state = OR_CONN_STATE_CONNECTING;
+  conn->chan = chan;
+  connection_or_change_state(conn, OR_CONN_STATE_CONNECTING);
   control_event_or_conn_status(conn, OR_CONN_EVENT_LAUNCHED, 0);
 
   conn->is_outgoing = 1;
@@ -1140,7 +1169,7 @@ connection_or_connect(const tor_addr_t *_addr, uint16_t port,
 int
 connection_tls_start_handshake(or_connection_t *conn, int receiving)
 {
-  conn->_base.state = OR_CONN_STATE_TLS_HANDSHAKING;
+  connection_or_change_state(conn, OR_CONN_STATE_TLS_HANDSHAKING);
   tor_assert(!conn->tls);
   conn->tls = tor_tls_new(conn->_base.s, receiving);
   if (!conn->tls) {
@@ -1242,7 +1271,8 @@ connection_tls_continue_handshake(or_connection_t *conn)
             } else {
               log_debug(LD_OR, "Done with initial SSL handshake (client-side)."
                         " Requesting renegotiation.");
-              conn->_base.state = OR_CONN_STATE_TLS_CLIENT_RENEGOTIATING;
+              connection_or_change_state(conn,
+                  OR_CONN_STATE_TLS_CLIENT_RENEGOTIATING);
               goto again;
             }
           }
@@ -1254,7 +1284,8 @@ connection_tls_continue_handshake(or_connection_t *conn)
           tor_tls_set_renegotiate_callback(conn->tls,
                                            connection_or_tls_renegotiated_cb,
                                            conn);
-          conn->_base.state = OR_CONN_STATE_TLS_SERVER_RENEGOTIATING;
+          connection_or_change_state(conn,
+              OR_CONN_STATE_TLS_SERVER_RENEGOTIATING);
           connection_stop_writing(TO_CONN(conn));
           connection_start_reading(TO_CONN(conn));
           return 0;
@@ -1301,7 +1332,8 @@ connection_or_handle_event_cb(struct bufferevent *bufev, short event,
               connection_mark_for_close(TO_CONN(conn));
             return;
           } else {
-            conn->_base.state = OR_CONN_STATE_TLS_CLIENT_RENEGOTIATING;
+            connection_or_change_state(conn,
+                OR_CONN_STATE_TLS_CLIENT_RENEGOTIATING);
             tor_tls_unblock_renegotiation(conn->tls);
             if (bufferevent_ssl_renegotiate(conn->_base.bufev)<0) {
               log_warn(LD_OR, "Start_renegotiating went badly.");
@@ -1320,7 +1352,8 @@ connection_or_handle_event_cb(struct bufferevent *bufev, short event,
           tor_tls_set_renegotiate_callback(conn->tls,
                                            connection_or_tls_renegotiated_cb,
                                            conn);
-          conn->_base.state = OR_CONN_STATE_TLS_SERVER_RENEGOTIATING;
+          connection_or_change_state(conn,
+              OR_CONN_STATE_TLS_SERVER_RENEGOTIATING);
         } else if (handshakes == 2) {
           /* v2 handshake, as a server.  Two handshakes happened already,
            * so we treat renegotiation as done.
@@ -1588,7 +1621,7 @@ connection_tls_finish_handshake(or_connection_t *conn)
     tor_tls_block_renegotiation(conn->tls);
     return connection_or_set_state_open(conn);
   } else {
-    conn->_base.state = OR_CONN_STATE_OR_HANDSHAKING_V2;
+    connection_or_change_state(conn, OR_CONN_STATE_OR_HANDSHAKING_V2);
     if (connection_init_or_handshake_state(conn, started_here) < 0)
       return -1;
     if (!started_here) {
@@ -1613,7 +1646,7 @@ connection_or_launch_v3_or_handshake(or_connection_t *conn)
 
   circuit_build_times_network_is_live(&circ_times);
 
-  conn->_base.state = OR_CONN_STATE_OR_HANDSHAKING_V3;
+  connection_or_change_state(conn, OR_CONN_STATE_OR_HANDSHAKING_V3);
   if (connection_init_or_handshake_state(conn, 1) < 0)
     return -1;
 
@@ -1734,7 +1767,7 @@ connection_or_set_state_open(or_connection_t *conn)
 {
   int started_here = connection_or_nonopen_was_started_here(conn);
   time_t now = time(NULL);
-  conn->_base.state = OR_CONN_STATE_OPEN;
+  connection_or_change_state(conn, OR_CONN_STATE_OPEN);
   control_event_or_conn_status(conn, OR_CONN_EVENT_CONNECTED, 0);
 
   if (started_here) {
@@ -1853,7 +1886,7 @@ connection_or_process_cells_from_inbuf(or_connection_t *conn)
       if (!var_cell)
         return 0; /* not yet. */
       circuit_build_times_network_is_live(&circ_times);
-      command_process_var_cell(var_cell, conn);
+      channel_tls_handle_var_cell(var_cell, conn);
       var_cell_free(var_cell);
     } else {
       char buf[CELL_NETWORK_SIZE];
@@ -1869,7 +1902,7 @@ connection_or_process_cells_from_inbuf(or_connection_t *conn)
        * network-order string) */
       cell_unpack(&cell, buf);
 
-      command_process_cell(&cell, conn);
+      channel_tls_handle_cell(&cell, conn);
     }
   }
 }

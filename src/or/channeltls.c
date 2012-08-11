@@ -18,7 +18,6 @@
 #include "channeltls.h"
 #include "connection_or.h"
 
-typedef struct channel_tls_s channel_tls_t;
 struct channel_tls_s {
   /* Base channel_t struct */
   channel_t _base;
@@ -80,13 +79,11 @@ channel_tls_connect(const tor_addr_t *addr, uint16_t port,
   chan->write_var_cell = channel_tls_write_var_cell_method;
 
   /* Set up or_connection stuff */
-  tlschan->conn = connection_or_connect(addr, port, id_digest);
+  tlschan->conn = connection_or_connect(addr, port, id_digest, tlschan);
   if (!(tlschan->conn)) {
     channel_change_state(chan, CHANNEL_STATE_ERROR);
     goto err;
   }
-
-  channel_change_state(chan, CHANNEL_STATE_OPEN);
 
   goto done;
 
