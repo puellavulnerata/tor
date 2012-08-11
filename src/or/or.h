@@ -878,6 +878,102 @@ typedef uint16_t circid_t;
 /** Identifies a stream on a circuit */
 typedef uint16_t streamid_t;
 
+/* channel_t typedef; struct channel_s is in channel.h */
+
+typedef struct channel_s channel_t;
+
+/* channel states for channel_t */
+
+typedef enum {
+  /*
+   * Closed state - channel is inactive
+   *
+   * Permitted transitions from:
+   *   - CHANNEL_STATE_CLOSING
+   * Permitted transitions to:
+   *   - CHANNEL_STATE_LISTENING
+   *   - CHANNEL_STATE_OPENING
+   */
+  CHANNEL_STATE_CLOSED = 0,
+  /*
+   * Listening state - channel is listening for incoming connections
+   *
+   * Permitted transitions from:
+   *   - CHANNEL_STATE_CLOSED
+   * Permitted transitions to:
+   *   - CHANNEL_STATE_CLOSING
+   *   - CHANNEL_STATE_ERROR
+   */
+  CHANNEL_STATE_LISTENING,
+  /*
+   * Opening state - channel is trying to connect
+   *
+   * Permitted transitions from:
+   *   - CHANNEL_STATE_CLOSED
+   * Permitted transitions to:
+   *   - CHANNEL_STATE_CLOSING
+   *   - CHANNEL_STATE_ERROR
+   *   - CHANNEL_STATE_OPEN
+   */
+  CHANNEL_STATE_OPENING,
+  /*
+   * Open state - channel is active and ready for use
+   *
+   * Permitted transitions from:
+   *   - CHANNEL_STATE_MAINT
+   *   - CHANNEL_STATE_OPENING
+   * Permitted transitions to:
+   *   - CHANNEL_STATE_CLOSING
+   *   - CHANNEL_STATE_ERROR
+   *   - CHANNEL_STATE_MAINT
+   */
+  CHANNEL_STATE_OPEN,
+  /*
+   * Maintenance state - channel is temporarily offline for subclass specific
+   *   maintenance activities such as TLS renegotiation.
+   *
+   * Permitted transitions from:
+   *   - CHANNEL_STATE_OPEN
+   * Permitted transitions to:
+   *   - CHANNEL_STATE_CLOSING
+   *   - CHANNEL_STATE_ERROR
+   *   - CHANNEL_STATE_OPEN
+   */
+  CHANNEL_STATE_MAINT,
+  /*
+   * Closing state - channel is shutting down
+   *
+   * Permitted transitions from:
+   *   - CHANNEL_STATE_MAINT
+   *   - CHANNEL_STATE_OPEN
+   * Permitted transitions to:
+   *   - CHANNEL_STATE_CLOSED,
+   *   - CHANNEL_STATE_ERROR
+   */
+  CHANNEL_STATE_CLOSING,
+  /*
+   * Error state - channel has experienced a permanent error
+   *
+   * Permitted transitions from:
+   *   - CHANNEL_STATE_CLOSING
+   *   - CHANNEL_STATE_LISTENING
+   *   - CHANNEL_STATE_MAINT
+   *   - CHANNEL_STATE_OPENING
+   *   - CHANNEL_STATE_OPEN
+   * Permitted transitions to:
+   *   - None
+   */
+  CHANNEL_STATE_ERROR,
+  /*
+   * Placeholder for maximum state value
+   */
+  CHANNEL_STATE_LAST
+} channel_state_t;
+
+/* TLS channel stuff */
+
+typedef struct channel_tls_s channel_tls_t;
+
 /** Parsed onion routing cell.  All communication between nodes
  * is via cells. */
 typedef struct cell_t {
@@ -1203,6 +1299,9 @@ typedef struct or_connection_t {
    * recent, we can rate limit it further. */
   /* TODO channels - can we eliminate this since it's in channel_t ? */
   time_t client_used;
+
+  /* Channel using this connection */
+  channel_tls_t *chan;
 
   tor_addr_t real_addr; /**< The actual address that this connection came from
                        * or went to.  The <b>addr</b> field is prone to
@@ -1550,98 +1649,6 @@ static INLINE listener_connection_t *TO_LISTENER_CONN(connection_t *c)
   tor_assert(c->magic == LISTENER_CONNECTION_MAGIC);
   return DOWNCAST(listener_connection_t, c);
 }
-
-/* channel_t typedef; struct channel_s is in channel.h */
-
-typedef struct channel_s channel_t;
-
-/* channel states for channel_t */
-
-typedef enum {
-  /*
-   * Closed state - channel is inactive
-   *
-   * Permitted transitions from:
-   *   - CHANNEL_STATE_CLOSING
-   * Permitted transitions to:
-   *   - CHANNEL_STATE_LISTENING
-   *   - CHANNEL_STATE_OPENING
-   */
-  CHANNEL_STATE_CLOSED = 0,
-  /*
-   * Listening state - channel is listening for incoming connections
-   *
-   * Permitted transitions from:
-   *   - CHANNEL_STATE_CLOSED
-   * Permitted transitions to:
-   *   - CHANNEL_STATE_CLOSING
-   *   - CHANNEL_STATE_ERROR
-   */
-  CHANNEL_STATE_LISTENING,
-  /*
-   * Opening state - channel is trying to connect
-   *
-   * Permitted transitions from:
-   *   - CHANNEL_STATE_CLOSED
-   * Permitted transitions to:
-   *   - CHANNEL_STATE_CLOSING
-   *   - CHANNEL_STATE_ERROR
-   *   - CHANNEL_STATE_OPEN
-   */
-  CHANNEL_STATE_OPENING,
-  /*
-   * Open state - channel is active and ready for use
-   *
-   * Permitted transitions from:
-   *   - CHANNEL_STATE_MAINT
-   *   - CHANNEL_STATE_OPENING
-   * Permitted transitions to:
-   *   - CHANNEL_STATE_CLOSING
-   *   - CHANNEL_STATE_ERROR
-   *   - CHANNEL_STATE_MAINT
-   */
-  CHANNEL_STATE_OPEN,
-  /*
-   * Maintenance state - channel is temporarily offline for subclass specific
-   *   maintenance activities such as TLS renegotiation.
-   *
-   * Permitted transitions from:
-   *   - CHANNEL_STATE_OPEN
-   * Permitted transitions to:
-   *   - CHANNEL_STATE_CLOSING
-   *   - CHANNEL_STATE_ERROR
-   *   - CHANNEL_STATE_OPEN
-   */
-  CHANNEL_STATE_MAINT,
-  /*
-   * Closing state - channel is shutting down
-   *
-   * Permitted transitions from:
-   *   - CHANNEL_STATE_MAINT
-   *   - CHANNEL_STATE_OPEN
-   * Permitted transitions to:
-   *   - CHANNEL_STATE_CLOSED,
-   *   - CHANNEL_STATE_ERROR
-   */
-  CHANNEL_STATE_CLOSING,
-  /*
-   * Error state - channel has experienced a permanent error
-   *
-   * Permitted transitions from:
-   *   - CHANNEL_STATE_CLOSING
-   *   - CHANNEL_STATE_LISTENING
-   *   - CHANNEL_STATE_MAINT
-   *   - CHANNEL_STATE_OPENING
-   *   - CHANNEL_STATE_OPEN
-   * Permitted transitions to:
-   *   - None
-   */
-  CHANNEL_STATE_ERROR,
-  /*
-   * Placeholder for maximum state value
-   */
-  CHANNEL_STATE_LAST
-} channel_state_t;
 
 /* Conditional macros to help write code that works whether bufferevents are
    disabled or not.
