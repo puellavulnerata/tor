@@ -24,6 +24,23 @@
 #include "router.h"
 #include "routerlist.h"
 
+/** How many CELL_PADDING cells have we received, ever? */
+uint64_t stats_n_padding_cells_processed = 0;
+/** How many CELL_VERSIONS cells have we received, ever? */
+uint64_t stats_n_versions_cells_processed = 0;
+/** How many CELL_NETINFO cells have we received, ever? */
+uint64_t stats_n_netinfo_cells_processed = 0;
+/** How many CELL_VPADDING cells have we received, ever? */
+uint64_t stats_n_vpadding_cells_processed = 0;
+/** How many CELL_CERTS cells have we received, ever? */
+uint64_t stats_n_certs_cells_processed = 0;
+/** How many CELL_AUTH_CHALLENGE cells have we received, ever? */
+uint64_t stats_n_auth_challenge_cells_processed = 0;
+/** How many CELL_AUTHENTICATE cells have we received, ever? */
+uint64_t stats_n_authenticate_cells_processed = 0;
+/** How many CELL_AUTHORIZE cells have we received, ever? */
+uint64_t stats_n_authorize_cells_processed = 0;
+
 struct channel_tls_s {
   /* Base channel_t struct */
   channel_t _base;
@@ -55,6 +72,7 @@ static void channel_tls_process_auth_challenge_cell(var_cell_t *cell,
                                                     channel_tls_t *tlschan);
 static void channel_tls_process_authenticate_cell(var_cell_t *cell,
                                                   channel_tls_t *tlschan);
+static int command_allowed_before_handshake(uint8_t command);
 static int enter_v3_handshake_with_cell(var_cell_t *cell,
                                         channel_tls_t *tlschan);
 
@@ -186,6 +204,303 @@ channel_tls_handle_state_change_on_orconn(channel_tls_t *chan,
     if (base_chan->state == CHANNEL_STATE_OPEN) {
       channel_change_state(base_chan, CHANNEL_STATE_MAINT);
     }
+  }
+}
+
+#ifdef KEEP_TIMING_STATS
+/** This is a wrapper function around the actual function that processes the
+ * <b>cell</b> that just arrived on <b>conn</b>. Increment <b>*time</b>
+ * by the number of microseconds used by the call to <b>*func(cell, conn)</b>.
+ */
+
+static void
+channel_tls_time_process_cell(cell_t *cell, channel_tls_t *chan, int *time,
+                              void (*func)(cell_t *, channel_tls_t *))
+{
+  struct timeval start, end;
+  long time_passed;
+
+  tor_gettimeofday(&start);
+  
+  (*func)(cell, chan);
+
+  tor_gettimeofday(&end);
+  time_passed = tv_udiff(&start, &end) ;
+
+  if (time_passed > 10000) { /* more than 10ms */
+    log_debug(LD_OR,"That call just took %ld ms.",time_passed/1000);
+  }
+
+  if (time_passed < 0) {
+    log_info(LD_GENERAL,"That call took us back in time!");
+    time_passed = 0;
+  }
+  
+  *time += time_passed;
+}
+#endif
+
+/** Handle an incoming cell, called from connection_or.c */
+
+void
+channel_tls_handle_cell(cell_t *cell, or_connection_t *conn)
+{
+  channel_tls_t *chan;
+  int handshaking;
+
+#ifdef KEEP_TIMING_STATS
+#define PROCESS_CELL(tp, cl, cn) STMT_BEGIN {                   \
+    ++num ## tp;                                                \
+    channel_tls_time_process_cell(cl, cn, & tp ## time ,            \
+                             channel_tls_process_ ## tp ## _cell);  \
+    } STMT_END
+#else
+#define PROCESS_CELL(tp, cl, cn) channel_tls_process_ ## tp ## _cell(cl, cn)
+#endif
+
+  tor_assert(cell);
+  tor_assert(conn);
+
+  chan = conn->chan;
+
+ if (!chan) {
+   log_warn(LD_CHANNEL,
+            "Got a cell_t on an OR connection with no channel");
+   return;
+  }
+
+  handshaking = (TO_CONN(conn)->state != OR_CONN_STATE_OPEN);
+
+  if (conn->_base.marked_for_close)
+    return;
+ 
+  /* Reject all but VERSIONS and NETINFO when handshaking. */
+  /* (VERSIONS should actually be impossible; it's variable-length.) */
+  if (handshaking && cell->command != CELL_VERSIONS &&
+      cell->command != CELL_NETINFO) {
+    log_fn(LOG_PROTOCOL_WARN, LD_PROTOCOL,
+           "Received unexpected cell command %d in chan state %s / "
+           "conn state %s; closing the connection.",
+           (int)cell->command,
+           channel_state_to_string(TLS_CHAN_TO_BASE(chan)->state),
+           conn_state_to_string(CONN_TYPE_OR, TO_CONN(conn)->state));
+           connection_mark_for_close(TO_CONN(conn));
+    return;
+  }
+
+  if (conn->_base.state == OR_CONN_STATE_OR_HANDSHAKING_V3)
+    or_handshake_state_record_cell(conn->handshake_state, cell, 1);
+
+  switch (cell->command) {
+    case CELL_PADDING:
+      ++stats_n_padding_cells_processed;
+      /* do nothing */
+      break;
+    case CELL_VERSIONS:
+      tor_fragile_assert();
+      break;
+    case CELL_NETINFO:
+      ++stats_n_netinfo_cells_processed;
+      PROCESS_CELL(netinfo, cell, chan);
+      break;
+    case CELL_CREATE:
+    case CELL_CREATE_FAST:
+    case CELL_CREATED:
+    case CELL_CREATED_FAST:
+    case CELL_RELAY:
+    case CELL_RELAY_EARLY:
+    case CELL_DESTROY:
+      /*
+       * These are all transport independent and we pass them up through the
+       * channel_t mechanism.  They are ultimately handled in cmd.c.
+       */
+      /* TODO pass through channel_t */
+      break;
+    default:
+      log_fn(LOG_INFO, LD_PROTOCOL,
+             "Cell of unknown type (%d) received in channeltls.c.  "
+             "Dropping.",
+             cell->command);
+             break;
+  }
+}
+
+/** Process a <b>var_cell</b> that was just received on <b>conn</b>. Keep
+ * internal statistics about how many of each cell we've processed so far
+ * this second, and the total number of microseconds it took to
+ * process each type of cell.  All the var_cell commands are handshake-
+ * related and live below the channel_t layer, so no variable-length
+ * cells ever get delivered in the current implementation, but I've left
+ * the mechanism in place for future use.
+ */
+
+void
+channel_tls_handle_var_cell(var_cell_t *var_cell, or_connection_t *conn)
+{
+  channel_tls_t *chan;
+  int handshaking;
+
+#ifdef KEEP_TIMING_STATS
+  /* how many of each cell have we seen so far this second? needs better
+   * name. */
+  static int num_versions = 0, num_certs = 0;
+  static time_t current_second = 0; /* from previous calls to time */
+  time_t now = time(NULL);
+
+  if (current_second == 0) current_second = now;
+  if (now > current_second) { /* the second has rolled over */
+    /* print stats */
+    log_info(LD_OR,
+             "At end of second: %d versions (%d ms), %d certs (%d ms)",
+             num_versions, versions_time / ((now - current_second) * 1000),
+             num_certs, certs_time / ((now - current_second) * 1000));
+
+    num_versions = num_certs = 0;
+    versions_time = certs_time = 0;
+
+    /* remember which second it is, for next time */
+    current_second = now;
+  }
+#endif
+
+  tor_assert(var_cell);
+  tor_assert(conn);
+
+  chan = conn->chan;
+
+  if (!chan) {
+    log_warn(LD_CHANNEL,
+             "Got a var_cell_t on an OR connection with no channel");
+    return;
+  }
+
+  handshaking = (TO_CONN(conn)->state != OR_CONN_STATE_OPEN);
+
+  if (TO_CONN(conn)->marked_for_close)
+    return;
+
+  switch (TO_CONN(conn)->state) {
+    case OR_CONN_STATE_OR_HANDSHAKING_V2:
+      if (var_cell->command != CELL_VERSIONS) {
+        log_fn(LOG_PROTOCOL_WARN, LD_PROTOCOL,
+               "Received a cell with command %d in unexpected "
+               "orconn state \"%s\" [%d], channel state \"%s\" [%d]; "
+               "closing the connection.",
+               (int)(var_cell->command),
+               conn_state_to_string(CONN_TYPE_OR, TO_CONN(conn)->state),
+               TO_CONN(conn)->state,
+               channel_state_to_string(TLS_CHAN_TO_BASE(chan)->state),
+               (int)(TLS_CHAN_TO_BASE(chan)->state));
+        /* TODO channel to error? */
+        connection_mark_for_close(TO_CONN(conn));
+        return;
+      }
+      break;
+    case OR_CONN_STATE_TLS_HANDSHAKING:
+      /* If we're using bufferevents, it's entirely possible for us to
+       * notice "hey, data arrived!" before we notice "hey, the handshake
+       * finished!" And we need to be accepting both at once to handle both
+       * the v2 and v3 handshakes. */
+
+      /* fall through */
+    case OR_CONN_STATE_TLS_SERVER_RENEGOTIATING:
+      if (!(command_allowed_before_handshake(var_cell->command))) {
+        log_fn(LOG_PROTOCOL_WARN, LD_PROTOCOL,
+               "Received a cell with command %d in unexpected "
+               "orconn state \"%s\" [%d], channel state \"%s\" [%d]; "
+               "closing the connection.",
+               (int)(var_cell->command),
+               conn_state_to_string(CONN_TYPE_OR, TO_CONN(conn)->state),
+               (int)(TO_CONN(conn)->state),
+               channel_state_to_string(TLS_CHAN_TO_BASE(chan)->state),
+               (int)(TLS_CHAN_TO_BASE(chan)->state));
+        /* TODO channel to error? */
+        connection_mark_for_close(TO_CONN(conn));
+        return;
+      } else {
+        if (enter_v3_handshake_with_cell(var_cell, chan) < 0)
+          return;
+      }
+      break;
+    case OR_CONN_STATE_OR_HANDSHAKING_V3:
+      if (var_cell->command != CELL_AUTHENTICATE)
+        or_handshake_state_record_var_cell(conn->handshake_state, var_cell, 1);
+      break; /* Everything is allowed */
+    case OR_CONN_STATE_OPEN:
+      if (conn->link_proto < 3) {
+        log_fn(LOG_PROTOCOL_WARN, LD_PROTOCOL,
+               "Received a variable-length cell with command %d in orconn "
+               "state %s [%d], channel state %s [%d] with link protocol %d; "
+               "ignoring it.",
+               (int)(var_cell->command),
+               conn_state_to_string(CONN_TYPE_OR, TO_CONN(conn)->state),
+               (int)(TO_CONN(conn)->state),
+               channel_state_to_string(TLS_CHAN_TO_BASE(chan)->state),
+               (int)(TLS_CHAN_TO_BASE(chan)->state),
+               (int)(conn->link_proto));
+        return;
+      }
+      break;
+    default:
+      log_fn(LOG_PROTOCOL_WARN, LD_PROTOCOL,
+             "Received var-length cell with command %d in unexpected "
+             "orconn state \"%s\" [%d], channel state \"%s\" [%d]; "
+             "ignoring it.",
+             (int)(var_cell->command),
+             conn_state_to_string(CONN_TYPE_OR, TO_CONN(conn)->state),
+             (int)(TO_CONN(conn)->state),
+             channel_state_to_string(TLS_CHAN_TO_BASE(chan)->state),
+             (int)(TLS_CHAN_TO_BASE(chan)->state));
+      return;
+  }
+
+  /* Now handle the cell */
+
+  switch (var_cell->command) {
+    case CELL_VERSIONS:
+      ++stats_n_versions_cells_processed;
+      PROCESS_CELL(versions, var_cell, chan);
+      break;
+    case CELL_VPADDING:
+      ++stats_n_vpadding_cells_processed;
+      /* Do nothing */
+      break;
+    case CELL_CERTS:
+      ++stats_n_certs_cells_processed;
+      PROCESS_CELL(certs, var_cell, chan);
+      break;
+    case CELL_AUTH_CHALLENGE:
+      ++stats_n_auth_challenge_cells_processed;
+      PROCESS_CELL(auth_challenge, var_cell, chan);
+      break;
+    case CELL_AUTHENTICATE:
+      ++stats_n_authenticate_cells_processed;
+      PROCESS_CELL(authenticate, var_cell, chan);
+      break;
+    case CELL_AUTHORIZE:
+      ++stats_n_authorize_cells_processed;
+      /* Ignored so far. */
+      break;
+    default:
+      log_fn(LOG_INFO, LD_PROTOCOL,
+             "Variable-length cell of unknown type (%d) received.",
+             (int)(var_cell->command));
+      break;
+  }
+}
+
+/** Return true if <b>command</b> is a cell command that's allowed to start a
+ * V3 handshake. */
+static int
+command_allowed_before_handshake(uint8_t command)
+{
+  switch (command) {
+    case CELL_VERSIONS:
+    case CELL_VPADDING:
+    case CELL_AUTHORIZE:
+      return 1;
+    default:
+      return 0;
   }
 }
 
