@@ -221,7 +221,7 @@ channel_tls_time_process_cell(cell_t *cell, channel_tls_t *chan, int *time,
   long time_passed;
 
   tor_gettimeofday(&start);
-  
+
   (*func)(cell, chan);
 
   tor_gettimeofday(&end);
@@ -235,7 +235,7 @@ channel_tls_time_process_cell(cell_t *cell, channel_tls_t *chan, int *time,
     log_info(LD_GENERAL,"That call took us back in time!");
     time_passed = 0;
   }
-  
+
   *time += time_passed;
 }
 #endif
@@ -273,7 +273,7 @@ channel_tls_handle_cell(cell_t *cell, or_connection_t *conn)
 
   if (conn->_base.marked_for_close)
     return;
- 
+
   /* Reject all but VERSIONS and NETINFO when handshaking. */
   /* (VERSIONS should actually be impossible; it's variable-length.) */
   if (handshaking && cell->command != CELL_VERSIONS &&
@@ -515,15 +515,16 @@ static int
 enter_v3_handshake_with_cell(var_cell_t *cell, channel_tls_t *chan)
 {
   int started_here = 0;
- 
+
   tor_assert(cell);
   tor_assert(chan);
   tor_assert(chan->conn);
 
   started_here = connection_or_nonopen_was_started_here(chan->conn);
 
-  tor_assert(chan->conn->_base.state == OR_CONN_STATE_TLS_HANDSHAKING ||
-             chan->conn->_base.state == OR_CONN_STATE_TLS_SERVER_RENEGOTIATING);
+  tor_assert(TO_CONN(chan->conn)->state == OR_CONN_STATE_TLS_HANDSHAKING ||
+             TO_CONN(chan->conn)->state ==
+               OR_CONN_STATE_TLS_SERVER_RENEGOTIATING);
 
   if (started_here) {
     log_fn(LOG_PROTOCOL_WARN, LD_OR,
