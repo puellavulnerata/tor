@@ -12,6 +12,8 @@
 
 #include "or.h"
 #include "buffers.h"
+#include "channel.h"
+#include "channeltls.h"
 #include "circuitbuild.h"
 #include "circuitlist.h"
 #include "command.h"
@@ -165,6 +167,8 @@ static strmap_t *broken_connection_counts;
 
 /** If true, do not record information in <b>broken_connection_counts</b>. */
 static int disable_broken_connection_counts = 0;
+
+/* TODO switch channels to error state */
 
 /** Record that an OR connection failed in <b>state</b>. */
 static void
@@ -373,6 +377,7 @@ connection_or_reached_eof(or_connection_t *conn)
 {
   log_info(LD_OR,"OR connection reached EOF. Closing.");
   connection_mark_for_close(TO_CONN(conn));
+  /* TODO close channel? */
   return 0;
 }
 
@@ -464,6 +469,7 @@ connection_or_flushed_some(or_connection_t *conn)
     time_t now = approx_time();
     while (conn->active_circuits && n > 0) {
       int flushed;
+      /* TODO this will need to pull from the channel outbuf instead */
       flushed = connection_or_flush_from_first_active_circuit(conn, 1, now);
       n -= flushed;
     }
@@ -528,6 +534,7 @@ connection_or_finished_connecting(or_connection_t *or_conn)
 
   if (connection_tls_start_handshake(or_conn, 0) < 0) {
     /* TLS handshaking error of some kind. */
+    /* TODO how to inform channels of error exit vs. normal close? */
     connection_mark_for_close(conn);
     return -1;
   }
@@ -574,6 +581,9 @@ connection_or_about_to_close(or_connection_t *or_conn)
     control_event_or_conn_status(or_conn, OR_CONN_EVENT_CLOSED,
                 tls_error_to_orconn_end_reason(or_conn->tls_error));
   }
+  /* TODO this is going to have to close a channel, then the channel closes
+   * its linked circuits instead.
+   */
   /* Now close all the attached circuits on it. */
   circuit_unlink_all_from_or_conn(TO_OR_CONN(conn),
                                   END_CIRC_REASON_OR_CONN_CLOSED);
