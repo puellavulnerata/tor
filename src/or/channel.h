@@ -49,6 +49,23 @@ struct channel_s {
    * recent, we can rate limit it further. */
   time_t client_used;
 
+  /* Circuit stuff for use by relay.c */
+  /** Double-linked ring of circuits with queued cells waiting for room to
+   * free up on this connection's outbuf.  Every time we pull cells from a
+   * circuit, we advance this pointer to the next circuit in the ring. */
+  struct circuit_t *active_circuits;
+  /** Priority queue of cell_ewma_t for circuits with queued cells waiting for
+   * room to free up on this connection's outbuf.  Kept in heap order
+   * according to EWMA.
+   *
+   * This is redundant with active_circuits; if we ever decide only to use the
+   * cell_ewma algorithm for choosing circuits, we can remove active_circuits.
+   */
+  smartlist_t *active_circuit_pqueue;
+  /** The tick on which the cell_ewma_ts in active_circuit_pqueue last had
+   * their ewma values rescaled. */
+  unsigned active_circuit_pqueue_last_recalibrated;
+
   /** Circuit ID generation stuff for use by circuitbuild.c */
 
   /** When we send CREATE cells along this connection, which half of the
@@ -77,6 +94,8 @@ struct channel_s {
   void (*close)(channel_t *);
   /* Write a cell to an open channel */
   void (*write_cell)(channel_t *, cell_t *);
+  /* Write a packed cell to an open channel */
+  void (*write_packed_cell)(channel_t *, packed_cell_t *);
   /* Write a variable-length cell to an open channel */
   void (*write_var_cell)(channel_t *, var_cell_t *);
 };
@@ -91,6 +110,7 @@ const char * channel_state_to_string(channel_state_t state);
 
 void channel_close(channel_t *chan);
 void channel_write_cell(channel_t *chan, cell_t *cell);
+void channel_write_packed_cell(channel_t *chan, packed_cell_t *cell);
 void channel_write_var_cell(channel_t *chan, var_cell_t *cell);
 
 /* Channel callback registrations */
@@ -165,6 +185,7 @@ channel_t * channel_get_for_extend(const char *digest,
 
 const char * channel_get_real_remote_descr(channel_t *chan);
 const char * channel_get_remote_descr(channel_t *chan);
+size_t channel_get_write_queue_len(channel_t *chan);
 int channel_is_local(channel_t *chan);
 int channel_is_outgoing(channel_t *chan);
 void channel_mark_as_client(channel_t *chan);

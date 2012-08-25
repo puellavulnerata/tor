@@ -1363,21 +1363,6 @@ typedef struct or_connection_t {
   int n_circuits; /**< How many circuits use this connection as p_conn or
                    * n_conn ? */
 
-  /** Double-linked ring of circuits with queued cells waiting for room to
-   * free up on this connection's outbuf.  Every time we pull cells from a
-   * circuit, we advance this pointer to the next circuit in the ring. */
-  struct circuit_t *active_circuits;
-  /** Priority queue of cell_ewma_t for circuits with queued cells waiting for
-   * room to free up on this connection's outbuf.  Kept in heap order
-   * according to EWMA.
-   *
-   * This is redundant with active_circuits; if we ever decide only to use the
-   * cell_ewma algorithm for choosing circuits, we can remove active_circuits.
-   */
-  smartlist_t *active_circuit_pqueue;
-  /** The tick on which the cell_ewma_ts in active_circuit_pqueue last had
-   * their ewma values rescaled. */
-  unsigned active_circuit_pqueue_last_recalibrated;
   struct or_connection_t *next_with_same_id; /**< Next connection with same
                                               * identity digest as this one. */
 } or_connection_t;
@@ -2584,8 +2569,8 @@ typedef struct {
   /** The EWMA of the cell count. */
   double cell_count;
   /** True iff this is the cell count for a circuit's previous
-   * connection. */
-  unsigned int is_for_p_conn : 1;
+   * channel. */
+  unsigned int is_for_p_chan : 1;
   /** The position of the circuit within the OR connection's priority
    * queue. */
   int heap_index;
@@ -2695,7 +2680,7 @@ typedef struct circuit_t {
   uint64_t dirreq_id;
 
   /** The EWMA count for the number of cells flushed from the
-   * n_conn_cells queue.  Used to determine which circuit to flush from next.
+   * n_chan_cells queue.  Used to determine which circuit to flush from next.
    */
   cell_ewma_t n_cell_ewma;
 } circuit_t;
