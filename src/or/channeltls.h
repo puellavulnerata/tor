@@ -12,6 +12,9 @@
 #include "or.h"
 #include "channel.h"
 
+#define BASE_CHAN_TO_TLS(c) ((channel_tls_t *)(c))
+#define TLS_CHAN_TO_BASE(c) ((channel_t *)(c))
+
 channel_t * channel_tls_connect(const tor_addr_t *addr, uint16_t port,
                                 const char *id_digest);
 
