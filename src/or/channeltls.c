@@ -48,9 +48,6 @@ struct channel_tls_s {
   or_connection_t *conn;
 };
 
-#define BASE_CHAN_TO_TLS(c) ((channel_tls_t *)(c))
-#define TLS_CHAN_TO_BASE(c) ((channel_t *)(c))
-
 /* channel_tls_t method declarations */
 
 static void channel_tls_close_method(channel_t *chan);
