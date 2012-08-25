@@ -250,9 +250,6 @@ or_connection_new(int socket_family)
   or_conn->timestamp_last_added_nonpadding = time(NULL);
   or_conn->next_circ_id = crypto_rand_int(1<<15);
 
-  or_conn->active_circuit_pqueue = smartlist_new();
-  or_conn->active_circuit_pqueue_last_recalibrated = cell_ewma_get_tick();
-
   return or_conn;
 }
 
@@ -493,7 +490,6 @@ _connection_free(connection_t *conn)
     or_conn->tls = NULL;
     or_handshake_state_free(or_conn->handshake_state);
     or_conn->handshake_state = NULL;
-    smartlist_free(or_conn->active_circuit_pqueue);
     tor_free(or_conn->nickname);
   }
   if (conn->type == CONN_TYPE_AP) {
