@@ -49,9 +49,9 @@ void append_cell_to_circuit_queue(circuit_t *circ, channel_t *chan,
                                   cell_t *cell, cell_direction_t direction,
                                   streamid_t fromstream);
 void channel_unlink_all_active_circs(channel_t *chan);
-int channel_flush_from_first_active_circuit(channel_t *conn,
+int channel_flush_from_first_active_circuit(channel_t *chan,
                                             int max, time_t now);
-void assert_active_circuits_ok(or_connection_t *orconn);
+void assert_active_circuits_ok(channel_t *chan);
 void make_circuit_inactive_on_chan(circuit_t *circ, channel_t *chan);
 void make_circuit_active_on_chan(circuit_t *circ, channel_t *chan);
 
