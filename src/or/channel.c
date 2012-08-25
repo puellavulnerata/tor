@@ -344,6 +344,8 @@ channel_close(channel_t *chan)
 
   channel_clear_remote_end(chan);
 
+  smartlist_free(chan->active_circuit_pqueue);
+
   tor_free(chan);
 }
 
