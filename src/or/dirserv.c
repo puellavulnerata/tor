@@ -7,6 +7,8 @@
 #include "or.h"
 #include "buffers.h"
 #include "config.h"
+#include "channel.h"
+#include "channeltls.h"
 #include "connection.h"
 #include "connection_or.h"
 #include "control.h"
@@ -3383,8 +3385,8 @@ dirserv_single_reachability_test(time_t now, routerinfo_t *router)
   if (!node->testing_since)
     node->testing_since = now;
   tor_addr_from_ipv4h(&router_addr, router->addr);
-  connection_or_connect(&router_addr, router->or_port,
-                        router->cache_info.identity_digest);
+  channel_tls_connect(&router_addr, router->or_port,
+                      router->cache_info.identity_digest);
 
   /* Possible IPv6. */
   if (!tor_addr_is_null(&router->ipv6_addr)) {
@@ -3395,8 +3397,8 @@ dirserv_single_reachability_test(time_t now, routerinfo_t *router)
               router->ipv6_orport);
     if (!node->testing_since6)
       node->testing_since6 = now;
-    connection_or_connect(&router->ipv6_addr, router->ipv6_orport,
-                          router->cache_info.identity_digest);
+    channel_tls_connect(&router->ipv6_addr, router->ipv6_orport,
+                        router->cache_info.identity_digest);
   }
 }
 
