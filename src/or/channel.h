@@ -163,6 +163,7 @@ channel_t * channel_get_for_extend(const char *digest,
  * Metadata queries/updates
  */
 
+const char * channel_get_real_remote_descr(channel_t *chan);
 const char * channel_get_remote_descr(channel_t *chan);
 int channel_is_local(channel_t *chan);
 int channel_is_outgoing(channel_t *chan);
