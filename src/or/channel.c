@@ -493,6 +493,8 @@ void
 channel_request_close(channel_t *chan)
 {
   tor_assert(chan != NULL);
+  tor_assert(chan->close != NULL);
+
   /* If it's already in CLOSING, CLOSED or ERROR, this is a no-op */
   if (chan->state == CHANNEL_STATE_CLOSING ||
       chan->state == CHANNEL_STATE_CLOSED ||
@@ -505,23 +507,14 @@ channel_request_close(channel_t *chan)
   /* Change state to CLOSING */
   channel_change_state(chan, CHANNEL_STATE_CLOSING);
 
-  /*
-   * No assert here since maybe the lower layer just needs to free the
-   * channel_t and wants to leave this NULL.
-   */
-  if (chan->close) chan->close(chan);
+  /* Tell the lower layer */
+  chan->close(chan);
 
   /*
    * It's up to the lower layer to change state to CLOSED or ERROR when we're
    * ready; we'll try to free channels that are in the finished list and
    * have no refs.
    */
-
-  channel_clear_remote_end(chan);
-
-  smartlist_free(chan->active_circuit_pqueue);
-
-  tor_free(chan);
 }
 
 /** Clear the remote end metadata (identity_digest/nickname) of a channel */
@@ -640,10 +633,24 @@ channel_write_var_cell(channel_t *chan, var_cell_t *var_cell)
 void
 channel_change_state(channel_t *chan, channel_state_t to_state)
 {
+  channel_state_t from_state;
+  unsigned char was_active, is_active, was_listening, is_listening;
+
   tor_assert(chan);
-  tor_assert(channel_state_is_valid(chan->state));
+  from_state = chan->state;
+
+  tor_assert(channel_state_is_valid(from_state));
   tor_assert(channel_state_is_valid(to_state));
   tor_assert(channel_state_can_transition(chan->state, to_state));
+
+  /* Check for no-op transitions */
+  if (from_state == to_state) {
+    log_debug(LD_CHANNEL,
+              "Got no-op transition from \"%s\" to itself on channel %p",
+              channel_state_to_string(to_state),
+              chan);
+    return;
+  }
 
   /*
    * We need to maintain the queues here for some transitions:
@@ -661,6 +668,40 @@ channel_change_state(channel_t *chan, channel_state_t to_state)
             channel_state_to_string(to_state));
 
   chan->state = to_state;
+
+  /* Need to add to the right lists if the channel is registered */
+  if (chan->registered) {
+    was_active = !(from_state == CHANNEL_STATE_CLOSED ||
+                   from_state == CHANNEL_STATE_ERROR);
+    is_active = !(to_state == CHANNEL_STATE_CLOSED ||
+                  to_state == CHANNEL_STATE_ERROR);
+    
+    /* Need to take off active list and put on finished list? */
+    if (was_active && !is_active) {
+      if (active_channels) smartlist_remove(active_channels, chan);
+      if (!finished_channels) finished_channels = smartlist_new();
+      smartlist_add(finished_channels, chan);
+    }
+    /* Need to put on active list? */
+    else if (!was_active && is_active) {
+      if (finished_channels) smartlist_remove(finished_channels, chan);
+      if (!active_channels) active_channels = smartlist_new();
+      smartlist_add(active_channels, chan);
+    }
+
+    was_listening = (from_state == CHANNEL_STATE_LISTENING);
+    is_listening = (to_state == CHANNEL_STATE_LISTENING);
+
+    /* Need to put on listening list? */
+    if (!was_listening && is_listening) {
+      if (!listening_channels) listening_channels = smartlist_new();
+      smartlist_add(listening_channels, chan);
+    }
+    /* Need to remove from listening list? */
+    else if (was_listening && !is_listening) {
+      if (listening_channels) smartlist_remove(listening_channels, chan);
+    }
+  }
 
   if (to_state == CHANNEL_STATE_OPEN) {
     /* Check for queued cells to process */
