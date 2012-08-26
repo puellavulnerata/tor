@@ -37,6 +37,9 @@ or_connection_t *connection_or_connect(const tor_addr_t *addr, uint16_t port,
                                        const char *id_digest,
                                        channel_tls_t *chan);
 
+void connection_or_close_normally(or_connection_t *orconn);
+void connection_or_close_for_error(or_connection_t *orconn);
+
 void connection_or_report_broken_states(int severity, int domain);
 
 int connection_tls_start_handshake(or_connection_t *conn, int receiving);
