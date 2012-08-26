@@ -24,6 +24,19 @@ struct channel_s {
   /* Current channel state */
   channel_state_t state;
 
+  /*
+   * Refcount - number of references things outside channel.c hold, including
+   * or_connection_t->chan.  If this only appears in the list of channels, it
+   * should be zero.  If this is an active channel with a corresponding
+   * or_connection_t, but otherwise only appears in the lists of channels, it
+   * should be one.  Channel functions will automatically ref/unref when
+   * handing channels to callbacks.
+   */
+  size_t refcount;
+
+  /* Should we expect to see this channel in the channel lists? */
+  unsigned char registered:1;
+
   /* Registered listen handler to call on incoming connection */
   void (*listener)(channel_t *, channel_t *);
   /* List of pending incoming connections */
@@ -90,6 +103,8 @@ struct channel_s {
    * Function pointers for channel ops
    */
 
+  /* Free a channel */
+  void (*free)(channel_t *);
   /* Close an open channel */
   void (*close)(channel_t *);
   /* Write a cell to an open channel */
@@ -106,9 +121,14 @@ int channel_state_is_valid(channel_state_t state);
 int channel_state_can_transition(channel_state_t from, channel_state_t to);
 const char * channel_state_to_string(channel_state_t state);
 
+/* Channel refcount functions */
+channel_t * channel_ref(channel_t *chan);
+size_t channel_num_refs(channel_t *chan);
+void channel_unref(channel_t *chan);
+
 /* Abstract channel operations */
 
-void channel_close(channel_t *chan);
+void channel_request_close(channel_t *chan);
 void channel_write_cell(channel_t *chan, cell_t *cell);
 void channel_write_packed_cell(channel_t *chan, packed_cell_t *cell);
 void channel_write_var_cell(channel_t *chan, var_cell_t *cell);
@@ -138,6 +158,13 @@ void channel_set_var_cell_handler(channel_t *chan,
 #ifdef _TOR_CHANNEL_INTERNAL
 
 /* Channel operations for subclasses and internal use only */
+
+/* Channel registration/unregistration */
+void channel_register(channel_t *chan);
+void channel_unregister(channel_t *chan);
+
+/* Free a channel */
+void channel_free(channel_t *chan);
 
 /* State/metadata setters */
 
