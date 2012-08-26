@@ -35,6 +35,20 @@ struct cell_queue_entry_s {
   } u;
 };
 
+/* Global lists of channels */
+
+/* All channel_t instances */
+static smartlist_t *all_channels = NULL;
+
+/* All channel_t instances not in ERROR or CLOSED states */
+static smartlist_t *active_channels = NULL;
+
+/* All channel_t instances in LISTENING state */
+static smartlist_t *listening_channels = NULL;
+
+/* All channel_t instances in ERROR or CLOSED states */
+static smartlist_t *finished_channels = NULL;
+
 /** Indicate whether a given channel state is valid
  */
 
@@ -145,6 +159,154 @@ channel_state_to_string(channel_state_t state)
   }
 
   return descr;
+}
+
+/******************************
+ * Channel refcount functions *
+ ******************************/
+
+/** Increment the refcount of a channel_t instance */
+channel_t *
+channel_ref(channel_t *chan)
+{
+  tor_assert(chan);
+
+  ++(chan->refcount);
+
+  return chan;
+}
+
+/** Return the number of references to a channel_t instance */
+size_t
+channel_num_refs(channel_t *chan)
+{
+  tor_assert(chan);
+
+  return chan->refcount;
+}
+
+/** Decrement the refcount of a channel_t instance */
+void
+channel_unref(channel_t *chan)
+{
+  tor_assert(chan);
+  tor_assert(chan->refcount > 0);
+
+  --(chan->refcount);
+
+  /*
+   * If the refcount goes to zero, the channel is finished and the channel
+   * is not registered, we can free it.
+   */
+
+  if (chan->refcount == 0 && !(chan->registered) &&
+      (chan->state == CHANNEL_STATE_CLOSED ||
+       chan->state == CHANNEL_STATE_ERROR)) {
+    channel_free(chan);
+  }
+}
+
+/***************************************
+ * Channel registration/unregistration *
+ ***************************************/
+
+void
+channel_register(channel_t *chan)
+{
+  tor_assert(chan);
+
+  /* No-op if already registered */
+  if (chan->registered) return;
+
+  /* Make sure we have all_channels, then add it */
+  if (!all_channels) all_channels = smartlist_new();
+  smartlist_add(all_channels, chan);
+
+  /* Is it finished? */
+  if (chan->state == CHANNEL_STATE_CLOSED ||
+      chan->state == CHANNEL_STATE_ERROR) {
+    /* Put it in the finished list, creating it if necessary */
+    if (!finished_channels) finished_channels = smartlist_new();
+    smartlist_add(finished_channels, chan);
+  } else {
+    /* Put it in the active list, creating it if necessary */
+    if (!active_channels) active_channels = smartlist_new();
+    smartlist_add(active_channels, chan);
+
+    /* Is it a listener? */
+    if (chan->state == CHANNEL_STATE_LISTENING) {
+      /* Put it in the listening list, creating it if necessary */
+      if (!listening_channels) listening_channels = smartlist_new();
+      smartlist_add(listening_channels, chan);
+    }
+  }
+
+  /* Mark it as registered */
+  chan->registered = 1;
+}
+
+void
+channel_unregister(channel_t *chan)
+{
+  tor_assert(chan);
+
+  /* No-op if not registered */
+  if (!(chan->registered)) return;
+
+  /* Is it finished? */
+  if (chan->state == CHANNEL_STATE_CLOSED ||
+      chan->state == CHANNEL_STATE_ERROR) {
+    /* Get it out of the finished list */
+    if (finished_channels) smartlist_remove(finished_channels, chan);
+  } else {
+    /* Get it out of the active list */
+    if (active_channels) smartlist_remove(active_channels, chan);
+
+    /* Is it listening? */
+    if (chan->state == CHANNEL_STATE_LISTENING) {
+      /* Get it out of the listening list */
+      if (listening_channels) smartlist_remove(listening_channels, chan);
+    }
+  }
+
+  /* Get it out of all_channels */
+ if (all_channels) smartlist_remove(all_channels, chan);
+
+  /* Mark it as unregistered */
+  chan->registered = 0;
+
+  /* If the refcount is also zero and it's finished, we can free it now */
+  if (chan->refcount == 0 &&
+      (chan->state == CHANNEL_STATE_CLOSED ||
+       chan->state == CHANNEL_STATE_ERROR)) {
+    channel_free(chan);
+  }
+}
+
+/** Internal-only channel free function
+ */
+
+void
+channel_free(channel_t *chan)
+{
+  tor_assert(chan);
+  /* It must be closed or errored */
+  tor_assert(chan->state == CHANNEL_STATE_CLOSED ||
+             chan->state == CHANNEL_STATE_ERROR);
+  /* It must be deregistered */
+  tor_assert(!(chan->registered));
+  /* It must have no refs */
+  tor_assert(chan->refcount == 0);
+
+  /* Call a free method if there is one */
+  if (chan->free) chan->free(chan);
+
+  channel_clear_remote_end(chan);
+
+  smartlist_free(chan->active_circuit_pqueue);
+  /* TODO cell queue? */
+
+  tor_free(chan);
 }
 
 /** Return the current registered listener for a channel
@@ -324,23 +486,36 @@ channel_set_var_cell_handler(channel_t *chan,
       chan->var_cell_handler) channel_process_cells(chan);
 }
 
-/** Close a channel, invoking its close() method if it has one, and free the
+/** Try to close a channel, invoking its close() method if it has one, and free the
  * channel_t. */
 
 void
-channel_close(channel_t *chan)
+channel_request_close(channel_t *chan)
 {
   tor_assert(chan != NULL);
+  /* If it's already in CLOSING, CLOSED or ERROR, this is a no-op */
+  if (chan->state == CHANNEL_STATE_CLOSING ||
+      chan->state == CHANNEL_STATE_CLOSED ||
+      chan->state == CHANNEL_STATE_ERROR) return;
 
   log_debug(LD_CHANNEL,
             "Closing channel %p",
             chan);
+
+  /* Change state to CLOSING */
+  channel_change_state(chan, CHANNEL_STATE_CLOSING);
 
   /*
    * No assert here since maybe the lower layer just needs to free the
    * channel_t and wants to leave this NULL.
    */
   if (chan->close) chan->close(chan);
+
+  /*
+   * It's up to the lower layer to change state to CLOSED or ERROR when we're
+   * ready; we'll try to free channels that are in the finished list and
+   * have no refs.
+   */
 
   channel_clear_remote_end(chan);
 
@@ -405,7 +580,9 @@ channel_write_cell(channel_t *chan, cell_t *cell)
   if (!(chan->outgoing_queue &&
         (smartlist_len(chan->outgoing_queue) > 0)) &&
       chan->state == CHANNEL_STATE_OPEN) {
+    channel_ref(chan);
     chan->write_cell(chan, cell);
+    channel_unref(chan);
   } else {
     /* No, queue it */
     if (!(chan->outgoing_queue)) chan->outgoing_queue = smartlist_new();
@@ -442,7 +619,9 @@ channel_write_var_cell(channel_t *chan, var_cell_t *var_cell)
   if (!(chan->outgoing_queue &&
         (smartlist_len(chan->outgoing_queue) > 0)) &&
       chan->state == CHANNEL_STATE_OPEN) {
+    channel_ref(chan);
     chan->write_var_cell(chan, var_cell);
+    channel_unref(chan);
   } else {
     /* No, queue it */
     if (!(chan->outgoing_queue)) chan->outgoing_queue = smartlist_new();
@@ -522,13 +701,19 @@ channel_process_incoming(channel_t *listener)
 
   if (!(listener->incoming_list)) return;
 
+  channel_ref(listener);
+
   SMARTLIST_FOREACH_BEGIN(listener->incoming_list, channel_t *, chan) {
     log_debug(LD_CHANNEL,
               "Handling incoming connection %p for listener %p",
               chan, listener);
+    channel_ref(chan);
     listener->listener(listener, chan);
+    channel_unref(chan);
     SMARTLIST_DEL_CURRENT(listener->incoming_list, chan);
   } SMARTLIST_FOREACH_END(chan);
+
+  channel_unref(listener);
 
   tor_assert(smartlist_len(listener->incoming_list) == 0);
   smartlist_free(listener->incoming_list);
@@ -570,7 +755,11 @@ channel_queue_incoming(channel_t *listener, channel_t *incoming)
   /* If we don't need to queue, process it right away */
   if (!need_to_queue) {
     tor_assert(listener->listener);
+    channel_ref(listener);
+    channel_ref(incoming);
     listener->listener(listener, incoming);
+    channel_unref(incoming);
+    channel_unref(listener);
   }
   /*
    * Otherwise, we need to queue; queue and then process the queue if
@@ -612,6 +801,7 @@ channel_process_cells(channel_t *chan)
    * Process cells until we're done or find one we have no current handler
    * for.
    */
+  channel_ref(chan);
   SMARTLIST_FOREACH_BEGIN(chan->cell_queue, cell_queue_entry_t *, q) {
     tor_assert(q);
     tor_assert(q->type == CELL_QUEUE_FIXED ||
@@ -639,6 +829,7 @@ channel_process_cells(channel_t *chan)
       break;
     }
   } SMARTLIST_FOREACH_END(chan);
+  channel_unref(chan);
 
   /* If the list is empty, free it */
   if (smartlist_len(chan->cell_queue) == 0 ) {
@@ -676,7 +867,9 @@ channel_queue_cell(channel_t *chan, cell_t *cell)
     log_debug(LD_CHANNEL,
               "Directly handling incoming cell_t %p for channel %p",
               cell, chan);
+    channel_ref(chan);
     chan->cell_handler(chan, cell);
+    channel_unref(chan);
   } else {
     /* Otherwise queue it and then process the queue if possible. */
     tor_assert(chan->cell_queue);
@@ -722,7 +915,9 @@ channel_queue_var_cell(channel_t *chan, var_cell_t *var_cell)
     log_debug(LD_CHANNEL,
               "Directly handling incoming var_cell_t %p for channel %p",
               var_cell, chan);
+    channel_ref(chan);
     chan->var_cell_handler(chan, var_cell);
+    channel_unref(chan);
   } else {
     /* Otherwise queue it and then process the queue if possible. */
     tor_assert(chan->cell_queue);
