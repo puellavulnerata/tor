@@ -2034,9 +2034,9 @@ circuit_n_chan_done(channel_t *chan, int status)
                    circ->n_hop->identity_digest, DIGEST_LEN))
           continue;
       }
-      if (!status) { /* or_conn failed; close circ */
-        log_info(LD_CIRC,"or_conn failed. Closing circ.");
-        circuit_mark_for_close(circ, END_CIRC_REASON_OR_CONN_CLOSED);
+      if (!status) { /* chan failed; close circ */
+        log_info(LD_CIRC,"Channel failed; closing circ.");
+        circuit_mark_for_close(circ, END_CIRC_REASON_CHANNEL_CLOSED);
         continue;
       }
       log_debug(LD_CIRC, "Found circ, sending create cell.");
@@ -2773,7 +2773,7 @@ circuit_truncated(origin_circuit_t *circ, crypt_path_t *layer)
    *     just give up.
    */
   circuit_mark_for_close(TO_CIRCUIT(circ),
-          END_CIRC_REASON_FLAG_REMOTE|END_CIRC_REASON_OR_CONN_CLOSED);
+          END_CIRC_REASON_FLAG_REMOTE|END_CIRC_REASON_CHANNEL_CLOSED);
   return 0;
 
 #if 0
