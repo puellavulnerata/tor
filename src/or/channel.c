@@ -16,6 +16,8 @@
 #include "or.h"
 #include "channel.h"
 #include "channeltls.h"
+#include "circuitbuild.h"
+#include "circuitlist.h"
 
 /* Cell queue structure */
 
@@ -501,8 +503,11 @@ channel_request_close(channel_t *chan)
       chan->state == CHANNEL_STATE_ERROR) return;
 
   log_debug(LD_CHANNEL,
-            "Closing channel %p",
+            "Closing channel %p by request",
             chan);
+
+  /* Note closing by request from above */
+  chan->reason_for_closing = CHANNEL_CLOSE_REQUESTED;
 
   /* Change state to CLOSING */
   channel_change_state(chan, CHANNEL_STATE_CLOSING);
@@ -513,8 +518,89 @@ channel_request_close(channel_t *chan)
   /*
    * It's up to the lower layer to change state to CLOSED or ERROR when we're
    * ready; we'll try to free channels that are in the finished list and
-   * have no refs.
+   * have no refs.  It should do this by calling channel_closed().
    */
+}
+
+/** Notify that the channel is being closed due to a non-error condition in
+ * the lower layer.  This does not call the close() method, since the lower
+ * layer already knows. */
+
+void
+channel_close_from_lower_layer(channel_t *chan)
+{
+  tor_assert(chan != NULL);
+
+  /* If it's already in CLOSING, CLOSED or ERROR, this is a no-op */
+  if (chan->state == CHANNEL_STATE_CLOSING ||
+      chan->state == CHANNEL_STATE_CLOSED ||
+      chan->state == CHANNEL_STATE_ERROR) return;
+
+  log_debug(LD_CHANNEL,
+            "Closing channel %p due to lower-layer event",
+            chan);
+
+  /* Note closing by event from below */
+  chan->reason_for_closing = CHANNEL_CLOSE_FROM_BELOW;
+
+  /* Change state to CLOSING */
+  channel_change_state(chan, CHANNEL_STATE_CLOSING);
+}
+
+/** Notify that the channel is being closed due to an error condition in
+  * the lower layer.  This does not call the close method, since the lower
+  * layer already knows. */
+
+void
+channel_close_for_error(channel_t *chan)
+{
+  tor_assert(chan != NULL);
+
+  /* If it's already in CLOSING, CLOSED or ERROR, this is a no-op */
+  if (chan->state == CHANNEL_STATE_CLOSING ||
+      chan->state == CHANNEL_STATE_CLOSED ||
+      chan->state == CHANNEL_STATE_ERROR) return;
+
+  log_debug(LD_CHANNEL,
+            "Closing channel %p due to lower-layer error",
+            chan);
+
+
+  /* Note closing by event from below */
+  chan->reason_for_closing = CHANNEL_CLOSE_FOR_ERROR;
+
+  /* Change state to CLOSING */
+  channel_change_state(chan, CHANNEL_STATE_CLOSING);
+}
+
+/** Notify that the lower layer is finished closing the channel and it
+ * should be regarded as inactive. */
+
+void
+channel_closed(channel_t *chan)
+{
+  tor_assert(chan);
+  tor_assert(chan->state == CHANNEL_STATE_CLOSING ||
+             chan->state == CHANNEL_STATE_CLOSED ||
+             chan->state == CHANNEL_STATE_ERROR);
+
+  /* No-op if already inactive */
+  if (chan->state == CHANNEL_STATE_CLOSED ||
+      chan->state == CHANNEL_STATE_ERROR) return;
+
+  if (chan->reason_for_closing == CHANNEL_CLOSE_FOR_ERROR) {
+    /* Inform any pending (not attached) circs that they should
+     * give up. */
+    circuit_n_chan_done(chan, 0);
+  }
+  /* Now close all the attached circuits on it. */
+  circuit_unlink_all_from_channel(chan, END_CIRC_REASON_CHANNEL_CLOSED);
+
+  if (chan->reason_for_closing != CHANNEL_CLOSE_FOR_ERROR) {
+    channel_change_state(chan, CHANNEL_STATE_CLOSED);
+  } else {
+    channel_change_state(chan, CHANNEL_STATE_ERROR);
+  }
 }
 
 /** Clear the remote end metadata (identity_digest/nickname) of a channel */
@@ -650,6 +736,13 @@ channel_change_state(channel_t *chan, channel_state_t to_state)
               channel_state_to_string(to_state),
               chan);
     return;
+  }
+
+  /* If we're going to a closing or closed state, we must have a reason set */
+  if (to_state == CHANNEL_STATE_CLOSING ||
+      to_state == CHANNEL_STATE_CLOSED ||
+      to_state == CHANNEL_STATE_ERROR) {
+    tor_assert(chan->reason_for_closing != CHANNEL_NOT_CLOSING);
   }
 
   /*
