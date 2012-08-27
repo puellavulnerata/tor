@@ -99,6 +99,15 @@ struct channel_s {
   */
   unsigned int is_bad_for_new_circs:1;
 
+  /** Why did we close?
+   */
+  enum {
+    CHANNEL_NOT_CLOSING = 0,
+    CHANNEL_CLOSE_REQUESTED,
+    CHANNEL_CLOSE_FROM_BELOW,
+    CHANNEL_CLOSE_FOR_ERROR
+  } reason_for_closing;
+
   /*
    * Function pointers for channel ops
    */
@@ -162,6 +171,11 @@ void channel_set_var_cell_handler(channel_t *chan,
 /* Channel registration/unregistration */
 void channel_register(channel_t *chan);
 void channel_unregister(channel_t *chan);
+
+/* Close from below */
+void channel_close_from_lower_layer(channel_t *chan);
+void channel_close_for_error(channel_t *chan);
+void channel_closed(channel_t *chan);
 
 /* Free a channel */
 void channel_free(channel_t *chan);
