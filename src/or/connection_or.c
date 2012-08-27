@@ -559,11 +559,15 @@ connection_or_about_to_close(or_connection_t *or_conn)
   time_t now = time(NULL);
   connection_t *conn = TO_CONN(or_conn);
 
+  /* Tell the controlling channel we're closed */
+  if (or_conn->chan) {
+    channel_closed(TLS_CHAN_TO_BASE(or_conn->chan));
+    channel_unref(TLS_CHAN_TO_BASE(or_conn->chan));
+    or_conn->chan = NULL;
+  }
+
   /* Remember why we're closing this connection. */
   if (conn->state != OR_CONN_STATE_OPEN) {
-    /* Inform any pending (not attached) circs that they should
-     * give up. */
-    circuit_n_conn_done(TO_OR_CONN(conn), 0);
     /* now mark things down as needed */
     if (connection_or_nonopen_was_started_here(or_conn)) {
       const or_options_t *options = get_options();
@@ -591,12 +595,6 @@ connection_or_about_to_close(or_connection_t *or_conn)
     control_event_or_conn_status(or_conn, OR_CONN_EVENT_CLOSED,
                 tls_error_to_orconn_end_reason(or_conn->tls_error));
   }
-  /* TODO this is going to have to close a channel, then the channel closes
-   * its linked circuits instead.
-   */
-  /* Now close all the attached circuits on it. */
-  circuit_unlink_all_from_or_conn(TO_OR_CONN(conn),
-                                  END_CIRC_REASON_OR_CONN_CLOSED);
 }
 
 /** Return 1 if identity digest <b>id_digest</b> is known to be a
@@ -1197,8 +1195,7 @@ connection_or_close_normally(or_connection_t *orconn)
     if (!(chan->state == CHANNEL_STATE_CLOSING ||
           chan->state == CHANNEL_STATE_CLOSED ||
           chan->state == CHANNEL_STATE_ERROR)) {
-      /* Change state to CHANNEL_STATE_CLOSING */
-      channel_change_state(chan, CHANNEL_STATE_CLOSING);
+      channel_close_from_lower_layer(chan);
     }
   }
 }
@@ -1222,8 +1219,7 @@ connection_or_close_for_error(or_connection_t *orconn)
     if (!(chan->state == CHANNEL_STATE_CLOSING ||
           chan->state == CHANNEL_STATE_CLOSED ||
           chan->state == CHANNEL_STATE_ERROR)) {
-      /* Change state to CHANNEL_STATE_ERROR */
-      channel_change_state(chan, CHANNEL_STATE_ERROR);
+      channel_close_for_error(chan);
     }
   }
 }
@@ -1852,7 +1848,9 @@ connection_or_set_state_open(or_connection_t *conn)
        * functions to indicate we shouldn't try it again.) */
       log_debug(LD_OR, "New entry guard was reachable, but closing this "
                 "connection so we can retry the earlier entry guards.");
+      /* TODO change channel state to open and do this from there instead
       circuit_n_conn_done(conn, 0);
+      */
       return -1;
     }
     router_set_status(conn->identity_digest, 1);
@@ -1872,7 +1870,8 @@ connection_or_set_state_open(or_connection_t *conn)
     connection_start_reading(TO_CONN(conn));
   }
 
-  circuit_n_conn_done(conn, 1); /* send the pending creates, if any. */
+  /* TODO change channel state to open and do this from there instead
+  circuit_n_conn_done(conn, 1); */ /* send the pending creates, if any. */
 
   return 0;
 }
