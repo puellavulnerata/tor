@@ -94,6 +94,7 @@ channel_tls_connect(const tor_addr_t *addr, uint16_t port,
 {
   channel_tls_t *tlschan = tor_malloc_zero(sizeof(*tlschan));
   channel_t *chan = TLS_CHAN_TO_BASE(tlschan);
+  channel_init(chan);
   chan->state = CHANNEL_STATE_OPENING;
   chan->close = channel_tls_close_method;
   chan->write_cell = channel_tls_write_cell_method;
