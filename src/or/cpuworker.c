@@ -14,6 +14,8 @@
 
 #include "or.h"
 #include "buffers.h"
+#include "channel.h"
+#include "channeltls.h"
 #include "circuitbuild.h"
 #include "circuitlist.h"
 #include "config.h"
@@ -134,7 +136,8 @@ connection_cpu_process_inbuf(connection_t *conn)
   uint64_t conn_id;
   circid_t circ_id;
   connection_t *tmp_conn;
-  or_connection_t *p_conn = NULL;
+  or_connection_t *tmp_or_conn;
+  channel_t *p_chan = NULL;
   circuit_t *circ;
 
   tor_assert(conn);
@@ -156,11 +159,14 @@ connection_cpu_process_inbuf(connection_t *conn)
     circ = NULL;
     tmp_conn = connection_get_by_global_id(conn_id);
     if (tmp_conn && !tmp_conn->marked_for_close &&
-        tmp_conn->type == CONN_TYPE_OR)
-      p_conn = TO_OR_CONN(tmp_conn);
+        tmp_conn->type == CONN_TYPE_OR) {
+      tmp_or_conn = TO_OR_CONN(tmp_conn);
+      p_chan = (tmp_or_conn != NULL) ?
+        TLS_CHAN_TO_BASE(tmp_or_conn->chan) : NULL;
+    }
 
-    if (p_conn)
-      circ = circuit_get_by_circid_orconn(circ_id, p_conn);
+    if (p_chan)
+      circ = circuit_get_by_circid_channel(circ_id, p_chan);
 
     if (success == 0) {
       log_debug(LD_OR,
@@ -475,12 +481,12 @@ assign_onionskin_to_cpuworker(connection_t *cpuworker,
 
     tor_assert(cpuworker);
 
-    if (!circ->p_conn) {
-      log_info(LD_OR,"circ->p_conn gone. Failing circ.");
+    if (!circ->p_chan) {
+      log_info(LD_OR,"circ->p_chan gone. Failing circ.");
       tor_free(onionskin);
       return -1;
     }
-    tag_pack(tag, circ->p_conn->_base.global_identifier,
+    tag_pack(tag, circ->p_chan->global_identifier,
              circ->p_circ_id);
 
     cpuworker->state = CPUWORKER_STATE_BUSY_ONION;
