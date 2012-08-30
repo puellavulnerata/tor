@@ -34,6 +34,13 @@ struct channel_s {
    */
   size_t refcount;
 
+  /* Globally unique ID number for a channel over the lifetime of a Tor
+   * process.
+   *
+   * TODO function to look up channel by ID
+   */
+  uint64_t global_identifier;
+
   /* Should we expect to see this channel in the channel lists? */
   unsigned char registered:1;
 
@@ -50,6 +57,8 @@ struct channel_s {
 
   /* List of queued outgoing cells */
   smartlist_t *outgoing_queue;
+
+  /* TODO function to look up channels by digest, nickname */
 
   /** Hash of the public RSA key for the other side's identity key, or zeroes
    * if the other side hasn't shown us a valid identity key.
@@ -167,6 +176,12 @@ void channel_set_var_cell_handler(channel_t *chan,
 #ifdef _TOR_CHANNEL_INTERNAL
 
 /* Channel operations for subclasses and internal use only */
+
+/* Initialize a newly allocated channel - do this first in subclass
+ * constructors.
+ */
+
+void channel_init(channel_t *chan);
 
 /* Channel registration/unregistration */
 void channel_register(channel_t *chan);
