@@ -51,6 +51,9 @@ static smartlist_t *listening_channels = NULL;
 /* All channel_t instances in ERROR or CLOSED states */
 static smartlist_t *finished_channels = NULL;
 
+/* Counter for ID numbers */
+static uint64_t n_channels_allocated = 0;
+
 /** Indicate whether a given channel state is valid
  */
 
@@ -283,6 +286,17 @@ channel_unregister(channel_t *chan)
        chan->state == CHANNEL_STATE_ERROR)) {
     channel_free(chan);
   }
+}
+
+/** Internal-only channel init function
+ */
+
+void
+channel_init(channel_t *chan)
+{
+  tor_assert(chan);
+
+  chan->global_identifier = n_channels_allocated++;
 }
 
 /** Internal-only channel free function
