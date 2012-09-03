@@ -108,6 +108,10 @@ struct channel_s {
   */
   unsigned int is_bad_for_new_circs:1;
 
+  /* Timestamp for relay.c
+   */ 
+  time_t timestamp_last_added_nonpadding;
+
   /** Why did we close?
    */
   enum {
