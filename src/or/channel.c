@@ -296,6 +296,7 @@ channel_init(channel_t *chan)
 {
   tor_assert(chan);
 
+  /* Assign an ID and bump the counter */
   chan->global_identifier = n_channels_allocated++;
   
   /* Init timestamp */
