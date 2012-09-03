@@ -2507,8 +2507,7 @@ channel_flush_from_first_active_circuit(channel_t *chan, int max,
     make_circuit_inactive_on_chan(circ, chan);
   }
  done:
-  if (n_flushed)
-    chan->timestamp_last_added_nonpadding = now;
+
   return n_flushed;
 }
 
