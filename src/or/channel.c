@@ -298,7 +298,7 @@ channel_init(channel_t *chan)
 
   /* Assign an ID and bump the counter */
   chan->global_identifier = n_channels_allocated++;
-  
+
   /* Init timestamp */
   chan->timestamp_last_added_nonpadding = time(NULL);
 
@@ -509,8 +509,8 @@ channel_set_var_cell_handler(channel_t *chan,
       chan->var_cell_handler) channel_process_cells(chan);
 }
 
-/** Try to close a channel, invoking its close() method if it has one, and free the
- * channel_t. */
+/** Try to close a channel, invoking its close() method if it has one, and
+ * free the channel_t. */
 
 void
 channel_request_close(channel_t *chan)
@@ -585,7 +585,6 @@ channel_close_for_error(channel_t *chan)
   log_debug(LD_CHANNEL,
             "Closing channel %p due to lower-layer error",
             chan);
-
 
   /* Note closing by event from below */
   chan->reason_for_closing = CHANNEL_CLOSE_FOR_ERROR;
@@ -789,7 +788,7 @@ channel_change_state(channel_t *chan, channel_state_t to_state)
                    from_state == CHANNEL_STATE_ERROR);
     is_active = !(to_state == CHANNEL_STATE_CLOSED ||
                   to_state == CHANNEL_STATE_ERROR);
-    
+
     /* Need to take off active list and put on finished list? */
     if (was_active && !is_active) {
       if (active_channels) smartlist_remove(active_channels, chan);
