@@ -297,6 +297,9 @@ channel_init(channel_t *chan)
   tor_assert(chan);
 
   chan->global_identifier = n_channels_allocated++;
+  
+  /* Init timestamp */
+  chan->timestamp_last_added_nonpadding = time(NULL);
 }
 
 /** Internal-only channel free function
