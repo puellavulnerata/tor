@@ -675,6 +675,12 @@ channel_write_cell(channel_t *chan, cell_t *cell)
             "Writing cell_t %p to channel %p",
             cell, chan);
 
+  /* Increment the timestamp unless it's padding */
+  if (!(cell->command == CELL_PADDING ||
+        cell->command == CELL_VPADDING)) {
+    chan->timestamp_last_added_nonpadding = approx_time();
+  }
+
   /* Can we send it right out? */
   if (!(chan->outgoing_queue &&
         (smartlist_len(chan->outgoing_queue) > 0)) &&
@@ -713,6 +719,12 @@ channel_write_var_cell(channel_t *chan, var_cell_t *var_cell)
   log_debug(LD_CHANNEL,
             "Writing var_cell_t %p to channel %p",
             var_cell, chan);
+
+  /* Increment the timestamp unless it's padding */
+  if (!(var_cell->command == CELL_PADDING ||
+        var_cell->command == CELL_VPADDING)) {
+    chan->timestamp_last_added_nonpadding = approx_time();
+  }
 
   /* Can we send it right out? */
   if (!(chan->outgoing_queue &&
