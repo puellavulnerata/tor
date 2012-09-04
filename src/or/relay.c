@@ -2378,8 +2378,7 @@ set_streams_blocked_on_circ(circuit_t *circ, channel_t *chan,
  * <b>chan</b>-&gt;outbuf.  Return the number of cells written.  Advance
  * the active circuit pointer to the next active circuit in the ring. */
 int
-channel_flush_from_first_active_circuit(channel_t *chan, int max,
-                                        time_t now)
+channel_flush_from_first_active_circuit(channel_t *chan, int max)
 {
   int n_flushed;
   cell_queue_t *queue;
@@ -2557,7 +2556,7 @@ append_cell_to_circuit_queue(circuit_t *circ, channel_t *chan,
      * get called, and we can start putting more data onto the buffer then.
      */
     log_debug(LD_GENERAL, "Primed a buffer.");
-    channel_flush_from_first_active_circuit(chan, 1, approx_time());
+    channel_flush_from_first_active_circuit(chan, 1);
   }
 }
 
