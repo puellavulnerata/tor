@@ -473,14 +473,13 @@ connection_or_flushed_some(or_connection_t *conn)
    * high water mark. */
   if (datalen < OR_CONN_LOWWATER) {
     ssize_t n = CEIL_DIV(OR_CONN_HIGHWATER - datalen, CELL_NETWORK_SIZE);
-    time_t now = approx_time();
     while ((conn->chan) &&
            (TLS_CHAN_TO_BASE(conn->chan)->active_circuits) &&
            (n > 0)) {
       int flushed;
       /* TODO this will need to pull from the channel outbuf instead */
       flushed = channel_flush_from_first_active_circuit(
-          TLS_CHAN_TO_BASE(conn->chan), 1, now);
+          TLS_CHAN_TO_BASE(conn->chan), 1);
       n -= flushed;
     }
   }
