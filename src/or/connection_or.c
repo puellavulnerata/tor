@@ -173,8 +173,6 @@ static strmap_t *broken_connection_counts;
 /** If true, do not record information in <b>broken_connection_counts</b>. */
 static int disable_broken_connection_counts = 0;
 
-/* TODO switch channels to error state */
-
 /** Record that an OR connection failed in <b>state</b>. */
 static void
 note_broken_connection(const char *state)
