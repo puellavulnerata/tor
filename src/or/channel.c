@@ -18,6 +18,7 @@
 #include "channeltls.h"
 #include "circuitbuild.h"
 #include "circuitlist.h"
+#include "geoip.h"
 
 /* Cell queue structure */
 
@@ -843,6 +844,18 @@ channel_change_state(channel_t *chan, channel_state_t to_state)
     tor_assert(!(chan->incoming_list) ||
                 smartlist_len(chan->incoming_list) == 0);
   }
+}
+
+/* Connection.c will call this when we've flushed the output; there's some
+ * dirreq-related maintenance to do. */
+
+void
+channel_notify_flushed(channel_t *chan) {
+  tor_assert(chan);
+
+  if (chan->dirreq_id != 0)
+    geoip_change_dirreq_state(chan->dirreq_id, DIRREQ_TUNNELED,
+                              DIRREQ_CHANNEL_BUFFER_FLUSHED);
 }
 
 /** Use a listener's registered callback to process the queue of incoming

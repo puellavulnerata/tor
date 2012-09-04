@@ -1157,9 +1157,6 @@ typedef struct connection_t {
 
   /** Unique identifier for this connection on this Tor instance. */
   uint64_t global_identifier;
-
-  /** Unique ID for measuring tunneled network status requests. */
-  uint64_t dirreq_id;
 } connection_t;
 
 /** Subtype of connection_t; used for a listener socket. */
@@ -1415,6 +1412,10 @@ typedef struct edge_connection_t {
    * cells. */
   unsigned int edge_blocked_on_circ:1;
 
+  /** Unique ID for directory requests; this used to be in connection_t, but
+   * that's going away and being used on channels instead.  We still tag
+   * edge connections with dirreq_id from circuits, so it's copied here. */
+  uint64_t dirreq_id;
 } edge_connection_t;
 
 /** Subtype of edge_connection_t for an "entry connection" -- that is, a SOCKS
@@ -1537,6 +1538,10 @@ typedef struct dir_connection_t {
   char identity_digest[DIGEST_LEN]; /**< Hash of the public RSA key for
                                      * the directory server's signing key. */
 
+  /** Unique ID for directory requests; this used to be in connection_t, but
+   * that's going away and being used on channels instead.  The dirserver still
+   * needs this for the incoming side, so it's moved here. */
+  uint64_t dirreq_id;
 } dir_connection_t;
 
 /** Subtype of connection_t for an connection to a controller. */
@@ -4219,10 +4224,10 @@ typedef enum {
   /** Flushed last cell from queue of the circuit that initiated a
     * tunneled request to the outbuf of the OR connection. */
   DIRREQ_CIRC_QUEUE_FLUSHED = 3,
-  /** Flushed last byte from buffer of the OR connection belonging to the
+  /** Flushed last byte from buffer of the channel belonging to the
     * circuit that initiated a tunneled request; completes a tunneled
     * request. */
-  DIRREQ_OR_CONN_BUFFER_FLUSHED = 4
+  DIRREQ_CHANNEL_BUFFER_FLUSHED = 4
 } dirreq_state_t;
 
 #define WRITE_STATS_INTERVAL (24*60*60)
