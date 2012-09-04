@@ -829,6 +829,10 @@ channel_change_state(channel_t *chan, channel_state_t to_state)
     }
   }
 
+  /* Tell circuits if we opened */
+  if (to_state == CHANNEL_STATE_OPEN)
+    circuit_n_chan_done(chan, 1);
+
   if (to_state == CHANNEL_STATE_OPEN) {
     /* Check for queued cells to process */
     if (chan->cell_queue && smartlist_len(chan->cell_queue) > 0)
