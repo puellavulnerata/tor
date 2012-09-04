@@ -1867,9 +1867,6 @@ connection_or_set_state_open(or_connection_t *conn)
     connection_start_reading(TO_CONN(conn));
   }
 
-  /* TODO change channel state to open and do this from there instead
-  circuit_n_conn_done(conn, 1); */ /* send the pending creates, if any. */
-
   return 0;
 }
 
