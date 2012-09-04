@@ -19,6 +19,7 @@
 #include "circuitbuild.h"
 #include "circuitlist.h"
 #include "geoip.h"
+#include "relay.h"
 #include "rephist.h"
 #include "routerlist.h"
 
@@ -56,6 +57,14 @@ static smartlist_t *finished_channels = NULL;
 
 /* Counter for ID numbers */
 static uint64_t n_channels_allocated = 0;
+
+/*
+ * Flush cells from just the outgoing queue without trying to get them
+ * from circuits; used internall by channel_flush_some_cells().
+ */
+static ssize_t
+channel_flush_some_cells_from_outgoing_queue(channel_t *chan,
+                                             ssize_t num_cells);
 
 /** Indicate whether a given channel state is valid
  */
@@ -849,6 +858,166 @@ channel_change_state(channel_t *chan, channel_state_t to_state)
     tor_assert(!(chan->incoming_list) ||
                 smartlist_len(chan->incoming_list) == 0);
   }
+}
+
+/** The lower layer wants more cells; try to oblige if we can. The num_cells
+ * parameter indicates approximately how many to flush; use -1 for unlimited.
+ */
+
+#define MAX_CELLS_TO_GET_FROM_CIRCUITS_FOR_UNLIMITED 256
+
+ssize_t
+channel_flush_some_cells(channel_t *chan, ssize_t num_cells)
+{
+  unsigned int unlimited = 0;
+  ssize_t flushed = 0;
+  int num_cells_from_circs;
+
+  tor_assert(chan);
+  if (num_cells < 0) unlimited = 1;
+  if (!unlimited && num_cells <= flushed) goto done;
+
+  /* If we aren't in CHANNEL_STATE_OPEN, nothing goes through */
+  if (chan->state == CHANNEL_STATE_OPEN) {
+    /* Try to flush as much as we can that's already queued */
+    flushed += channel_flush_some_cells_from_outgoing_queue(chan,
+        (unlimited ? -1 : num_cells - flushed));
+    if (!unlimited && num_cells <= flushed) goto done;
+
+    if (chan->active_circuits) {
+      /* Try to get more cells from any active circuits */
+      num_cells_from_circs =
+        channel_flush_from_first_active_circuit(chan,
+            (unlimited ? MAX_CELLS_TO_GET_FROM_CIRCUITS_FOR_UNLIMITED :
+                         (num_cells - flushed)));
+
+      /* If it claims we got some, process the queue again */
+      if (num_cells_from_circs > 0) {
+        flushed += channel_flush_some_cells_from_outgoing_queue(chan,
+          (unlimited ? -1 : num_cells - flushed));
+      }
+    }
+  }
+
+ done:
+  return flushed;
+}
+
+/** This gets called from channel_flush_some_cells() above to flush cells
+ * just from the queue without trying for active_circuits. */
+
+static ssize_t
+channel_flush_some_cells_from_outgoing_queue(channel_t *chan,
+                                             ssize_t num_cells)
+{
+  unsigned int unlimited = 0;
+  ssize_t flushed = 0;
+  cell_queue_entry_t *q = NULL;
+
+  tor_assert(chan);
+  tor_assert(chan->write_cell);
+  tor_assert(chan->write_var_cell);
+
+  if (num_cells < 0) unlimited = 1;
+  if (!unlimited && num_cells <= flushed) return 0;
+
+  /* If we aren't in CHANNEL_STATE_OPEN, nothing goes through */
+  if (chan->state == CHANNEL_STATE_OPEN) {
+    while ((unlimited || num_cells > flushed) &&
+           (chan->outgoing_queue &&
+            (smartlist_len(chan->outgoing_queue) > 0))) {
+      /*
+       * Ewww, smartlist_del_keeporder() is O(n) in list length; maybe a
+       * a linked list would make more sense for the queue.
+       */
+
+      /* Get the head of the queue */
+      q = smartlist_get(chan->outgoing_queue, 0);
+      /* That shouldn't happen; bail out */
+      if (q) {
+        /*
+         * Okay, we have a good queue entry, try to give it to the lower
+         * layer.
+         */
+        switch (q->type) {
+          case CELL_QUEUE_FIXED:
+            if (q->u.fixed.cell) {
+              if (chan->write_cell(chan, q->u.fixed.cell)) {
+                tor_free(q);
+                ++flushed;
+              }
+              /* Else couldn't write it; leave it on the queue */
+            } else {
+              /* This shouldn't happen */
+              log_info(LD_CHANNEL,
+                       "Saw broken cell queue entry of type CELL_QUEUE_FIXED "
+                       "with no cell on channel %p.",
+                       chan);
+              /* Throw it away */
+              tor_free(q);
+            }
+            break;
+         case CELL_QUEUE_VAR:
+            if (q->u.var.var_cell) {
+              if (chan->write_var_cell(chan, q->u.var.var_cell)) {
+                tor_free(q);
+                ++flushed;
+              }
+              /* Else couldn't write it; leave it on the queue */
+            } else {
+              /* This shouldn't happen */
+              log_info(LD_CHANNEL,
+                       "Saw broken cell queue entry of type CELL_QUEUE_VAR "
+                       "with no cell on channel %p.",
+                       chan);
+              /* Throw it away */
+              tor_free(q);
+            }
+            break;
+          default:
+            /* Unknown type, log and free it */
+            log_info(LD_CHANNEL,
+                     "Saw an unknown cell queue entry type %d on channel %p; "
+                     "ignoring it.  Someone should fix this.",
+                     q->type, chan);
+            tor_free(q); /* tor_free() NULLs it out */
+        }
+      } else {
+        /* This shouldn't happen; log and throw it away */
+        log_info(LD_CHANNEL,
+                 "Saw a NULL entry in the outgoing cell queue on channel %p; "
+                 "this is definitely a bug.",
+                 chan);
+        /* q is already NULL, so we know to delete that queue entry */
+      }
+
+      /* if q got NULLed out, we used it and should remove the queue entry */
+      if (!q) smartlist_del_keeporder(chan->outgoing_queue, 0);
+      /* No cell removed from list, so we can't go on any further */
+      else break;
+    }
+  }
+
+  return flushed;
+}
+
+/** This gets used from the lower layer to check if any more cells are
+ * available.
+ */
+
+int
+channel_more_to_flush(channel_t *chan)
+{
+  tor_assert(chan);
+
+  /* Check if we have any queued */
+  if (chan->cell_queue && smartlist_len(chan->cell_queue) > 0) return 1;
+
+  /* Check if any circuits would like to queue some */
+  if (chan->active_circuits) return 1;
+
+  /* Else no */
+  return 0;
 }
 
 /* Connection.c will call this when we've flushed the output; there's some

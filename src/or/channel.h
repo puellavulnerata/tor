@@ -137,11 +137,11 @@ struct channel_s {
   /* Close an open channel */
   void (*close)(channel_t *);
   /* Write a cell to an open channel */
-  void (*write_cell)(channel_t *, cell_t *);
+  int (*write_cell)(channel_t *, cell_t *);
   /* Write a packed cell to an open channel */
-  void (*write_packed_cell)(channel_t *, packed_cell_t *);
+  int (*write_packed_cell)(channel_t *, packed_cell_t *);
   /* Write a variable-length cell to an open channel */
-  void (*write_var_cell)(channel_t *, var_cell_t *);
+  int (*write_var_cell)(channel_t *, var_cell_t *);
 };
 
 /* Channel state manipulations */
@@ -225,6 +225,12 @@ void channel_queue_var_cell(channel_t *chan, var_cell_t *var_cell);
 
 /* Outgoing cell handling */
 void channel_flush_cells(channel_t *chan);
+
+/* Request from lower layer for more cells if available */
+ssize_t channel_flush_some_cells(channel_t *chan, ssize_t num_cells);
+
+/* Query if data available on this channel */
+int channel_more_to_flush(channel_t *chan);
 
 /* Notify flushed outgoing for dirreq handling */
 void channel_notify_flushed(channel_t *chan);
