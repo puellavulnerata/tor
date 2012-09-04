@@ -12,6 +12,13 @@
 
 #include "or.h"
 #include "buffers.h"
+/*
+ * Define this so we get channel internal functions, since we're implementing
+ * part of a subclass (channel_tls_t).
+ */
+#define _TOR_CHANNEL_INTERNAL
+#include "channel.h"
+#include "channeltls.h"
 #include "circuitbuild.h"
 #include "circuitlist.h"
 #include "circuituse.h"
@@ -3239,12 +3246,11 @@ connection_handle_write_impl(connection_t *conn, int force)
     result = flush_buf_tls(or_conn->tls, conn->outbuf,
                            max_to_write, &conn->outbuf_flushlen);
 
-    /* If we just flushed the last bytes, check if this tunneled dir
-     * request is done. */
+    /* If we just flushed the last bytes, tell the channel on the
+     * or_conn to check if it needs to geoip_change_dirreq_state() */
     /* XXXX move this to flushed_some or finished_flushing -NM */
-    if (buf_datalen(conn->outbuf) == 0 && conn->dirreq_id)
-      geoip_change_dirreq_state(conn->dirreq_id, DIRREQ_TUNNELED,
-                                DIRREQ_OR_CONN_BUFFER_FLUSHED);
+    if (buf_datalen(conn->outbuf) == 0 && or_conn->chan)
+      channel_notify_flushed(TLS_CHAN_TO_BASE(or_conn->chan));
 
     switch (result) {
       CASE_TOR_TLS_ERROR_ANY:
