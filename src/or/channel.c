@@ -19,6 +19,8 @@
 #include "circuitbuild.h"
 #include "circuitlist.h"
 #include "geoip.h"
+#include "rephist.h"
+#include "routerlist.h"
 
 /* Cell queue structure */
 
@@ -829,9 +831,8 @@ channel_change_state(channel_t *chan, channel_state_t to_state)
     }
   }
 
-  /* Tell circuits if we opened */
-  if (to_state == CHANNEL_STATE_OPEN)
-    circuit_n_chan_done(chan, 1);
+  /* Tell circuits if we opened and stuff */
+  if (to_state == CHANNEL_STATE_OPEN) channel_do_open_actions(chan);
 
   if (to_state == CHANNEL_STATE_OPEN) {
     /* Check for queued cells to process */
@@ -891,6 +892,8 @@ channel_process_incoming(channel_t *listener)
               "Handling incoming connection %p for listener %p",
               chan, listener);
     channel_ref(chan);
+    /* Make sure this is set correctly */
+    chan->initiated_remotely = 1;
     listener->listener(listener, chan);
     channel_unref(chan);
     SMARTLIST_DEL_CURRENT(listener->incoming_list, chan);
@@ -901,6 +904,54 @@ channel_process_incoming(channel_t *listener)
   tor_assert(smartlist_len(listener->incoming_list) == 0);
   smartlist_free(listener->incoming_list);
   listener->incoming_list = NULL;
+}
+
+/** Handle actions we should do when we know a channel is open; a lot of
+ * this comes from the old connection_or_set_state_open() of connection_or.c.
+ *
+ * Because of this mechanism, future channel_t subclasses should take care
+ * not to change a channel to from CHANNEL_STATE_OPENING to CHANNEL_STATE_OPEN
+ * until there is positive confirmation that the network is operational.
+ * In particular, anything UDP-based should not make this transition until a
+ * packet is received from the other side.
+ */
+
+void channel_do_open_actions(channel_t *chan)
+{
+  int started_here, not_using = 0;
+  time_t now = time(NULL);
+
+  tor_assert(chan);
+
+  started_here = channel_was_started_here(chan);
+
+  if (started_here) {
+    circuit_build_times_network_is_live(&circ_times);
+    rep_hist_note_connect_succeeded(chan->identity_digest, now);
+    if (entry_guard_register_connect_status(chan->identity_digest,
+                                            1, 0, now) < 0) {
+      /* Close any circuits pending on this channel. We leave it in state
+       * 'open' though, because it didn't actually *fail* -- we just
+       * chose not to use it. */
+      log_debug(LD_OR,
+                "New entry guard was reachable, but closing this "
+                "connection so we can retry the earlier entry guards.");
+      circuit_n_chan_done(chan, 0);
+      not_using = 1;
+    }
+    router_set_status(chan->identity_digest, 1);
+  } else {
+    /* only report it to the geoip module if it's not a known router */
+    if (!router_get_by_id_digest(chan->identity_digest)) {
+      /* TODO figure out addressing */
+      /*
+      geoip_note_client_seen(GEOIP_CLIENT_CONNECT, &(chan->addr),
+                             now);
+       */
+    }
+  }
+
+  if (!not_using) circuit_n_chan_done(chan, 1);
 }
 
 /** Internal and subclass use only function to queue an incoming channel from
@@ -1164,3 +1215,15 @@ channel_touched_by_client(channel_t *chan)
   chan->client_used = time(NULL);
 }
 
+
+/** Check whether a channel was started locally or was an incoming channel
+ * from a listener. */
+
+int
+channel_was_started_here(channel_t *chan)
+{
+  tor_assert(chan);
+
+  if (chan->initiated_remotely) return 0;
+  else return 1;
+}

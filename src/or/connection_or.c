@@ -1828,36 +1828,8 @@ or_handshake_state_record_var_cell(or_handshake_state_t *state,
 int
 connection_or_set_state_open(or_connection_t *conn)
 {
-  int started_here = connection_or_nonopen_was_started_here(conn);
-  time_t now = time(NULL);
   connection_or_change_state(conn, OR_CONN_STATE_OPEN);
   control_event_or_conn_status(conn, OR_CONN_EVENT_CONNECTED, 0);
-
-  if (started_here) {
-    circuit_build_times_network_is_live(&circ_times);
-    rep_hist_note_connect_succeeded(conn->identity_digest, now);
-    if (entry_guard_register_connect_status(conn->identity_digest,
-                                            1, 0, now) < 0) {
-      /* Close any circuits pending on this conn. We leave it in state
-       * 'open' though, because it didn't actually *fail* -- we just
-       * chose not to use it. (Otherwise
-       * connection_about_to_close_connection() will call a big pile of
-       * functions to indicate we shouldn't try it again.) */
-      log_debug(LD_OR, "New entry guard was reachable, but closing this "
-                "connection so we can retry the earlier entry guards.");
-      /* TODO change channel state to open and do this from there instead
-      circuit_n_conn_done(conn, 0);
-      */
-      return -1;
-    }
-    router_set_status(conn->identity_digest, 1);
-  } else {
-    /* only report it to the geoip module if it's not a known router */
-    if (!router_get_by_id_digest(conn->identity_digest)) {
-      geoip_note_client_seen(GEOIP_CLIENT_CONNECT, &TO_CONN(conn)->addr,
-                             now);
-    }
-  }
 
   or_handshake_state_free(conn->handshake_state);
   conn->handshake_state = NULL;
