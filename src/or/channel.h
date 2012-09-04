@@ -125,6 +125,9 @@ struct channel_s {
     CHANNEL_CLOSE_FOR_ERROR
   } reason_for_closing;
 
+  /** Set this to 1 if we were started by a listener channel */
+  unsigned int initiated_remotely:1;
+
   /*
    * Function pointers for channel ops
    */
@@ -226,6 +229,9 @@ void channel_flush_cells(channel_t *chan);
 /* Notify flushed outgoing for dirreq handling */
 void channel_notify_flushed(channel_t *chan);
 
+/* Handle stuff we need to do on open like notifying circuits */
+void channel_do_open_actions(channel_t *chan);
+
 #endif
 
 /* Helper functions to perform operations on channels */
@@ -259,6 +265,7 @@ void channel_mark_as_client(channel_t *chan);
 int channel_matches_extend_info(channel_t *chan, extend_info_t *extend_info);
 int channel_nonopen_was_started_here(channel_t *chan);
 void channel_touched_by_client(channel_t *chan);
+int channel_was_started_here(channel_t *chan);
 time_t channel_when_created(channel_t *chan);
 time_t channel_when_last_drained(channel_t *chan);
 time_t channel_when_last_xmit(channel_t *chan);
