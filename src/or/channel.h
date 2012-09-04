@@ -111,6 +111,11 @@ struct channel_s {
   /* Timestamp for relay.c */
   time_t timestamp_last_added_nonpadding;
 
+  /** Unique ID for measuring direct network status requests;vtunneled ones
+   * come over a circuit_t, which has a dirreq_id field as well, but is a
+   * distinct namespace. */
+  uint64_t dirreq_id;
+
   /** Why did we close?
    */
   enum {
@@ -217,6 +222,9 @@ void channel_queue_var_cell(channel_t *chan, var_cell_t *var_cell);
 
 /* Outgoing cell handling */
 void channel_flush_cells(channel_t *chan);
+
+/* Notify flushed outgoing for dirreq handling */
+void channel_notify_flushed(channel_t *chan);
 
 #endif
 
