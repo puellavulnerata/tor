@@ -1295,8 +1295,6 @@ typedef struct or_connection_t {
   int tls_error; /**< Last tor_tls error code. */
   /** When we last used this conn for any client traffic. If not
    * recent, we can rate limit it further. */
-  /* TODO channels - can we eliminate this since it's in channel_t ? */
-  time_t client_used;
 
   /* Channel using this connection */
   channel_tls_t *chan;
