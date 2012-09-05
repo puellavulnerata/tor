@@ -1303,10 +1303,6 @@ typedef struct or_connection_t {
                        * getting overridden by the address from the router
                        * descriptor matching <b>identity_digest</b>. */
 
-  /* TODO channels - can we eliminate this since it's in channel_t ? */
-  circ_id_type_t circ_id_type:2; /**< When we send CREATE cells along this
-                                  * connection, which half of the space should
-                                  * we use? */
   /** Should this connection be used for extending circuits to the server
    * matching the <b>identity_digest</b> field?  Set to true if we're pretty
    * sure we aren't getting MITMed, either because we're connected to an
