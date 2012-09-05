@@ -350,7 +350,7 @@ channel_tls_handle_cell(cell_t *cell, or_connection_t *conn)
            (int)cell->command,
            channel_state_to_string(TLS_CHAN_TO_BASE(chan)->state),
            conn_state_to_string(CONN_TYPE_OR, TO_CONN(conn)->state));
-           connection_mark_for_close(TO_CONN(conn));
+    connection_or_close_for_error(conn);
     return;
   }
 
@@ -457,8 +457,12 @@ channel_tls_handle_var_cell(var_cell_t *var_cell, or_connection_t *conn)
                TO_CONN(conn)->state,
                channel_state_to_string(TLS_CHAN_TO_BASE(chan)->state),
                (int)(TLS_CHAN_TO_BASE(chan)->state));
-        /* TODO channel to error? */
-        connection_mark_for_close(TO_CONN(conn));
+        /*
+         * The code in connection_or.c will tell channel_t to close for
+         * error; it will go to CHANNEL_STATE_CLOSING, and then to
+         * CHANNEL_STATE_ERROR when conn is closed.
+         */
+        connection_or_close_for_error(conn);
         return;
       }
       break;
@@ -480,8 +484,8 @@ channel_tls_handle_var_cell(var_cell_t *var_cell, or_connection_t *conn)
                (int)(TO_CONN(conn)->state),
                channel_state_to_string(TLS_CHAN_TO_BASE(chan)->state),
                (int)(TLS_CHAN_TO_BASE(chan)->state));
-        /* TODO channel to error? */
-        connection_mark_for_close(TO_CONN(conn));
+        /* see above comment about CHANNEL_STATE_ERROR */
+        connection_or_close_for_error(conn);
         return;
       } else {
         if (enter_v3_handshake_with_cell(var_cell, chan) < 0)
@@ -599,9 +603,7 @@ enter_v3_handshake_with_cell(var_cell_t *cell, channel_tls_t *chan)
   }
   chan->conn->_base.state = OR_CONN_STATE_OR_HANDSHAKING_V3;
   if (connection_init_or_handshake_state(chan->conn, started_here) < 0) {
-    connection_mark_for_close(TO_CONN(chan->conn));
-    channel_change_state(TLS_CHAN_TO_BASE(chan),
-                         CHANNEL_STATE_ERROR);
+    connection_or_close_for_error(chan->conn);
     return -1;
   }
   or_handshake_state_record_var_cell(chan->conn->handshake_state, cell, 1);
@@ -660,9 +662,7 @@ channel_tls_process_versions_cell(var_cell_t *cell, channel_tls_t *chan)
     log_fn(LOG_PROTOCOL_WARN, LD_OR,
            "Couldn't find a version in common between my version list and the "
            "list in the VERSIONS cell; closing connection.");
-    connection_mark_for_close(TO_CONN(chan->conn));
-    channel_change_state(TLS_CHAN_TO_BASE(chan),
-                         CHANNEL_STATE_ERROR);
+    connection_or_close_for_error(chan->conn);
     return;
   } else if (highest_supported_version == 1) {
     /* Negotiating version 1 makes no sense, since version 1 has no VERSIONS
@@ -670,18 +670,14 @@ channel_tls_process_versions_cell(var_cell_t *cell, channel_tls_t *chan)
     log_fn(LOG_PROTOCOL_WARN, LD_OR,
            "Used version negotiation protocol to negotiate a v1 connection. "
            "That's crazily non-compliant. Closing connection.");
-    connection_mark_for_close(TO_CONN(chan->conn));
-    channel_change_state(TLS_CHAN_TO_BASE(chan),
-                         CHANNEL_STATE_ERROR);
+    connection_or_close_for_error(chan->conn);
     return;
   } else if (highest_supported_version < 3 &&
              chan->conn->_base.state ==  OR_CONN_STATE_OR_HANDSHAKING_V3) {
     log_fn(LOG_PROTOCOL_WARN, LD_OR,
            "Negotiated link protocol 2 or lower after doing a v3 TLS "
            "handshake. Closing connection.");
-    connection_mark_for_close(TO_CONN(chan->conn));
-    channel_change_state(TLS_CHAN_TO_BASE(chan),
-                         CHANNEL_STATE_ERROR);
+    connection_or_close_for_error(chan->conn);
     return;
   }
 
@@ -696,9 +692,7 @@ channel_tls_process_versions_cell(var_cell_t *cell, channel_tls_t *chan)
              chan->conn->_base.port);
 
     if (connection_or_send_netinfo(chan->conn) < 0) {
-      connection_mark_for_close(TO_CONN(chan->conn));
-      channel_change_state(TLS_CHAN_TO_BASE(chan),
-                           CHANNEL_STATE_ERROR);
+      connection_or_close_for_error(chan->conn);
       return;
     }
   } else {
@@ -727,9 +721,7 @@ channel_tls_process_versions_cell(var_cell_t *cell, channel_tls_t *chan)
 
 #ifdef DISABLE_V3_LINKPROTO_SERVERSIDE
     if (1) {
-      connection_mark_for_close(TO_CONN(chan->conn));
-      channel_change_state(TLS_CHAN_TO_BASE(chan),
-                           CHANNEL_STATE_CLOSING);
+      connection_or_close_normally(chan->conn);
       return;
     }
 #endif
@@ -737,36 +729,28 @@ channel_tls_process_versions_cell(var_cell_t *cell, channel_tls_t *chan)
     if (send_versions) {
       if (connection_or_send_versions(chan->conn, 1) < 0) {
         log_warn(LD_OR, "Couldn't send versions cell");
-        connection_mark_for_close(TO_CONN(chan->conn));
-        channel_change_state(TLS_CHAN_TO_BASE(chan),
-                             CHANNEL_STATE_ERROR);
+        connection_or_close_for_error(chan->conn);
         return;
       }
     }
     if (send_certs) {
       if (connection_or_send_certs_cell(chan->conn) < 0) {
         log_warn(LD_OR, "Couldn't send certs cell");
-        connection_mark_for_close(TO_CONN(chan->conn));
-        channel_change_state(TLS_CHAN_TO_BASE(chan),
-                             CHANNEL_STATE_ERROR);
+        connection_or_close_for_error(chan->conn);
         return;
       }
     }
     if (send_chall) {
       if (connection_or_send_auth_challenge_cell(chan->conn) < 0) {
         log_warn(LD_OR, "Couldn't send auth_challenge cell");
-        connection_mark_for_close(TO_CONN(chan->conn));
-        channel_change_state(TLS_CHAN_TO_BASE(chan),
-                             CHANNEL_STATE_ERROR);
+        connection_or_close_for_error(chan->conn);
         return;
       }
     }
     if (send_netinfo) {
       if (connection_or_send_netinfo(chan->conn) < 0) {
         log_warn(LD_OR, "Couldn't send netinfo cell");
-        connection_mark_for_close(TO_CONN(chan->conn));
-        channel_change_state(TLS_CHAN_TO_BASE(chan),
-                             CHANNEL_STATE_ERROR);
+        connection_or_close_for_error(chan->conn);
         return;
       }
     }
@@ -815,9 +799,7 @@ channel_tls_process_netinfo_cell(cell_t *cell, channel_tls_t *chan)
         log_fn(LOG_PROTOCOL_WARN, LD_OR,
                "Got a NETINFO cell from server, "
                "but no authentication.  Closing the connection.");
-        connection_mark_for_close(TO_CONN(chan->conn));
-        channel_change_state(TLS_CHAN_TO_BASE(chan),
-                             CHANNEL_STATE_ERROR);
+        connection_or_close_for_error(chan->conn);
         return;
       }
     } else {
@@ -853,9 +835,7 @@ channel_tls_process_netinfo_cell(cell_t *cell, channel_tls_t *chan)
   if (cp >= end) {
     log_fn(LOG_PROTOCOL_WARN, LD_OR,
            "Addresses too long in netinfo cell; closing connection.");
-    connection_mark_for_close(TO_CONN(chan->conn));
-    channel_change_state(TLS_CHAN_TO_BASE(chan),
-                         CHANNEL_STATE_ERROR);
+    connection_or_close_for_error(chan->conn);
     return;
   } else if (my_addr_type == RESOLVED_TYPE_IPV4 && my_addr_len == 4) {
     my_apparent_addr = ntohl(get_uint32(my_addr_ptr));
@@ -871,9 +851,7 @@ channel_tls_process_netinfo_cell(cell_t *cell, channel_tls_t *chan)
     if (next == NULL) {
       log_fn(LOG_PROTOCOL_WARN,  LD_OR,
              "Bad address in netinfo cell; closing connection.");
-      connection_mark_for_close(TO_CONN(chan->conn));
-      channel_change_state(TLS_CHAN_TO_BASE(chan),
-                           CHANNEL_STATE_ERROR);
+      connection_or_close_for_error(chan->conn);
       return;
     }
     if (tor_addr_eq(&addr, &(chan->conn->real_addr))) {
@@ -925,9 +903,7 @@ channel_tls_process_netinfo_cell(cell_t *cell, channel_tls_t *chan)
            "was unable to make the OR connection become open.",
            safe_str_client(chan->conn->_base.address),
            chan->conn->_base.port);
-    connection_mark_for_close(TO_CONN(chan->conn));
-    channel_change_state(TLS_CHAN_TO_BASE(chan),
-                         CHANNEL_STATE_ERROR);
+    connection_or_close_for_error(chan->conn);
   } else {
     log_info(LD_OR,
              "Got good NETINFO cell from %s:%d; OR connection is now "
@@ -971,9 +947,7 @@ channel_tls_process_certs_cell(var_cell_t *cell, channel_tls_t *chan)
            "Received a bad CERTS cell from %s:%d: %s",          \
            safe_str(chan->conn->_base.address),                 \
            chan->conn->_base.port, (s));                        \
-    connection_mark_for_close(TO_CONN(chan->conn));             \
-    channel_change_state(TLS_CHAN_TO_BASE(chan),                \
-                         CHANNEL_STATE_ERROR);                  \
+    connection_or_close_for_error(chan->conn);                  \
     return;                                                     \
   } while (0)
 
@@ -1127,9 +1101,7 @@ channel_tls_process_certs_cell(var_cell_t *cell, channel_tls_t *chan)
   if (send_netinfo) {
     if (connection_or_send_netinfo(chan->conn) < 0) {
       log_warn(LD_OR, "Couldn't send netinfo cell");
-      connection_mark_for_close(TO_CONN(chan->conn));
-      channel_change_state(TLS_CHAN_TO_BASE(chan),
-                           CHANNEL_STATE_ERROR);
+      connection_or_close_for_error(chan->conn);
       goto err;
     }
   }
@@ -1164,9 +1136,7 @@ channel_tls_process_auth_challenge_cell(var_cell_t *cell, channel_tls_t *chan)
            "Received a bad AUTH_CHALLENGE cell from %s:%d: %s", \
            safe_str(chan->conn->_base.address),                 \
            chan->conn->_base.port, (s));                        \
-    connection_mark_for_close(TO_CONN(chan->conn));             \
-    channel_change_state(TLS_CHAN_TO_BASE(chan),                \
-                         CHANNEL_STATE_ERROR);                  \
+    connection_or_close_for_error(chan->conn);                  \
     return;                                                     \
   } while (0)
 
@@ -1216,9 +1186,7 @@ channel_tls_process_auth_challenge_cell(var_cell_t *cell, channel_tls_t *chan)
     if (connection_or_send_authenticate_cell(chan->conn, use_type) < 0) {
       log_warn(LD_OR,
                "Couldn't send authenticate cell");
-      connection_mark_for_close(TO_CONN(chan->conn));
-      channel_change_state(TLS_CHAN_TO_BASE(chan),
-                           CHANNEL_STATE_ERROR);
+      connection_or_close_for_error(chan->conn);
       return;
     }
   } else {
@@ -1231,10 +1199,7 @@ channel_tls_process_auth_challenge_cell(var_cell_t *cell, channel_tls_t *chan)
 
   if (connection_or_send_netinfo(chan->conn) < 0) {
     log_warn(LD_OR, "Couldn't send netinfo cell");
-    connection_mark_for_close(TO_CONN(chan->conn));
-    channel_change_state(TLS_CHAN_TO_BASE(chan),
-                         CHANNEL_STATE_ERROR);
-
+    connection_or_close_for_error(chan->conn);
     return;
   }
 
@@ -1266,9 +1231,7 @@ channel_tls_process_authenticate_cell(var_cell_t *cell, channel_tls_t *chan)
            "Received a bad AUTHENTICATE cell from %s:%d: %s",   \
            safe_str(chan->conn->_base.address),                 \
            chan->conn->_base.port, (s));                        \
-    connection_mark_for_close(TO_CONN(chan->conn));             \
-    channel_change_state(TLS_CHAN_TO_BASE(chan),                \
-                         CHANNEL_STATE_ERROR);                  \
+    connection_or_close_for_error(chan->conn);                  \
     return;                                                     \
   } while (0)
 
