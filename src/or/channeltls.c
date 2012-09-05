@@ -136,7 +136,14 @@ channel_tls_close_method(channel_t *chan)
 
   tor_assert(tlschan);
 
-  /* TODO */
+  if (tlschan->conn) connection_or_close_normally(tlschan->conn);
+  else {
+    /* Weird - we'll have to change the state ourselves, I guess */
+    log_info(LD_CHANNEL,
+             "Tried to close channel_tls_t %p with NULL conn",
+             tlschan);
+    channel_change_state(chan, CHANNEL_STATE_ERROR);
+  }
 }
 
 /** Given a channel_tls_t and a cell_t, transmit the cell_t */
