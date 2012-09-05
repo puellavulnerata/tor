@@ -300,6 +300,66 @@ channel_unregister(channel_t *chan)
   }
 }
 
+/** These are for looking up registered channels by various things;
+ * the channel_t returned is refcounted and should be unrefed when the
+ * caller is done with it.
+ */
+
+channel_t *
+channel_find_by_global_id(uint64_t global_identifier)
+{
+  channel_t *rv = NULL;
+
+  if (all_channels && smartlist_len(all_channels) > 0) {
+    SMARTLIST_FOREACH_BEGIN(all_channels, channel_t *, curr) {
+      if (curr->global_identifier == global_identifier) {
+        rv = channel_ref(curr);
+        break;
+      }
+    } SMARTLIST_FOREACH_END(curr);
+  }
+
+  return rv;
+}
+
+channel_t *
+channel_find_by_remote_digest(char *identity_digest)
+{
+  channel_t *rv = NULL;
+
+  tor_assert(identity_digest);
+
+  if (all_channels && smartlist_len(all_channels) > 0) {
+    SMARTLIST_FOREACH_BEGIN(all_channels, channel_t *, curr) {
+      if (memcmp(curr->identity_digest, identity_digest, DIGEST_LEN) == 0) {
+        rv = channel_ref(curr);
+        break;
+      }
+    } SMARTLIST_FOREACH_END(curr);
+  }
+
+  return rv;
+}
+
+channel_t *
+channel_find_by_remote_nickname(char *nickname)
+{
+  channel_t *rv = NULL;
+
+  tor_assert(nickname);
+
+  if (all_channels && smartlist_len(all_channels) > 0) {
+    SMARTLIST_FOREACH_BEGIN(all_channels, channel_t *, curr) {
+      if (strncmp(curr->nickname, nickname, MAX_NICKNAME_LEN) == 0) {
+        rv = channel_ref(curr);
+        break;
+      }
+    } SMARTLIST_FOREACH_END(curr);
+  }
+
+  return rv;
+}
+
 /** Internal-only channel init function
  */
 
