@@ -2083,7 +2083,8 @@ static int
 connection_counts_as_relayed_traffic(connection_t *conn, time_t now)
 {
   if (conn->type == CONN_TYPE_OR &&
-      TO_OR_CONN(conn)->client_used + CLIENT_IDLE_TIME_FOR_PRIORITY < now)
+      connection_or_client_used(TO_OR_CONN(conn)) +
+                                CLIENT_IDLE_TIME_FOR_PRIORITY < now)
     return 1;
   if (conn->type == CONN_TYPE_DIR && DIR_CONN_IS_SERVER(conn))
     return 1;
