@@ -19,6 +19,8 @@ channel_t * channel_tls_connect(const tor_addr_t *addr, uint16_t port,
                                 const char *id_digest);
 
 /* Things for connection_or.c to call back into */
+ssize_t channel_tls_flush_some_cells(channel_tls_t *chan, ssize_t num_cells);
+int channel_tls_more_to_flush(channel_tls_t *chan);
 void channel_tls_handle_cell(cell_t *cell, or_connection_t *conn);
 void channel_tls_handle_state_change_on_orconn(channel_tls_t *chan,
                                                or_connection_t *conn,

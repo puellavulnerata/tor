@@ -51,10 +51,10 @@ struct channel_tls_s {
 /* channel_tls_t method declarations */
 
 static void channel_tls_close_method(channel_t *chan);
-static void channel_tls_write_cell_method(channel_t *chan,
-                                          cell_t *cell);
-static void channel_tls_write_var_cell_method(channel_t *chan,
-                                              var_cell_t *var_cell);
+static int channel_tls_write_cell_method(channel_t *chan,
+                                         cell_t *cell);
+static int channel_tls_write_var_cell_method(channel_t *chan,
+                                             var_cell_t *var_cell);
 
 /** Handle incoming cells for the handshake stuff here rather than
  * passing them on up. */
@@ -135,7 +135,7 @@ channel_tls_close_method(channel_t *chan)
 
 /** Given a channel_tls_t and a cell_t, transmit the cell_t */
 
-static void
+static int
 channel_tls_write_cell_method(channel_t *chan, cell_t *cell)
 {
   channel_tls_t *tlschan = BASE_CHAN_TO_TLS(chan);
@@ -145,11 +145,13 @@ channel_tls_write_cell_method(channel_t *chan, cell_t *cell)
   tor_assert(tlschan->conn);
 
   connection_or_write_cell_to_buf(cell, tlschan->conn);
+
+  return 1;
 }
 
 /** Given a channel_tls_t and a var_cell_t, transmit the var_cell_t */
 
-static void
+static int
 channel_tls_write_var_cell_method(channel_t *chan, var_cell_t *var_cell)
 {
   channel_tls_t *tlschan = BASE_CHAN_TO_TLS(chan);
@@ -159,6 +161,8 @@ channel_tls_write_var_cell_method(channel_t *chan, var_cell_t *var_cell)
   tor_assert(tlschan->conn);
 
   connection_or_write_var_cell_to_buf(var_cell, tlschan->conn);
+
+  return 1;
 }
 
 /** Handle events on an or_connection_t in these functions */
@@ -207,6 +211,53 @@ channel_tls_handle_state_change_on_orconn(channel_tls_t *chan,
       channel_change_state(base_chan, CHANNEL_STATE_MAINT);
     }
   }
+}
+
+/** Try to flush up to about num_cells cells, and return how many we
+ * flushed.
+ */
+
+ssize_t
+channel_tls_flush_some_cells(channel_tls_t *chan, ssize_t num_cells)
+{
+  ssize_t flushed = 0;
+
+  tor_assert(chan);
+
+  if (flushed >= num_cells) goto done;
+
+  /*
+   * If channel_tls_t ever buffers anything below the channel_t layer, flush
+   * that first here.
+   */
+
+  flushed += channel_flush_some_cells(TLS_CHAN_TO_BASE(chan),
+                                      num_cells - flushed);
+
+  /*
+   * If channel_tls_t ever buffers anything below the channel_t layer, check
+   * how much we actually got and push it on down here.
+   */
+
+ done:
+  return flushed;
+}
+
+/** Return true if there is any more to flush on this channel (cells in queue
+ * or active circuits).
+ */
+
+int
+channel_tls_more_to_flush(channel_tls_t *chan)
+{
+  tor_assert(chan);
+
+  /*
+   * If channel_tls_t ever buffers anything below channel_t, the
+   * check for that should go here first.
+   */
+
+  return channel_more_to_flush(TLS_CHAN_TO_BASE(chan));
 }
 
 #ifdef KEEP_TIMING_STATS

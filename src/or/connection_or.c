@@ -466,21 +466,31 @@ connection_or_process_inbuf(or_connection_t *conn)
 int
 connection_or_flushed_some(or_connection_t *conn)
 {
-  size_t datalen = connection_get_outbuf_len(TO_CONN(conn));
+  size_t datalen, temp;
+  ssize_t n, flushed;
+
   /* If we're under the low water mark, add cells until we're just over the
    * high water mark. */
+  datalen = connection_get_outbuf_len(TO_CONN(conn));
   if (datalen < OR_CONN_LOWWATER) {
-    ssize_t n = CEIL_DIV(OR_CONN_HIGHWATER - datalen, CELL_NETWORK_SIZE);
-    while ((conn->chan) &&
-           (TLS_CHAN_TO_BASE(conn->chan)->active_circuits) &&
-           (n > 0)) {
-      int flushed;
-      /* TODO this will need to pull from the channel outbuf instead */
-      flushed = channel_flush_from_first_active_circuit(
-          TLS_CHAN_TO_BASE(conn->chan), 1);
-      n -= flushed;
+    while ((conn->chan) && channel_tls_more_to_flush(conn->chan)) {
+      /* Compute how many more cells we want at most */
+      n = CEIL_DIV(OR_CONN_HIGHWATER - datalen, CELL_NETWORK_SIZE);
+      /* Bail out if we don't want any more */
+      if (n <= 0) break;
+      /* We're still here; try to flush some more cells */
+      flushed = channel_tls_flush_some_cells(conn->chan, n);
+      /* Bail out if it says it didn't flush anything */
+      if (flushed <= 0) break;
+      /* How much in the outbuf now? */
+      temp = connection_get_outbuf_len(TO_CONN(conn));
+      /* Bail out if we didn't actually increase the outbuf size */
+      if (temp <= datalen) break;
+      /* Update datalen for the next iteration */
+      datalen = temp;
     }
   }
+
   return 0;
 }
 
