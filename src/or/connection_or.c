@@ -1476,29 +1476,6 @@ connection_or_nonopen_was_started_here(or_connection_t *conn)
   return !tor_tls_is_server(conn->tls);
 }
 
-/** Set the circid_type field of <b>conn</b> (which determines which part of
- * the circuit ID space we're willing to use) based on comparing our ID to
- * <b>identity_rcvd</b> */
-void
-connection_or_set_circid_type(or_connection_t *conn,
-                              crypto_pk_t *identity_rcvd)
-{
-  const int started_here = connection_or_nonopen_was_started_here(conn);
-  crypto_pk_t *our_identity =
-    started_here ? get_tlsclient_identity_key() :
-                   get_server_identity_key();
-
-  if (identity_rcvd) {
-    if (crypto_pk_cmp_keys(our_identity, identity_rcvd)<0) {
-      conn->circ_id_type = CIRC_ID_TYPE_LOWER;
-    } else {
-      conn->circ_id_type = CIRC_ID_TYPE_HIGHER;
-    }
-  } else {
-    conn->circ_id_type = CIRC_ID_TYPE_NEITHER;
-  }
-}
-
 /** <b>Conn</b> just completed its handshake. Return 0 if all is well, and
  * return -1 if he is lying, broken, or otherwise something is wrong.
  *
@@ -1576,7 +1553,8 @@ connection_or_check_valid_tls_handshake(or_connection_t *conn,
     memset(digest_rcvd_out, 0, DIGEST_LEN);
   }
 
-  connection_or_set_circid_type(conn, identity_rcvd);
+  tor_assert(conn->chan);
+  channel_set_circid_type(TLS_CHAN_TO_BASE(conn->chan), identity_rcvd);
   crypto_pk_free(identity_rcvd);
 
   if (started_here)
