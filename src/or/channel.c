@@ -1445,6 +1445,24 @@ channel_touched_by_client(channel_t *chan)
   chan->client_used = time(NULL);
 }
 
+/** Get/set is_bad_for_new_circs flag */
+
+unsigned int
+channel_is_bad_for_new_circs(channel_t *chan)
+{
+  tor_assert(chan);
+
+  return chan->is_bad_for_new_circs;
+}
+
+void
+channel_mark_bad_for_new_circs(channel_t *chan)
+{
+  tor_assert(chan);
+
+  chan->is_bad_for_new_circs = 1;
+}
+
 /** Set up circuit ID stuff; this replaces connection_or_set_circid_type() */
 
 void

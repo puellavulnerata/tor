@@ -268,6 +268,8 @@ channel_t * channel_find_by_remote_nickname(char *nickname);
 const char * channel_get_real_remote_descr(channel_t *chan);
 const char * channel_get_remote_descr(channel_t *chan);
 size_t channel_get_write_queue_len(channel_t *chan);
+unsigned int channel_is_bad_for_new_circs(channel_t *chan);
+void channel_mark_bad_for_new_circs(channel_t *chan);
 int channel_is_local(channel_t *chan);
 int channel_is_outgoing(channel_t *chan);
 void channel_mark_as_client(channel_t *chan);
