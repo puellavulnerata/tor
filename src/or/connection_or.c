@@ -50,6 +50,10 @@ static int connection_or_check_valid_tls_handshake(or_connection_t *conn,
 
 static void connection_or_tls_renegotiated_cb(tor_tls_t *tls, void *_conn);
 
+static unsigned int
+connection_or_is_bad_for_new_circs(or_connection_t *or_conn);
+static void connection_or_mark_bad_for_new_circs(or_connection_t *or_conn);
+
 /*
  * Call this when changing connection state, so notifications to the owning
  * channel can be handled.
@@ -759,6 +763,28 @@ connection_or_init_conn_from_address(or_connection_t *conn,
   }
 }
 
+/** These just pass all the is_bad_for_new_circs manipulation on to
+ * channel_t */
+
+static unsigned int
+connection_or_is_bad_for_new_circs(or_connection_t *or_conn)
+{
+  tor_assert(or_conn);
+
+  if (or_conn->chan)
+    return channel_is_bad_for_new_circs(TLS_CHAN_TO_BASE(or_conn->chan));
+  else return 0;
+}
+
+static void
+connection_or_mark_bad_for_new_circs(or_connection_t *or_conn)
+{
+  tor_assert(or_conn);
+
+  if (or_conn->chan)
+    channel_mark_bad_for_new_circs(TLS_CHAN_TO_BASE(or_conn->chan));
+}
+
 /** Return true iff <b>a</b> is "better" than <b>b</b> for new circuits.
  *
  * A more canonical connection is always better than a less canonical
@@ -859,7 +885,7 @@ connection_or_get_for_extend(const char *digest,
       continue;
     }
     /* Never return a connection that shouldn't be used for circs. */
-    if (conn->is_bad_for_new_circs) {
+    if (connection_or_is_bad_for_new_circs(conn)) {
       ++n_old;
       continue;
     }
@@ -939,7 +965,7 @@ connection_or_group_set_badness(or_connection_t *head, int force)
    * everything else is. */
   for (or_conn = head; or_conn; or_conn = or_conn->next_with_same_id) {
     if (or_conn->_base.marked_for_close ||
-        or_conn->is_bad_for_new_circs)
+        connection_or_is_bad_for_new_circs(or_conn))
       continue;
     if (force ||
         or_conn->_base.timestamp_created + TIME_BEFORE_OR_CONN_IS_TOO_OLD
@@ -949,10 +975,10 @@ connection_or_group_set_badness(or_connection_t *head, int force)
                "(fd %d, %d secs old).",
                or_conn->_base.address, or_conn->_base.port, or_conn->_base.s,
                (int)(now - or_conn->_base.timestamp_created));
-      or_conn->is_bad_for_new_circs = 1;
+      connection_or_mark_bad_for_new_circs(or_conn);
     }
 
-    if (or_conn->is_bad_for_new_circs) {
+    if (connection_or_is_bad_for_new_circs(or_conn)) {
       ++n_old;
     } else if (or_conn->_base.state != OR_CONN_STATE_OPEN) {
       ++n_inprogress;
@@ -967,7 +993,7 @@ connection_or_group_set_badness(or_connection_t *head, int force)
    * expire everything that's worse, and find the very best if we can. */
   for (or_conn = head; or_conn; or_conn = or_conn->next_with_same_id) {
     if (or_conn->_base.marked_for_close ||
-        or_conn->is_bad_for_new_circs)
+        connection_or_is_bad_for_new_circs(or_conn))
       continue; /* This one doesn't need to be marked bad. */
     if (or_conn->_base.state != OR_CONN_STATE_OPEN)
       continue; /* Don't mark anything bad until we have seen what happens
@@ -981,7 +1007,7 @@ connection_or_group_set_badness(or_connection_t *head, int force)
                "another connection to that OR that is.",
                or_conn->_base.address, or_conn->_base.port, or_conn->_base.s,
                (int)(now - or_conn->_base.timestamp_created));
-      or_conn->is_bad_for_new_circs = 1;
+      connection_or_mark_bad_for_new_circs(or_conn);
       continue;
     }
 
@@ -1008,7 +1034,7 @@ connection_or_group_set_badness(or_connection_t *head, int force)
    */
   for (or_conn = head; or_conn; or_conn = or_conn->next_with_same_id) {
     if (or_conn->_base.marked_for_close ||
-        or_conn->is_bad_for_new_circs ||
+        connection_or_is_bad_for_new_circs(or_conn) ||
         or_conn->_base.state != OR_CONN_STATE_OPEN)
       continue;
     if (or_conn != best && connection_or_is_better(now, best, or_conn, 1)) {
@@ -1022,7 +1048,7 @@ connection_or_group_set_badness(or_connection_t *head, int force)
                  or_conn->_base.address, or_conn->_base.port, or_conn->_base.s,
                  (int)(now - or_conn->_base.timestamp_created),
                  best->_base.s, (int)(now - best->_base.timestamp_created));
-        or_conn->is_bad_for_new_circs = 1;
+        connection_or_mark_bad_for_new_circs(or_conn);
       } else if (!tor_addr_compare(&or_conn->real_addr,
                                    &best->real_addr, CMP_EXACT)) {
         log_info(LD_OR,
@@ -1032,7 +1058,7 @@ connection_or_group_set_badness(or_connection_t *head, int force)
                  or_conn->_base.address, or_conn->_base.port, or_conn->_base.s,
                  (int)(now - or_conn->_base.timestamp_created),
                  best->_base.s, (int)(now - best->_base.timestamp_created));
-        or_conn->is_bad_for_new_circs = 1;
+        connection_or_mark_bad_for_new_circs(or_conn);
       }
     }
   }
