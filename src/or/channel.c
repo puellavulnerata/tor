@@ -21,6 +21,7 @@
 #include "geoip.h"
 #include "relay.h"
 #include "rephist.h"
+#include "router.h"
 #include "routerlist.h"
 
 /* Cell queue structure */
@@ -1444,6 +1445,31 @@ channel_touched_by_client(channel_t *chan)
   chan->client_used = time(NULL);
 }
 
+/** Set up circuit ID stuff; this replaces connection_or_set_circid_type() */
+
+void
+channel_set_circid_type(channel_t *chan, crypto_pk_t *identity_rcvd)
+{
+  int started_here;
+  crypto_pk_t *our_identity;
+  
+  tor_assert(chan);
+
+  started_here = channel_was_started_here(chan);
+  our_identity = started_here ?
+    get_tlsclient_identity_key() : get_server_identity_key();
+
+
+  if (identity_rcvd) {
+    if (crypto_pk_cmp_keys(our_identity, identity_rcvd) < 0) {
+      chan->circ_id_type = CIRC_ID_TYPE_LOWER;
+    } else {
+      chan->circ_id_type = CIRC_ID_TYPE_HIGHER;
+    }
+  } else {
+    chan->circ_id_type = CIRC_ID_TYPE_NEITHER;
+  }
+}
 
 /** Check whether a channel was started locally or was an incoming channel
  * from a listener. */
