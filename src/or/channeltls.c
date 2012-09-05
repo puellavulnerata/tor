@@ -118,6 +118,12 @@ channel_tls_connect(const tor_addr_t *addr, uint16_t port,
   chan = NULL;
 
  done:
+  /* If we got one, we should register and refcount it */
+  if (chan) {
+    channel_ref(chan);
+    channel_register(chan);
+  }
+
   return chan;
 }
 
