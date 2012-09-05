@@ -54,6 +54,7 @@ void connection_or_init_conn_from_address(or_connection_t *conn,
                                           int started_here);
 int connection_or_client_learned_peer_id(or_connection_t *conn,
                                          const uint8_t *peer_id);
+time_t connection_or_client_used(or_connection_t *conn);
 void connection_or_set_circid_type(or_connection_t *conn,
                                    crypto_pk_t *identity_rcvd);
 void or_handshake_state_free(or_handshake_state_t *state);

@@ -1653,6 +1653,18 @@ connection_or_client_learned_peer_id(or_connection_t *conn,
   return 0;
 }
 
+/** Return when a client used this, for connection.c, since client_used
+ * is now in channel_t. */
+
+time_t
+connection_or_client_used(or_connection_t *conn)
+{
+  tor_assert(conn);
+
+  if (conn->chan) return TLS_CHAN_TO_BASE(conn->chan)->client_used;
+  else return 0;
+}
+
 /** The v1/v2 TLS handshake is finished.
  *
  * Make sure we are happy with the person we just handshaked with.
