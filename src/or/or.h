@@ -1319,10 +1319,6 @@ typedef struct or_connection_t {
   unsigned int proxy_type:2; /**< One of PROXY_NONE...PROXY_SOCKS5 */
   uint8_t link_proto; /**< What protocol version are we using? 0 for
                        * "none negotiated yet." */
-  /* TODO channels - can we eliminate this since it's in channel_t ? */
-  circid_t next_circ_id; /**< Which circ_id do we try to use next on
-                          * this connection?  This is always in the
-                          * range 0..1<<15-1. */
 
   or_handshake_state_t *handshake_state; /**< If we are setting this connection
                                           * up, state information to do so. */
