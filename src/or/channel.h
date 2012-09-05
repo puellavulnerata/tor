@@ -36,8 +36,6 @@ struct channel_s {
 
   /* Globally unique ID number for a channel over the lifetime of a Tor
    * process.
-   *
-   * TODO function to look up channel by ID
    */
   uint64_t global_identifier;
 
@@ -57,8 +55,6 @@ struct channel_s {
 
   /* List of queued outgoing cells */
   smartlist_t *outgoing_queue;
-
-  /* TODO function to look up channels by digest, nickname */
 
   /** Hash of the public RSA key for the other side's identity key, or zeroes
    * if the other side hasn't shown us a valid identity key.
@@ -257,6 +253,13 @@ channel_t * channel_get_for_extend(const char *digest,
                                    const tor_addr_t *target_addr,
                                    const char **msg_out,
                                    int *launch_out);
+
+/** Channel lookups
+ */
+
+channel_t * channel_find_by_global_id(uint64_t global_identifier);
+channel_t * channel_find_by_remote_digest(char *identity_digest);
+channel_t * channel_find_by_remote_nickname(char *nickname);
 
 /*
  * Metadata queries/updates
