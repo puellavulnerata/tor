@@ -255,7 +255,6 @@ or_connection_new(int socket_family)
   connection_init(now, TO_CONN(or_conn), CONN_TYPE_OR, socket_family);
 
   or_conn->timestamp_last_added_nonpadding = time(NULL);
-  or_conn->next_circ_id = crypto_rand_int(1<<15);
 
   return or_conn;
 }
