@@ -30,7 +30,8 @@ typedef struct cell_queue_entry_s cell_queue_entry_t;
 struct cell_queue_entry_s {
   enum {
     CELL_QUEUE_FIXED,
-    CELL_QUEUE_VAR
+    CELL_QUEUE_VAR,
+    CELL_QUEUE_PACKED
   } type;
   union {
     struct {
@@ -39,6 +40,9 @@ struct cell_queue_entry_s {
     struct {
       var_cell_t *var_cell;
     } var;
+    struct {
+      packed_cell_t *packed_cell;
+    } packed;
   } u;
 };
 
@@ -773,6 +777,48 @@ channel_write_cell(channel_t *chan, cell_t *cell)
   }
 }
 
+/** Write a packed cell to a channel using the write_packed_cell() method.
+ * This is equivalent to connection_or_write_cell_to_buf(). */
+
+void
+channel_write_packed_cell(channel_t *chan, packed_cell_t *packed_cell)
+{
+  cell_queue_entry_t *q;
+
+  tor_assert(chan != NULL);
+  tor_assert(packed_cell != NULL);
+  tor_assert(chan->write_packed_cell != NULL);
+  /* Assert that the state makes sense for a cell write */
+  tor_assert(chan->state == CHANNEL_STATE_OPENING ||
+             chan->state == CHANNEL_STATE_OPEN ||
+             chan->state == CHANNEL_STATE_MAINT);
+
+  log_debug(LD_CHANNEL,
+            "Writing packed_cell_t %p to channel %p",
+            packed_cell, chan);
+
+  /* Increment the timestamp */
+  chan->timestamp_last_added_nonpadding = approx_time();
+
+  /* Can we send it right out? */
+  if (!(chan->outgoing_queue &&
+        (smartlist_len(chan->outgoing_queue) > 0)) &&
+      chan->state == CHANNEL_STATE_OPEN) {
+    channel_ref(chan);
+    chan->write_packed_cell(chan, packed_cell);
+    channel_unref(chan);
+  } else {
+    /* No, queue it */
+    if (!(chan->outgoing_queue)) chan->outgoing_queue = smartlist_new();
+    q = tor_malloc(sizeof(*q));
+    q->type = CELL_QUEUE_PACKED;
+    q->u.packed.packed_cell = packed_cell;
+    smartlist_add(chan->outgoing_queue, q);
+    /* Try to process the queue? */
+    if (chan->state == CHANNEL_STATE_OPEN) channel_flush_cells(chan);
+  }
+}
+
 /** Write a var_cell_t to a channel using the write_var_cell() method. This
  * is equivalent to connection_or_write_var_cell_to_buf(). */
 
@@ -1012,6 +1058,23 @@ channel_flush_some_cells_from_outgoing_queue(channel_t *chan,
               /* This shouldn't happen */
               log_info(LD_CHANNEL,
                        "Saw broken cell queue entry of type CELL_QUEUE_FIXED "
+                       "with no cell on channel %p.",
+                       chan);
+              /* Throw it away */
+              tor_free(q);
+            }
+            break;
+         case CELL_QUEUE_PACKED:
+            if (q->u.packed.packed_cell) {
+              if (chan->write_packed_cell(chan, q->u.packed.packed_cell)) {
+                tor_free(q);
+                ++flushed;
+              }
+              /* Else couldn't write it; leave it on the queue */
+            } else {
+              /* This shouldn't happen */
+              log_info(LD_CHANNEL,
+                       "Saw broken cell queue entry of type CELL_QUEUE_PACKED "
                        "with no cell on channel %p.",
                        chan);
               /* Throw it away */
