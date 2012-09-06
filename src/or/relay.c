@@ -1842,6 +1842,12 @@ packed_cell_new(void)
   return mp_pool_get(cell_pool);
 }
 
+/** Return a packed cell used outside by channel_t lower layer */
+void
+packed_cell_free(packed_cell_t *cell) {
+  packed_cell_free_unchecked(cell);
+}
+
 /** Log current statistics for cell pool allocation at log level
  * <b>severity</b>. */
 void
@@ -2466,7 +2472,6 @@ channel_flush_from_first_active_circuit(channel_t *chan, int max)
                                 DIRREQ_TUNNELED,
                                 DIRREQ_CIRC_QUEUE_FLUSHED);
 
-    /* TODO get packed cells to channel? */
     channel_write_packed_cell(chan, cell);
 
     packed_cell_free_unchecked(cell);
