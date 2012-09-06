@@ -53,6 +53,8 @@ struct channel_tls_s {
 static void channel_tls_close_method(channel_t *chan);
 static int channel_tls_write_cell_method(channel_t *chan,
                                          cell_t *cell);
+static int channel_tls_write_packed_cell_method(channel_t *chan,
+                                                packed_cell_t *packed_cell);
 static int channel_tls_write_var_cell_method(channel_t *chan,
                                              var_cell_t *var_cell);
 
@@ -98,6 +100,7 @@ channel_tls_connect(const tor_addr_t *addr, uint16_t port,
   chan->state = CHANNEL_STATE_OPENING;
   chan->close = channel_tls_close_method;
   chan->write_cell = channel_tls_write_cell_method;
+  chan->write_packed_cell = channel_tls_write_packed_cell_method;
   chan->write_var_cell = channel_tls_write_var_cell_method;
 
   chan->active_circuit_pqueue = smartlist_new();
@@ -158,6 +161,27 @@ channel_tls_write_cell_method(channel_t *chan, cell_t *cell)
   tor_assert(tlschan->conn);
 
   connection_or_write_cell_to_buf(cell, tlschan->conn);
+
+  return 1;
+}
+
+/** Given a channel_tls_t and a packed_cell_t, transmit the packed_cell_t */
+
+static int
+channel_tls_write_packed_cell_method(channel_t *chan,
+                                     packed_cell_t *packed_cell)
+{
+  channel_tls_t *tlschan = BASE_CHAN_TO_TLS(chan);
+
+  tor_assert(tlschan);
+  tor_assert(packed_cell);
+  tor_assert(tlschan->conn);
+
+  connection_write_to_buf(packed_cell->body, CELL_NETWORK_SIZE,
+                          TO_CONN(tlschan->conn));
+
+  /* This is where the cell is finished; used to be done from relay.c */
+  packed_cell_free(packed_cell);
 
   return 1;
 }
