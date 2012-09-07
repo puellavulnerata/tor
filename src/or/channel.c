@@ -1758,7 +1758,7 @@ channel_touched_by_client(channel_t *chan)
 
 /** Get/set is_bad_for_new_circs flag */
 
-unsigned int
+int
 channel_is_bad_for_new_circs(channel_t *chan)
 {
   tor_assert(chan);
