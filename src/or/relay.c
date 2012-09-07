@@ -2540,7 +2540,7 @@ append_cell_to_circuit_queue(circuit_t *circ, channel_t *chan,
     make_circuit_active_on_chan(circ, chan);
   }
 
-  if (!channel_get_write_queue_len(chan)) {
+  if (!channel_has_queued_writes(chan)) {
     /* There is no data at all waiting to be sent on the outbuf.  Add a
      * cell, so that we can notice when it gets flushed, flushed_some can
      * get called, and we can start putting more data onto the buffer then.
