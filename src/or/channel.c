@@ -1769,6 +1769,32 @@ channel_mark_bad_for_new_circs(channel_t *chan)
   chan->is_bad_for_new_circs = 1;
 }
 
+/** Get local flag; the lower layer should set this when setting up the
+ * channel if is_local_addr() is true for all of the destinations it will
+ * communicate with on behalf of this channel.  It's used to decide whether
+ * to declare the network reachable when seeing incoming traffic on the
+ * channel. */
+
+int
+channel_is_local(channel_t *chan)
+{
+  tor_assert(chan);
+
+  return chan->is_local;
+}
+
+/* Set the local flag; this internal-only function should be called by the
+ * lower layer if the channel is to a local address.  See above or the
+ * description of the is_local bit in channel.h */
+
+void
+channel_mark_local(channel_t *chan)
+{
+  tor_assert(chan);
+
+  chan->is_local = 1;
+}
+
 /** Set up circuit ID stuff; this replaces connection_or_set_circid_type() */
 
 void
