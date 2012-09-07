@@ -167,6 +167,8 @@ struct channel_s {
   int (*is_canonical)(channel_t *);
   /* Check if this channel matches a specified extend_info_t */
   int (*matches_extend_info)(channel_t *, extend_info_t *);
+  /* Check if this channel matches a target address when extending */
+  int (*matches_target)(channel_t *, const tor_addr_t *);
   /* Write a cell to an open channel */
   int (*write_cell)(channel_t *, cell_t *);
   /* Write a packed cell to an open channel */
@@ -339,7 +341,8 @@ int channel_is_incoming(channel_t *chan);
 int channel_is_outgoing(channel_t *chan);
 void channel_mark_client(channel_t *chan);
 int channel_matches_extend_info(channel_t *chan, extend_info_t *extend_info);
-int channel_matches_target_addr_for_extend(const tor_addr_t *target);
+int channel_matches_target_addr_for_extend(channel_t *chan,
+                                           const tor_addr_t *target);
 void channel_set_circid_type(channel_t *chan, crypto_pk_t *identity_rcvd);
 void channel_timestamp_client(channel_t *chan);
 

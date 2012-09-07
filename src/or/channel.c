@@ -1852,7 +1852,7 @@ channel_get_for_extend(const char *digest,
     if (chan->state != CHANNEL_STATE_OPEN) {
       /* If the address matches, don't launch a new connection for this
        * circuit. */
-      if (!channel_matches_target_addr_for_extend(target_addr))
+      if (!channel_matches_target_addr_for_extend(chan, target_addr))
         ++n_inprogress_goodaddr;
       continue;
     }
@@ -1878,7 +1878,7 @@ channel_get_for_extend(const char *digest,
      */
     if (!channel_is_canonical(chan) &&
          channel_is_canonical_is_reliable(chan) &&
-        !channel_matches_target_addr_for_extend(target_addr)) {
+        !channel_matches_target_addr_for_extend(chan, target_addr)) {
       ++n_noncanonical;
       continue;
     }
@@ -2232,6 +2232,21 @@ channel_matches_extend_info(channel_t *chan, extend_info_t *extend_info)
   tor_assert(extend_info);
 
   return chan->matches_extend_info(chan, extend_info);
+}
+
+/** Call into the lower layer and see if this channel thinks it matches a
+ * given target address for circuit extension purposes.
+ */
+
+int
+channel_matches_target_addr_for_extend(channel_t *chan,
+                                       const tor_addr_t *target)
+{
+  tor_assert(chan);
+  tor_assert(chan->matches_target);
+  tor_assert(target);
+
+  return chan->matches_target(chan, target);
 }
 
 /** Set up circuit ID stuff; this replaces connection_or_set_circid_type() */
