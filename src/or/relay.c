@@ -564,7 +564,7 @@ relay_send_command_from_edge(streamid_t stream_id, circuit_t *circ,
 
   if (cell_direction == CELL_DIRECTION_OUT && circ->n_chan) {
     /* if we're using relaybandwidthrate, this conn wants priority */
-    circ->n_chan->client_used = approx_time();
+    channel_timestamp_client(circ->n_chan);
   }
 
   if (cell_direction == CELL_DIRECTION_OUT) {
