@@ -1433,7 +1433,7 @@ channel_process_incoming(channel_t *listener)
               chan, listener);
     channel_ref(chan);
     /* Make sure this is set correctly */
-    chan->initiated_remotely = 1;
+    channel_mark_incoming(chan);
     listener->listener(listener, chan);
     channel_unref(chan);
     SMARTLIST_DEL_CURRENT(listener->incoming_list, chan);
@@ -1464,7 +1464,7 @@ channel_do_open_actions(channel_t *chan)
 
   tor_assert(chan);
 
-  started_here = channel_was_started_here(chan);
+  started_here = channel_is_outgoing(chan);
 
   if (started_here) {
     circuit_build_times_network_is_live(&circ_times);
@@ -1795,6 +1795,27 @@ channel_mark_client(channel_t *chan)
   chan->is_client = 1;
 }
 
+/** Get the incoming flag; this is set when a listener spawns a channel.
+ * If this returns true the channel was remotely initiated. */
+
+int
+channel_is_incoming(channel_t *chan)
+{
+  tor_assert(chan);;
+
+  return chan->is_incoming;
+}
+
+/** Set the incoming flag */
+
+void
+channel_mark_incoming(channel_t *chan)
+{
+  tor_assert(chan);
+
+  chan->is_incoming = 1;
+}
+
 /** Get local flag; the lower layer should set this when setting up the
  * channel if is_local_addr() is true for all of the destinations it will
  * communicate with on behalf of this channel.  It's used to decide whether
@@ -1821,26 +1842,26 @@ channel_mark_local(channel_t *chan)
   chan->is_local = 1;
 }
 
-/** Get the outgoing flag; this should be set from lower-layer connect
- * functions if this channel was initiated here, as opposed to being spawned
- * from a listening channel. */
+/** Get the outgoing flag; this is the inverse of the incoming bit set when
+ * a listener spawns a channel.  If this returns true the channel was locally
+ * initiated. */
 
 int
 channel_is_outgoing(channel_t *chan)
 {
   tor_assert(chan);;
 
-  return chan->is_outgoing;
+  return !(chan->is_incoming);
 }
 
-/** Set the outgoing flag */
+/** Clear the incoming flag */
 
 void
 channel_mark_outgoing(channel_t *chan)
 {
   tor_assert(chan);
 
-  chan->is_outgoing = 1;
+  chan->is_incoming = 0;
 }
 
 /** Timestamp updates */
@@ -1978,7 +1999,7 @@ channel_set_circid_type(channel_t *chan, crypto_pk_t *identity_rcvd)
 
   tor_assert(chan);
 
-  started_here = channel_was_started_here(chan);
+  started_here = channel_is_outgoing(chan);
   our_identity = started_here ?
     get_tlsclient_identity_key() : get_server_identity_key();
 
@@ -1991,17 +2012,5 @@ channel_set_circid_type(channel_t *chan, crypto_pk_t *identity_rcvd)
   } else {
     chan->circ_id_type = CIRC_ID_TYPE_NEITHER;
   }
-}
-
-/** Check whether a channel was started locally or was an incoming channel
- * from a listener. */
-
-int
-channel_was_started_here(channel_t *chan)
-{
-  tor_assert(chan);
-
-  if (chan->initiated_remotely) return 0;
-  else return 1;
 }
 

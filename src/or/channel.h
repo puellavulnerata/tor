@@ -113,15 +113,15 @@ struct channel_s {
    * to satisfy an EXTEND request.  */
   unsigned int is_client:1;
 
+  /** Set if the channel was initiated remotely (came from a listener) */
+  unsigned int is_incoming:1;
+
   /** Set by lower layer if this is local; i.e., everything it communicates
    * with for this channel returns true for is_local_addr().  This is used
    * to decide whether to declare reachability when we receive something on
    * this channel in circuitbuild.c
    */
   unsigned int is_local:1;
-
-  /** Set if the channel was initiated here */
-  unsigned int is_outgoing:1;
 
   /** Channel timestamps */
   time_t timestamp_created;
@@ -146,9 +146,6 @@ struct channel_s {
     CHANNEL_CLOSE_FROM_BELOW,
     CHANNEL_CLOSE_FOR_ERROR
   } reason_for_closing;
-
-  /** Set this to 1 if we were started by a listener channel */
-  unsigned int initiated_remotely:1;
 
   /*
    * Function pointers for channel ops
@@ -233,6 +230,7 @@ void channel_free(channel_t *chan);
 void channel_change_state(channel_t *chan, channel_state_t to_state);
 void channel_clear_remote_end(channel_t *chan);
 void channel_mark_local(channel_t *chan);
+void channel_mark_incoming(channel_t *chan);
 void channel_mark_outgoing(channel_t *chan);
 void channel_set_remote_end(channel_t *chan,
                             const char *identity_digest,
@@ -318,12 +316,12 @@ unsigned int channel_is_bad_for_new_circs(channel_t *chan);
 void channel_mark_bad_for_new_circs(channel_t *chan);
 int channel_is_client(channel_t *chan);
 int channel_is_local(channel_t *chan);
+int channel_is_incoming(channel_t *chan);
 int channel_is_outgoing(channel_t *chan);
 void channel_mark_client(channel_t *chan);
 int channel_matches_extend_info(channel_t *chan, extend_info_t *extend_info);
 void channel_set_circid_type(channel_t *chan, crypto_pk_t *identity_rcvd);
 void channel_touched_by_client(channel_t *chan);
-int channel_was_started_here(channel_t *chan);
 
 /* Timestamp queries */
 time_t channel_when_created(channel_t *chan);
