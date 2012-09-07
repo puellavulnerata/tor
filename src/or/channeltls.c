@@ -103,6 +103,8 @@ channel_tls_connect(const tor_addr_t *addr, uint16_t port,
   chan->write_packed_cell = channel_tls_write_packed_cell_method;
   chan->write_var_cell = channel_tls_write_var_cell_method;
 
+  if (is_local_addr(addr)) channel_mark_local(chan);
+
   chan->active_circuit_pqueue = smartlist_new();
   chan->active_circuit_pqueue_last_recalibrated = cell_ewma_get_tick();
 
