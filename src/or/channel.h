@@ -123,6 +123,13 @@ struct channel_s {
   /** Set if the channel was initiated here */
   unsigned int is_outgoing:1;
 
+  /** Channel timestamps */
+  time_t timestamp_created;
+  time_t timestamp_active;
+  time_t timestamp_drained;
+  time_t timestamp_recv;
+  time_t timestamp_xmit;
+
   /* Timestamp for relay.c */
   time_t timestamp_last_added_nonpadding;
 
@@ -231,6 +238,13 @@ void channel_set_remote_end(channel_t *chan,
                             const char *identity_digest,
                             const char *nickname);
 
+/* Timestamp updates */
+void channel_timestamp_created(channel_t *chan);
+void channel_timestamp_active(channel_t *chan);
+void channel_timestamp_drained(channel_t *chan);
+void channel_timestamp_recv(channel_t *chan);
+void channel_timestamp_xmit(channel_t *chan);
+
 /* Incoming channel handling */
 void channel_process_incoming(channel_t *listener);
 void channel_queue_incoming(channel_t *listener, channel_t *incoming);
@@ -310,8 +324,12 @@ int channel_matches_extend_info(channel_t *chan, extend_info_t *extend_info);
 void channel_set_circid_type(channel_t *chan, crypto_pk_t *identity_rcvd);
 void channel_touched_by_client(channel_t *chan);
 int channel_was_started_here(channel_t *chan);
+
+/* Timestamp queries */
 time_t channel_when_created(channel_t *chan);
+time_t channel_when_last_active(channel_t *chan);
 time_t channel_when_last_drained(channel_t *chan);
+time_t channel_when_last_recv(channel_t *chan);
 time_t channel_when_last_xmit(channel_t *chan);
 
 #endif
