@@ -609,6 +609,9 @@ channel_init(channel_t *chan)
 
   /* Init next_circ_id */
   chan->next_circ_id = crypto_rand_int(1 << 15);
+
+  /* Timestamp it */
+  channel_timestamp_created(chan);
 }
 
 /** Internal-only channel free function
@@ -1178,7 +1181,7 @@ channel_change_state(channel_t *chan, channel_state_t to_state)
     /* Now we need to handle the identity map */
     was_in_id_map = !(from_state == CHANNEL_STATE_LISTENING ||
                       from_state == CHANNEL_STATE_CLOSING ||
-                      from_state == CHANNEL_STATE_CLOSED || 
+                      from_state == CHANNEL_STATE_CLOSED ||
                       from_state == CHANNEL_STATE_ERROR);
     is_in_id_map = !(to_state == CHANNEL_STATE_LISTENING ||
                      to_state == CHANNEL_STATE_CLOSING ||
@@ -1391,7 +1394,8 @@ channel_more_to_flush(channel_t *chan)
  * dirreq-related maintenance to do. */
 
 void
-channel_notify_flushed(channel_t *chan) {
+channel_notify_flushed(channel_t *chan)
+{
   tor_assert(chan);
 
   if (chan->dirreq_id != 0)
@@ -1452,7 +1456,8 @@ channel_process_incoming(channel_t *listener)
  * packet is received from the other side.
  */
 
-void channel_do_open_actions(channel_t *chan)
+void
+channel_do_open_actions(channel_t *chan)
 {
   int started_here, not_using = 0;
   time_t now = time(NULL);
@@ -1838,6 +1843,131 @@ channel_mark_outgoing(channel_t *chan)
   chan->is_outgoing = 1;
 }
 
+/** Timestamp updates */
+
+/** Update the created timestamp; this should only be called from
+ * channel_init(). */
+
+void
+channel_timestamp_created(channel_t *chan)
+{
+  time_t now = time(NULL);
+
+  tor_assert(chan);
+
+  chan->timestamp_created = now;
+}
+
+/** Update the last active timestamp.  This should be called by the
+ * lower layer whenever there is activity on the channel which does
+ * not lead to a cell being transmitted or received; the active
+ * timestamp is also updated from channel_timestamp_recv() and
+ * channel_timestamp_xmit(), but it should be updated for things
+ * like the v3 handshake and stuff that produce activity only
+ * visible to the lower layer.
+ */
+
+void
+channel_timestamp_active(channel_t *chan)
+{
+  time_t now = time(NULL);
+
+  tor_assert(chan);
+
+  chan->timestamp_active = now;
+}
+
+/** Update the last drained timestamp.  This is called whenever we
+ * transmit a cell which leaves the outgoing cell queue completely
+ * empty.  It also updates the xmit time and the active time.
+ */
+
+void
+channel_timestamp_drained(channel_t *chan)
+{
+  time_t now = time(NULL);
+
+  tor_assert(chan);
+
+  chan->timestamp_active = now;
+  chan->timestamp_drained = now;
+  chan->timestamp_xmit = now;
+}
+
+/** Update the recv timestamp.  This is called whenever we get an
+ * incoming cell from the lower layer.  This also updates the active
+ * timestamp.
+ */
+
+void
+channel_timestamp_recv(channel_t *chan)
+{
+  time_t now = time(NULL);
+
+  tor_assert(chan);
+
+  chan->timestamp_active = now;
+  chan->timestamp_recv = now;
+}
+
+/** Update the xmit timestamp.  This is called whenever we pass an
+ * outgoing cell to the lower layer.  This also updates the active
+ * timestamp.
+ */
+
+void
+channel_timestamp_xmit(channel_t *chan)
+{
+  time_t now = time(NULL);
+
+  tor_assert(chan);
+
+  chan->timestamp_active = now;
+  chan->timestamp_xmit = now;
+}
+
+/** Timestamp queries - see above comments for meaning of the timestamps */
+
+time_t
+channel_when_created(channel_t *chan)
+{
+  tor_assert(chan);
+
+  return chan->timestamp_created;
+}
+
+time_t
+channel_when_last_active(channel_t *chan)
+{
+  tor_assert(chan);
+
+  return chan->timestamp_active;
+}
+
+time_t
+channel_when_last_drained(channel_t *chan)
+{
+  tor_assert(chan);
+
+  return chan->timestamp_drained;
+}
+
+time_t
+channel_when_last_recv(channel_t *chan)
+{
+  tor_assert(chan);
+
+  return chan->timestamp_recv;
+}
+
+time_t
+channel_when_last_xmit(channel_t *chan)
+{
+  tor_assert(chan);
+
+  return chan->timestamp_xmit;
+}
+
 /** Set up circuit ID stuff; this replaces connection_or_set_circid_type() */
 
 void
@@ -1845,13 +1975,12 @@ channel_set_circid_type(channel_t *chan, crypto_pk_t *identity_rcvd)
 {
   int started_here;
   crypto_pk_t *our_identity;
-  
+
   tor_assert(chan);
 
   started_here = channel_was_started_here(chan);
   our_identity = started_here ?
     get_tlsclient_identity_key() : get_server_identity_key();
-
 
   if (identity_rcvd) {
     if (crypto_pk_cmp_keys(our_identity, identity_rcvd) < 0) {
@@ -1875,3 +2004,4 @@ channel_was_started_here(channel_t *chan)
   if (chan->initiated_remotely) return 0;
   else return 1;
 }
+
