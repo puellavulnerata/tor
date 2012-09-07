@@ -85,14 +85,6 @@ static ssize_t
 channel_flush_some_cells_from_outgoing_queue(channel_t *chan,
                                              ssize_t num_cells);
 
-/** Compare two channels while trying to pick on to extend circuits on
-  */
-
-static int channel_is_better(time_t now,
-                             channel_t *a,
-                             channel_t *b,
-                             int forgive_new_connections);
-
 /** Indicate whether a given channel state is valid
  */
 
@@ -1759,10 +1751,10 @@ channel_connect(const tor_addr_t *addr, uint16_t port,
  * here is that a canonical channel is always better than a non-canonical
  * one, but the number of circuits and the age are used as tie-breakers.
  *
- * This is based connection_or_is_better() of connection_or.c
+ * This is based on the former connection_or_is_better() of connection_or.c
  */
 
-static int
+int
 channel_is_better(time_t now, channel_t *a, channel_t *b,
                   int forgive_new_connections)
 {
