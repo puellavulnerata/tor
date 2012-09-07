@@ -2114,7 +2114,7 @@ circuit_deliver_create_cell(circuit_t *circ, uint8_t cell_type,
 
   if (CIRCUIT_IS_ORIGIN(circ)) {
     /* mark it so it gets better rate limiting treatment. */
-    channel_touched_by_client(circ->n_chan);
+    channel_timestamp_client(circ->n_chan);
   }
 
   return 0;
