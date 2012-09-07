@@ -309,8 +309,8 @@ channel_t * channel_prev_with_digest_unref(channel_t *chan);
  * Metadata queries/updates
  */
 
-const char * channel_get_real_remote_descr(channel_t *chan);
-const char * channel_get_remote_descr(channel_t *chan);
+const char * channel_get_actual_remote_descr(channel_t *chan);
+const char * channel_get_canonical_remote_descr(channel_t *chan);
 size_t channel_get_write_queue_len(channel_t *chan);
 unsigned int channel_is_bad_for_new_circs(channel_t *chan);
 void channel_mark_bad_for_new_circs(channel_t *chan);
