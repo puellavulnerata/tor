@@ -1816,6 +1816,28 @@ channel_mark_local(channel_t *chan)
   chan->is_local = 1;
 }
 
+/** Get the outgoing flag; this should be set from lower-layer connect
+ * functions if this channel was initiated here, as opposed to being spawned
+ * from a listening channel. */
+
+int
+channel_is_outgoing(channel_t *chan)
+{
+  tor_assert(chan);;
+
+  return chan->is_outgoing;
+}
+
+/** Set the outgoing flag */
+
+void
+channel_mark_outgoing(channel_t *chan)
+{
+  tor_assert(chan);
+
+  chan->is_outgoing = 1;
+}
+
 /** Set up circuit ID stuff; this replaces connection_or_set_circid_type() */
 
 void
