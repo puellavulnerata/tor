@@ -1746,6 +1746,26 @@ channel_connect(const tor_addr_t *addr, uint16_t port,
   return channel_tls_connect(addr, port, id_digest);
 }
 
+/** Return text descriptions provided by the lower layer of the remote
+ * endpoint for this channel. */
+
+const char *
+channel_get_actual_remote_descr(channel_t *chan)
+{
+  tor_assert(chan);
+  tor_assert(chan->get_remote_descr);
+
+  /* Param 1 indicates the actual description */
+  return chan->get_remote_descr(1);
+}
+
+const char *
+channel_get_canonical_remote_descr(channel_t *chan)
+{
+  /* Param 0 indicates the canonicalized description */
+  return chan->get_remote_descr(0);
+}
+
 /** Indicate if either we have queued cells, or if not, whether the underlying
  * lower-layer transport thinks it has an output queue.
  */

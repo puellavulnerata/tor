@@ -156,6 +156,10 @@ struct channel_s {
   void (*free)(channel_t *);
   /* Close an open channel */
   void (*close)(channel_t *);
+  /* Get a text description of the remote endpoint; canonicalized if the
+   * arg is 0, or the one we originally connected to/received from if it's
+   * 1. */
+  const char * (*get_remote_descr)(int);
   /* Check if the lower layer has queued writes */
   int (*has_queued_writes)(channel_t *);
   /* Write a cell to an open channel */
