@@ -1100,6 +1100,7 @@ channel_change_state(channel_t *chan, channel_state_t to_state)
 {
   channel_state_t from_state;
   unsigned char was_active, is_active, was_listening, is_listening;
+  unsigned char was_in_id_map, is_in_id_map;
 
   tor_assert(chan);
   from_state = chan->state;
@@ -1173,6 +1174,20 @@ channel_change_state(channel_t *chan, channel_state_t to_state)
     else if (was_listening && !is_listening) {
       if (listening_channels) smartlist_remove(listening_channels, chan);
     }
+
+    /* Now we need to handle the identity map */
+    was_in_id_map = !(from_state == CHANNEL_STATE_LISTENING ||
+                      from_state == CHANNEL_STATE_CLOSING ||
+                      from_state == CHANNEL_STATE_CLOSED || 
+                      from_state == CHANNEL_STATE_ERROR);
+    is_in_id_map = !(to_state == CHANNEL_STATE_LISTENING ||
+                     to_state == CHANNEL_STATE_CLOSING ||
+                     to_state == CHANNEL_STATE_CLOSED ||
+                     to_state == CHANNEL_STATE_ERROR);
+
+    if (!was_in_id_map && is_in_id_map) channel_add_to_digest_map(chan);
+    else if (was_in_id_map && !is_in_id_map)
+      channel_remove_from_digest_map(chan);
   }
 
   /* Tell circuits if we opened and stuff */
