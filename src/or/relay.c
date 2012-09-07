@@ -1828,7 +1828,8 @@ packed_cell_alloc(void)
 
 /** Return a packed cell used outside by channel_t lower layer */
 void
-packed_cell_free(packed_cell_t *cell) {
+packed_cell_free(packed_cell_t *cell)
+{
   packed_cell_free_unchecked(cell);
 }
 
