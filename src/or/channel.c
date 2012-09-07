@@ -2004,7 +2004,19 @@ channel_is_canonical(channel_t *chan)
   tor_assert(chan);
   tor_assert(chan->is_canonical);
 
-  return chan->is_canonical(chan);
+  return chan->is_canonical(chan, 0);
+}
+
+/** Ask if the lower layer thinks it's safe to trust the result of
+ * channel_is_canonical() */
+
+int
+channel_is_canonical_is_reliable(channel_t *chan)
+{
+  tor_assert(chan);
+  tor_assert(chan->is_canonical);
+
+  return chan->is_canonical(chan, 1);
 }
 
 /** Get the incoming flag; this is set when a listener spawns a channel.
