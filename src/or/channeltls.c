@@ -52,6 +52,7 @@ struct channel_tls_s {
 
 static void channel_tls_close_method(channel_t *chan);
 static int channel_tls_has_queued_writes_method(channel_t *chan);
+static int channel_tls_is_canonical_method(channel_t *chan, int req);
 static int
 channel_tls_matches_extend_info_method(channel_t *chan,
                                        extend_info_t *extend_info);
@@ -106,6 +107,7 @@ channel_tls_connect(const tor_addr_t *addr, uint16_t port,
   chan->state = CHANNEL_STATE_OPENING;
   chan->close = channel_tls_close_method;
   chan->has_queued_writes = channel_tls_has_queued_writes_method;
+  chan->is_canonical = channel_tls_is_canonical_method;
   chan->matches_extend_info = channel_tls_matches_extend_info_method;
   chan->matches_target = channel_tls_matches_target_method;
   chan->write_cell = channel_tls_write_cell_method;
@@ -177,6 +179,37 @@ channel_tls_has_queued_writes_method(channel_t *chan)
   outbuf_len = connection_get_outbuf_len(TO_CONN(tlschan->conn));
 
   return (outbuf_len > 0);
+}
+
+/** Tell the upper layer if we're canonical and if that can be relied upon */
+
+static int
+channel_tls_is_canonical_method(channel_t *chan, int req)
+{
+  int answer = 0;
+  channel_tls_t *tlschan = BASE_CHAN_TO_TLS(chan);
+
+  tor_assert(tlschan);
+  tor_assert(tlschan->conn);
+
+  switch (req) {
+    case 0:
+      answer = tlschan->conn->is_canonical;
+      break;
+    case 1:
+      /*
+       * Is the is_canonical bit reliable?  In protocols version 2 and up
+       * we get the canonical address from a NETINFO cell, but in older
+       * versions it might be based on an obsolete descriptor.
+       */
+      answer = (tlschan->conn->link_proto >= 2);
+      break;
+    default:
+      /* This shouldn't happen; channel.c is broken if it does */
+      tor_assert(1);
+  }
+
+  return answer;
 }
 
 /** The upper layer wants to know if this channel matches an extend_info_t
