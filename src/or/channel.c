@@ -1756,6 +1756,28 @@ channel_touched_by_client(channel_t *chan)
   chan->client_used = time(NULL);
 }
 
+/** Indicate if either we have queued cells, or if not, whether the underlying
+ * lower-layer transport thinks it has an output queue.
+ */
+
+int
+channel_has_queued_writes(channel_t *chan)
+{
+  int has_writes = 0;
+
+  tor_assert(chan);
+  tor_assert(chan->has_queued_writes);
+
+  if (chan->outgoing_queue && smartlist_len(chan->outgoing_queue) > 0) {
+    has_writes = 1;
+  } else {
+    /* Check with the lower layer */
+    has_writes = chan->has_queued_writes(chan);
+  }
+
+  return has_writes;
+}
+
 /** Get/set is_bad_for_new_circs flag */
 
 int
