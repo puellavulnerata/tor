@@ -52,6 +52,8 @@ struct channel_tls_s {
 
 static void channel_tls_close_method(channel_t *chan);
 static int channel_tls_has_queued_writes_method(channel_t *chan);
+static int channel_tls_matches_target_method(channel_t *chan,
+                                             const tor_addr_t *target);
 static int channel_tls_write_cell_method(channel_t *chan,
                                          cell_t *cell);
 static int channel_tls_write_packed_cell_method(channel_t *chan,
@@ -101,6 +103,7 @@ channel_tls_connect(const tor_addr_t *addr, uint16_t port,
   chan->state = CHANNEL_STATE_OPENING;
   chan->close = channel_tls_close_method;
   chan->has_queued_writes = channel_tls_has_queued_writes_method;
+  chan->matches_target = channel_tls_matches_target_method;
   chan->write_cell = channel_tls_write_cell_method;
   chan->write_packed_cell = channel_tls_write_packed_cell_method;
   chan->write_var_cell = channel_tls_write_var_cell_method;
@@ -170,6 +173,24 @@ channel_tls_has_queued_writes_method(channel_t *chan)
   outbuf_len = connection_get_outbuf_len(TO_CONN(tlschan->conn));
 
   return (outbuf_len > 0);
+}
+
+/** The upper layer wants to know if this channel matches a target
+ * address when extending a circuit.
+ */
+
+static int
+channel_tls_matches_target_method(channel_t *chan,
+                                  const tor_addr_t *target)
+{
+  channel_tls_t *tlschan = BASE_CHAN_TO_TLS(chan);
+
+  tor_assert(tlschan);
+  tor_assert(target);
+  tor_assert(tlschan->conn);
+
+  return tor_addr_compare(&(tlschan->conn->real_addr),
+                          target, CMP_EXACT);
 }
 
 /** Given a channel_tls_t and a cell_t, transmit the cell_t */
