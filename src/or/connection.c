@@ -4132,7 +4132,6 @@ assert_connection_ok(connection_t *conn, time_t now)
     case CONN_TYPE_OR:
       tor_assert(conn->state >= _OR_CONN_STATE_MIN);
       tor_assert(conn->state <= _OR_CONN_STATE_MAX);
-      tor_assert(TO_OR_CONN(conn)->n_circuits >= 0);
       break;
     case CONN_TYPE_EXIT:
       tor_assert(conn->state >= _EXIT_CONN_STATE_MIN);
