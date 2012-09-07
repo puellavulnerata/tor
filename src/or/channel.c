@@ -1746,16 +1746,6 @@ channel_connect(const tor_addr_t *addr, uint16_t port,
   return channel_tls_connect(addr, port, id_digest);
 }
 
-/** Mark a channel with the current time for rate-limiting tracking purposes */
-
-void
-channel_touched_by_client(channel_t *chan)
-{
-  tor_assert(chan);
-
-  chan->client_used = time(NULL);
-}
-
 /** Indicate if either we have queued cells, or if not, whether the underlying
  * lower-layer transport thinks it has an output queue.
  */
@@ -1920,6 +1910,18 @@ channel_timestamp_active(channel_t *chan)
   chan->timestamp_active = now;
 }
 
+/** Mark a channel relay.c thinks just got used as client */
+
+void
+channel_timestamp_client(channel_t *chan)
+{
+  time_t now = time(NULL);
+
+  tor_assert(chan);
+
+  chan->timestamp_client = now;
+}
+
 /** Update the last drained timestamp.  This is called whenever we
  * transmit a cell which leaves the outgoing cell queue completely
  * empty.  It also updates the xmit time and the active time.
@@ -1985,6 +1987,14 @@ channel_when_last_active(channel_t *chan)
   tor_assert(chan);
 
   return chan->timestamp_active;
+}
+
+time_t
+channel_when_last_client(channel_t *chan)
+{
+  tor_assert(chan);
+
+  return chan->timestamp_client;
 }
 
 time_t

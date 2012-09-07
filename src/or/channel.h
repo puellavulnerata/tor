@@ -124,11 +124,12 @@ struct channel_s {
   unsigned int is_local:1;
 
   /** Channel timestamps */
-  time_t timestamp_created;
-  time_t timestamp_active;
-  time_t timestamp_drained;
-  time_t timestamp_recv;
-  time_t timestamp_xmit;
+  time_t timestamp_client; /* Client used this, according to relay.c */
+  time_t timestamp_created; /* Channel created */
+  time_t timestamp_active; /* Any activity */
+  time_t timestamp_drained; /* Output queue empty */
+  time_t timestamp_recv; /* Cell received from lower layer */
+  time_t timestamp_xmit; /* Cell sent to lower layer */
 
   /* Timestamp for relay.c */
   time_t timestamp_last_added_nonpadding;
@@ -323,11 +324,12 @@ int channel_is_outgoing(channel_t *chan);
 void channel_mark_client(channel_t *chan);
 int channel_matches_extend_info(channel_t *chan, extend_info_t *extend_info);
 void channel_set_circid_type(channel_t *chan, crypto_pk_t *identity_rcvd);
-void channel_touched_by_client(channel_t *chan);
+void channel_timestamp_client(channel_t *chan);
 
 /* Timestamp queries */
 time_t channel_when_created(channel_t *chan);
 time_t channel_when_last_active(channel_t *chan);
+time_t channel_when_last_client(channel_t *chan);
 time_t channel_when_last_drained(channel_t *chan);
 time_t channel_when_last_recv(channel_t *chan);
 time_t channel_when_last_xmit(channel_t *chan);
