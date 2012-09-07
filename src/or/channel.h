@@ -162,6 +162,9 @@ struct channel_s {
   const char * (*get_remote_descr)(int);
   /* Check if the lower layer has queued writes */
   int (*has_queued_writes)(channel_t *);
+  /* Ask the lower layer if this is 'canonical', for a transport-specific
+   * definition of canonical. */
+  int (*is_canonical)(channel_t *);
   /* Check if this channel matches a specified extend_info_t */
   int (*matches_extend_info)(channel_t *, extend_info_t *);
   /* Write a cell to an open channel */
@@ -300,8 +303,8 @@ channel_t * channel_get_for_extend(const char *digest,
  */
 
 channel_t * channel_find_by_global_id(uint64_t global_identifier);
-channel_t * channel_find_by_remote_digest(char *identity_digest);
-channel_t * channel_find_by_remote_nickname(char *nickname);
+channel_t * channel_find_by_remote_digest(const char *identity_digest);
+channel_t * channel_find_by_remote_nickname(const char *nickname);
 
 /** For things returned by channel_find_by_remote_digest(), walk the list.
  * The *_unref versions also unref the input, so you can easily put them
@@ -323,12 +326,15 @@ const char * channel_get_canonical_remote_descr(channel_t *chan);
 int channel_has_queued_writes(channel_t *chan);
 int channel_is_bad_for_new_circs(channel_t *chan);
 void channel_mark_bad_for_new_circs(channel_t *chan);
+int channel_is_canonical(channel_t *chan);
+int channel_is_canonical_is_reliable(channel_t *chan);
 int channel_is_client(channel_t *chan);
 int channel_is_local(channel_t *chan);
 int channel_is_incoming(channel_t *chan);
 int channel_is_outgoing(channel_t *chan);
 void channel_mark_client(channel_t *chan);
 int channel_matches_extend_info(channel_t *chan, extend_info_t *extend_info);
+int channel_matches_target_addr_for_extend(const tor_addr_t *target);
 void channel_set_circid_type(channel_t *chan, crypto_pk_t *identity_rcvd);
 void channel_timestamp_client(channel_t *chan);
 
