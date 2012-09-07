@@ -2010,7 +2010,7 @@ circuit_n_chan_done(channel_t *chan, int status)
 
   log_debug(LD_CIRC,"chan to %s/%s, status=%d",
             chan->nickname ? chan->nickname : "NULL",
-            channel_get_remote_descr(chan), status);
+            channel_get_canonical_remote_descr(chan), status);
 
   pending_circs = smartlist_new();
   circuit_get_all_pending_on_channel(pending_circs, chan);
@@ -2506,7 +2506,7 @@ circuit_extend(cell_t *cell, circuit_t *circ)
   circ->n_chan = n_chan;
   log_debug(LD_CIRC,
             "n_chan is %s",
-            channel_get_remote_descr(n_chan));
+            channel_get_canonical_remote_descr(n_chan));
 
   if (circuit_deliver_create_cell(circ, CELL_CREATE, onionskin) < 0)
     return -1;

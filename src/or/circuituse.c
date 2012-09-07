@@ -568,7 +568,7 @@ circuit_expire_building(void)
 
     if (victim->n_chan)
       log_info(LD_CIRC,"Abandoning circ %s:%d (state %d:%s, purpose %d)",
-               channel_get_remote_descr(victim->n_chan),
+               channel_get_canonical_remote_descr(victim->n_chan),
                victim->n_circ_id,
                victim->state, circuit_state_to_string(victim->state),
                victim->purpose);
@@ -1197,7 +1197,7 @@ circuit_build_failed(origin_circuit_t *circ)
       log_info(LD_OR,
                "Our circuit failed to get a response from the first hop "
                "(%s). I'm going to try to rotate to a better connection.",
-               channel_get_remote_descr(n_chan));
+               channel_get_canonical_remote_descr(n_chan));
       n_chan->is_bad_for_new_circs = 1;
     } else {
       log_info(LD_OR,
