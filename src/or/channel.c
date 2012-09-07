@@ -999,6 +999,8 @@ channel_write_cell(channel_t *chan, cell_t *cell)
       sent = 1;
       /* Timestamp for transmission */
       channel_timestamp_xmit(chan);
+      /* If we're here the queue is empty, so it's drained too */
+      channel_timestamp_drained(chan);
     }
     channel_unref(chan);
   }
@@ -1048,6 +1050,8 @@ channel_write_packed_cell(channel_t *chan, packed_cell_t *packed_cell)
       sent = 1;
       /* Timestamp for transmission */
       channel_timestamp_xmit(chan);
+      /* If we're here the queue is empty, so it's drained too */
+      channel_timestamp_drained(chan);
     }
     channel_unref(chan);
   }
@@ -1100,6 +1104,8 @@ channel_write_var_cell(channel_t *chan, var_cell_t *var_cell)
       sent = 1;
       /* Timestamp for transmission */
       channel_timestamp_xmit(chan);
+      /* If we're here the queue is empty, so it's drained too */
+      channel_timestamp_drained(chan);
     }
     channel_unref(chan);
   }
@@ -1391,6 +1397,12 @@ channel_flush_some_cells_from_outgoing_queue(channel_t *chan,
       /* No cell removed from list, so we can't go on any further */
       else break;
     }
+  }
+
+  /* Did we drain the queue? */
+  if (smartlist_len(chan->outgoing_queue) == 0) {
+    /* Timestamp it */
+    channel_timestamp_drained(chan);
   }
 
   return flushed;
