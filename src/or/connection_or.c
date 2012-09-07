@@ -804,10 +804,13 @@ connection_or_is_better(time_t now,
                         const or_connection_t *b,
                         int forgive_new_connections)
 {
-  int newer;
+  int newer, a_has_circs = 0, b_has_circs = 0;
 /** Do not definitively deprecate a new connection with no circuits on it
  * until this much time has passed. */
 #define NEW_CONN_GRACE_PERIOD (15*60)
+
+  if (a->chan && TLS_CHAN_TO_BASE(a->chan)->n_circuits > 0) a_has_circs = 1;
+  if (b->chan && TLS_CHAN_TO_BASE(b->chan)->n_circuits > 0) b_has_circs = 1;
 
   if (b->is_canonical && !a->is_canonical)
     return 0; /* A canonical connection is better than a non-canonical
@@ -819,13 +822,13 @@ connection_or_is_better(time_t now,
       /* We prefer canonical connections regardless of newness. */
       (!b->is_canonical && a->is_canonical) ||
       /* If both have circuits we prefer the newer: */
-      (b->n_circuits && a->n_circuits && newer) ||
+      (b_has_circs && a_has_circs && newer) ||
       /* If neither has circuits we prefer the newer: */
-      (!b->n_circuits && !a->n_circuits && newer))
+      (!b_has_circs && !a_has_circs && newer))
     return 1;
 
   /* If one has no circuits and the other does... */
-  if (!b->n_circuits && a->n_circuits) {
+  if (!b_has_circs && a_has_circs) {
     /* Then it's bad, unless it's in its grace period and we're forgiving. */
     if (forgive_new_connections &&
         now < b->_base.timestamp_created + NEW_CONN_GRACE_PERIOD)
@@ -835,102 +838,6 @@ connection_or_is_better(time_t now,
   }
 
   return 0;
-}
-
-/** Return the OR connection we should use to extend a circuit to the router
- * whose identity is <b>digest</b>, and whose address we believe (or have been
- * told in an extend cell) is <b>target_addr</b>.  If there is no good
- * connection, set *<b>msg_out</b> to a message describing the connection's
- * state and our next action, and set <b>launch_out</b> to a boolean for
- * whether we should launch a new connection or not.
- */
-or_connection_t *
-connection_or_get_for_extend(const char *digest,
-                             const tor_addr_t *target_addr,
-                             const char **msg_out,
-                             int *launch_out)
-{
-  or_connection_t *conn, *best=NULL;
-  int n_inprogress_goodaddr = 0, n_old = 0, n_noncanonical = 0, n_possible = 0;
-  time_t now = approx_time();
-
-  tor_assert(msg_out);
-  tor_assert(launch_out);
-
-  if (!orconn_identity_map) {
-    *msg_out = "Router not connected (nothing is).  Connecting.";
-    *launch_out = 1;
-    return NULL;
-  }
-
-  conn = digestmap_get(orconn_identity_map, digest);
-
-  for (; conn; conn = conn->next_with_same_id) {
-    tor_assert(conn->_base.magic == OR_CONNECTION_MAGIC);
-    tor_assert(conn->_base.type == CONN_TYPE_OR);
-    tor_assert(tor_memeq(conn->identity_digest, digest, DIGEST_LEN));
-    if (conn->_base.marked_for_close)
-      continue;
-    /* Never return a connection on which the other end appears to be
-     * a client. */
-    if (conn->is_connection_with_client) {
-      continue;
-    }
-    /* Never return a non-open connection. */
-    if (conn->_base.state != OR_CONN_STATE_OPEN) {
-      /* If the address matches, don't launch a new connection for this
-       * circuit. */
-      if (!tor_addr_compare(&conn->real_addr, target_addr, CMP_EXACT))
-        ++n_inprogress_goodaddr;
-      continue;
-    }
-    /* Never return a connection that shouldn't be used for circs. */
-    if (connection_or_is_bad_for_new_circs(conn)) {
-      ++n_old;
-      continue;
-    }
-    /* Never return a non-canonical connection using a recent link protocol
-     * if the address is not what we wanted.
-     *
-     * (For old link protocols, we can't rely on is_canonical getting
-     * set properly if we're talking to the right address, since we might
-     * have an out-of-date descriptor, and we will get no NETINFO cell to
-     * tell us about the right address.) */
-    if (!conn->is_canonical && conn->link_proto >= 2 &&
-        tor_addr_compare(&conn->real_addr, target_addr, CMP_EXACT)) {
-      ++n_noncanonical;
-      continue;
-    }
-
-    ++n_possible;
-
-    if (!best) {
-      best = conn; /* If we have no 'best' so far, this one is good enough. */
-      continue;
-    }
-
-    if (connection_or_is_better(now, conn, best, 0))
-      best = conn;
-  }
-
-  if (best) {
-    *msg_out = "Connection is fine; using it.";
-    *launch_out = 0;
-    return best;
-  } else if (n_inprogress_goodaddr) {
-    *msg_out = "Connection in progress; waiting.";
-    *launch_out = 0;
-    return NULL;
-  } else if (n_old || n_noncanonical) {
-    *msg_out = "Connections all too old, or too non-canonical. "
-      " Launching a new one.";
-    *launch_out = 1;
-    return NULL;
-  } else {
-    *msg_out = "Not connected. Connecting.";
-    *launch_out = 1;
-    return NULL;
-  }
 }
 
 /** How old do we let a connection to an OR get before deciding it's
