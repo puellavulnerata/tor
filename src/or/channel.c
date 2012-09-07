@@ -1396,6 +1396,17 @@ channel_flush_some_cells_from_outgoing_queue(channel_t *chan,
   return flushed;
 }
 
+/** This tries to flush as many cells from the queue as the lower layer
+ * will take.  It just calls channel_flush_some_cells_from_outgoing_queue()
+ * in unlimited mode.
+ */
+
+void
+channel_flush_cells(channel_t *chan)
+{
+  channel_flush_some_cells_from_outgoing_queue(chan, -1);
+}
+
 /** This gets used from the lower layer to check if any more cells are
  * available.
  */
