@@ -319,6 +319,19 @@ connection_or_change_state(or_connection_t *conn, uint8_t state)
                                               old_state, state);
 }
 
+/** Return the number of circuits using an or_connection_t; this used to
+ * be an or_connection_t field, but it got moved to channel_t and we
+ * shouldn't maintain two copies. */
+
+int
+connection_or_get_num_circuits(or_connection_t *conn)
+{
+  tor_assert(conn);
+
+  if (conn->chan) return TLS_CHAN_TO_BASE(conn->chan)->n_circuits;
+  else return 0;
+}
+
 /**************************************************************/
 
 /** Pack the cell_t host-order structure <b>src</b> into network-order
