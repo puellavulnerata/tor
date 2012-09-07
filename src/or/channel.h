@@ -120,6 +120,9 @@ struct channel_s {
    */
   unsigned int is_local:1;
 
+  /** Set if the channel was initiated here */
+  unsigned int is_outgoing:1;
+
   /* Timestamp for relay.c */
   time_t timestamp_last_added_nonpadding;
 
@@ -223,6 +226,7 @@ void channel_free(channel_t *chan);
 void channel_change_state(channel_t *chan, channel_state_t to_state);
 void channel_clear_remote_end(channel_t *chan);
 void channel_mark_local(channel_t *chan);
+void channel_mark_outgoing(channel_t *chan);
 void channel_set_remote_end(channel_t *chan,
                             const char *identity_digest,
                             const char *nickname);
