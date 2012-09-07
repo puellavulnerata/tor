@@ -2041,6 +2041,19 @@ channel_when_last_xmit(channel_t *chan)
   return chan->timestamp_xmit;
 }
 
+/** Call the lower layer and ask if this channel matches a given
+ * extend_info_t */
+
+int
+channel_matches_extend_info(channel_t *chan, extend_info_t *extend_info)
+{
+  tor_assert(chan);
+  tor_assert(chan->matches_extend_info);
+  tor_assert(extend_info);
+
+  return chan->matches_extend_info(chan, extend_info);
+}
+
 /** Set up circuit ID stuff; this replaces connection_or_set_circid_type() */
 
 void
