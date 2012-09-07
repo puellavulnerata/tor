@@ -995,6 +995,8 @@ channel_write_cell(channel_t *chan, cell_t *cell)
       chan->state == CHANNEL_STATE_OPEN) {
     channel_ref(chan);
     chan->write_cell(chan, cell);
+    /* Timestamp for transmission */
+    channel_timestamp_xmit(chan);
     channel_unref(chan);
   } else {
     /* No, queue it */
@@ -1037,6 +1039,8 @@ channel_write_packed_cell(channel_t *chan, packed_cell_t *packed_cell)
       chan->state == CHANNEL_STATE_OPEN) {
     channel_ref(chan);
     chan->write_packed_cell(chan, packed_cell);
+    /* Timestamp for transmission */
+    channel_timestamp_xmit(chan);
     channel_unref(chan);
   } else {
     /* No, queue it */
@@ -1082,6 +1086,8 @@ channel_write_var_cell(channel_t *chan, var_cell_t *var_cell)
       chan->state == CHANNEL_STATE_OPEN) {
     channel_ref(chan);
     chan->write_var_cell(chan, var_cell);
+    /* Timestamp for transmission */
+    channel_timestamp_xmit(chan);
     channel_unref(chan);
   } else {
     /* No, queue it */
@@ -1298,6 +1304,7 @@ channel_flush_some_cells_from_outgoing_queue(channel_t *chan,
               if (chan->write_cell(chan, q->u.fixed.cell)) {
                 tor_free(q);
                 ++flushed;
+                channel_timestamp_xmit(chan);
               }
               /* Else couldn't write it; leave it on the queue */
             } else {
@@ -1315,6 +1322,7 @@ channel_flush_some_cells_from_outgoing_queue(channel_t *chan,
               if (chan->write_packed_cell(chan, q->u.packed.packed_cell)) {
                 tor_free(q);
                 ++flushed;
+                channel_timestamp_xmit(chan);
               }
               /* Else couldn't write it; leave it on the queue */
             } else {
@@ -1332,6 +1340,7 @@ channel_flush_some_cells_from_outgoing_queue(channel_t *chan,
               if (chan->write_var_cell(chan, q->u.var.var_cell)) {
                 tor_free(q);
                 ++flushed;
+                channel_timestamp_xmit(chan);
               }
               /* Else couldn't write it; leave it on the queue */
             } else {
@@ -1635,6 +1644,9 @@ channel_queue_cell(channel_t *chan, cell_t *cell)
   if (need_to_queue && !(chan->cell_queue)) {
     chan->cell_queue = smartlist_new();
   }
+
+  /* Timestamp for receiving */
+  channel_timestamp_recv(chan);
 
   /* If we don't need to queue we can just call cell_handler */
   if (!need_to_queue) {
