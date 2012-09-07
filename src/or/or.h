@@ -1341,8 +1341,6 @@ typedef struct or_connection_t {
   /* XXXX we could share this among all connections. */
   struct ev_token_bucket_cfg *bucket_cfg;
 #endif
-  int n_circuits; /**< How many circuits use this connection as p_conn or
-                   * n_conn ? */
 
   struct or_connection_t *next_with_same_id; /**< Next connection with same
                                               * identity digest as this one. */
