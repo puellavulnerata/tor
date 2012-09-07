@@ -1769,6 +1769,27 @@ channel_mark_bad_for_new_circs(channel_t *chan)
   chan->is_bad_for_new_circs = 1;
 }
 
+/** Get the client flag; this will be set if command_process_create_cell()
+ * in cmd.c thinks this is a connection from a client. */
+
+int
+channel_is_client(channel_t *chan)
+{
+  tor_assert(chan);
+
+  return chan->is_client;
+}
+
+/** Set the client flag */
+
+void
+channel_mark_client(channel_t *chan)
+{
+  tor_assert(chan);
+
+  chan->is_client = 1;
+}
+
 /** Get local flag; the lower layer should set this when setting up the
  * channel if is_local_addr() is true for all of the destinations it will
  * communicate with on behalf of this channel.  It's used to decide whether
