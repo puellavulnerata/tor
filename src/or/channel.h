@@ -299,6 +299,11 @@ channel_t * channel_get_for_extend(const char *digest,
                                    const char **msg_out,
                                    int *launch_out);
 
+/* Ask which of two channels is better for circuit-extension purposes */
+int channel_is_better(time_t now,
+                      channel_t *a, channel_t *b,
+                      int forgive_new_connections);
+
 /** Channel lookups
  */
 
