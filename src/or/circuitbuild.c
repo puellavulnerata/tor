@@ -2852,7 +2852,7 @@ onionskin_answer(or_circuit_t *circ, uint8_t cell_type, const char *payload,
             circ->is_first_hop ? "created_fast" : "created");
 
   if (!channel_is_local(circ->p_chan) &&
-      !channel_nonopen_was_started_here(circ->p_chan)) {
+      !channel_is_outgoing(circ->p_chan)) {
     /* record that we could process create cells from a non-local conn
      * that we didn't initiate; presumably this means that create cells
      * can reach us too. */
