@@ -1275,6 +1275,7 @@ channel_flush_some_cells_from_outgoing_queue(channel_t *chan,
 
   tor_assert(chan);
   tor_assert(chan->write_cell);
+  tor_assert(chan->write_packed_cell);
   tor_assert(chan->write_var_cell);
 
   if (num_cells < 0) unlimited = 1;
