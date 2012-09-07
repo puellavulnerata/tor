@@ -274,7 +274,7 @@ circuit_count_pending_on_channel(channel_t *chan)
   smartlist_free(sl);
   log_debug(LD_CIRC,"or_conn to %s at %s, %d pending circs",
             chan->nickname ? chan->nickname : "NULL",
-            channel_get_remote_descr(chan),
+            channel_get_canonical_remote_descr(chan),
             cnt);
   return cnt;
 }
