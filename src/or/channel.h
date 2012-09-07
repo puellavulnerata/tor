@@ -63,6 +63,10 @@ struct channel_s {
   /** Nickname of the OR on the other side, or NULL if none. */
   char *nickname;
 
+  /** Linked list of channels with the same identity digest, for the
+   * digest->channel map */
+  channel_t *next_with_same_id, *prev_with_same_id;
+
   /** When we last used this conn for any client traffic. If not
    * recent, we can rate limit it further. */
   time_t client_used;
@@ -260,6 +264,17 @@ channel_t * channel_get_for_extend(const char *digest,
 channel_t * channel_find_by_global_id(uint64_t global_identifier);
 channel_t * channel_find_by_remote_digest(char *identity_digest);
 channel_t * channel_find_by_remote_nickname(char *nickname);
+
+/** For things returned by channel_find_by_remote_digest(), walk the list.
+ * The *_unref versions also unref the input, so you can easily put them
+ * in a while loop to walk a list without worrying about refcount
+ * maintenance.
+ */
+
+channel_t * channel_next_with_digest(channel_t *chan);
+channel_t * channel_next_with_digest_unref(channel_t *chan);
+channel_t * channel_prev_with_digest(channel_t *chan);
+channel_t * channel_prev_with_digest_unref(channel_t *chan);
 
 /*
  * Metadata queries/updates
