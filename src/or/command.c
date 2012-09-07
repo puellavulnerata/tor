@@ -348,7 +348,7 @@ command_process_relay_cell(cell_t *cell, channel_t *chan)
   if (CIRCUIT_IS_ORIGIN(circ)) {
     /* if we're a relay and treating connections with recent local
      * traffic better, then this is one of them. */
-    channel_touched_by_client(chan);
+    channel_timestamp_client(chan);
   }
 
   if (!CIRCUIT_IS_ORIGIN(circ) &&
