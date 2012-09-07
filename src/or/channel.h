@@ -108,6 +108,13 @@ struct channel_s {
   */
   unsigned int is_bad_for_new_circs:1;
 
+  /** Set by lower layer if this is local; i.e., everything it communicates
+   * with for this channel returns true for is_local_addr().  This is used
+   * to decide whether to declare reachability when we receive something on
+   * this channel in circuitbuild.c
+   */
+  unsigned int is_local:1;
+
   /* Timestamp for relay.c */
   time_t timestamp_last_added_nonpadding;
 
@@ -210,6 +217,7 @@ void channel_free(channel_t *chan);
 
 void channel_change_state(channel_t *chan, channel_state_t to_state);
 void channel_clear_remote_end(channel_t *chan);
+void channel_mark_local(channel_t *chan);
 void channel_set_remote_end(channel_t *chan,
                             const char *identity_digest,
                             const char *nickname);
