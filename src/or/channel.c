@@ -1924,14 +1924,17 @@ channel_get_actual_remote_descr(channel_t *chan)
   tor_assert(chan->get_remote_descr);
 
   /* Param 1 indicates the actual description */
-  return chan->get_remote_descr(1);
+  return chan->get_remote_descr(chan, 1);
 }
 
 const char *
 channel_get_canonical_remote_descr(channel_t *chan)
 {
+  tor_assert(chan);
+  tor_assert(chan->get_remote_descr);
+
   /* Param 0 indicates the canonicalized description */
-  return chan->get_remote_descr(0);
+  return chan->get_remote_descr(chan, 0);
 }
 
 /** Indicate if either we have queued cells, or if not, whether the underlying
