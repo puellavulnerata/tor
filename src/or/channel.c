@@ -970,6 +970,7 @@ void
 channel_write_cell(channel_t *chan, cell_t *cell)
 {
   cell_queue_entry_t *q;
+  int sent = 0;
 
   tor_assert(chan != NULL);
   tor_assert(cell != NULL);
@@ -989,17 +990,21 @@ channel_write_cell(channel_t *chan, cell_t *cell)
     chan->timestamp_last_added_nonpadding = approx_time();
   }
 
-  /* Can we send it right out? */
+  /* Can we send it right out?  If so, try */
   if (!(chan->outgoing_queue &&
         (smartlist_len(chan->outgoing_queue) > 0)) &&
       chan->state == CHANNEL_STATE_OPEN) {
     channel_ref(chan);
-    chan->write_cell(chan, cell);
-    /* Timestamp for transmission */
-    channel_timestamp_xmit(chan);
+    if (chan->write_cell(chan, cell)) {
+      sent = 1;
+      /* Timestamp for transmission */
+      channel_timestamp_xmit(chan);
+    }
     channel_unref(chan);
-  } else {
-    /* No, queue it */
+  }
+  
+  if (!sent) {
+    /* Not sent, queue it */
     if (!(chan->outgoing_queue)) chan->outgoing_queue = smartlist_new();
     q = tor_malloc(sizeof(*q));
     q->type = CELL_QUEUE_FIXED;
@@ -1017,6 +1022,7 @@ void
 channel_write_packed_cell(channel_t *chan, packed_cell_t *packed_cell)
 {
   cell_queue_entry_t *q;
+  int sent = 0;
 
   tor_assert(chan != NULL);
   tor_assert(packed_cell != NULL);
@@ -1033,17 +1039,21 @@ channel_write_packed_cell(channel_t *chan, packed_cell_t *packed_cell)
   /* Increment the timestamp */
   chan->timestamp_last_added_nonpadding = approx_time();
 
-  /* Can we send it right out? */
+  /* Can we send it right out?  If so, try */
   if (!(chan->outgoing_queue &&
         (smartlist_len(chan->outgoing_queue) > 0)) &&
       chan->state == CHANNEL_STATE_OPEN) {
     channel_ref(chan);
-    chan->write_packed_cell(chan, packed_cell);
-    /* Timestamp for transmission */
-    channel_timestamp_xmit(chan);
+    if (chan->write_packed_cell(chan, packed_cell)) {
+      sent = 1;
+      /* Timestamp for transmission */
+      channel_timestamp_xmit(chan);
+    }
     channel_unref(chan);
-  } else {
-    /* No, queue it */
+  }
+  
+  if (!sent) {
+    /* Not sent, queue it */
     if (!(chan->outgoing_queue)) chan->outgoing_queue = smartlist_new();
     q = tor_malloc(sizeof(*q));
     q->type = CELL_QUEUE_PACKED;
@@ -1061,6 +1071,7 @@ void
 channel_write_var_cell(channel_t *chan, var_cell_t *var_cell)
 {
   cell_queue_entry_t *q;
+  int sent = 0;
 
   tor_assert(chan != NULL);
   tor_assert(var_cell != NULL);
@@ -1080,17 +1091,21 @@ channel_write_var_cell(channel_t *chan, var_cell_t *var_cell)
     chan->timestamp_last_added_nonpadding = approx_time();
   }
 
-  /* Can we send it right out? */
+  /* Can we send it right out? If so, then try */
   if (!(chan->outgoing_queue &&
         (smartlist_len(chan->outgoing_queue) > 0)) &&
       chan->state == CHANNEL_STATE_OPEN) {
     channel_ref(chan);
-    chan->write_var_cell(chan, var_cell);
-    /* Timestamp for transmission */
-    channel_timestamp_xmit(chan);
+    if (chan->write_var_cell(chan, var_cell)) {
+      sent = 1;
+      /* Timestamp for transmission */
+      channel_timestamp_xmit(chan);
+    }
     channel_unref(chan);
-  } else {
-    /* No, queue it */
+  }
+  
+  if (!sent) {
+    /* Not sent, queue it */
     if (!(chan->outgoing_queue)) chan->outgoing_queue = smartlist_new();
     q = tor_malloc(sizeof(*q));
     q->type = CELL_QUEUE_VAR;
