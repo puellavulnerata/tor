@@ -249,7 +249,7 @@ command_process_create_cell(cell_t *cell, channel_t *chan)
 
     /* Make sure we never try to use the OR connection on which we
      * received this cell to satisfy an EXTEND request,  */
-    channel_mark_as_client(chan);
+    channel_mark_client(chan);
 
     if (fast_server_handshake(cell->payload, (uint8_t*)reply,
                               (uint8_t*)keys, sizeof(keys))<0) {
