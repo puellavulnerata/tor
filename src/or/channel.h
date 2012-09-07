@@ -162,9 +162,10 @@ struct channel_s {
   const char * (*get_remote_descr)(int);
   /* Check if the lower layer has queued writes */
   int (*has_queued_writes)(channel_t *);
-  /* Ask the lower layer if this is 'canonical', for a transport-specific
-   * definition of canonical. */
-  int (*is_canonical)(channel_t *);
+  /* If the second param is zero, ask the lower layer if this is 'canonical',
+   * for a transport-specific definition of canonical; if it is 1, ask if
+   * the answer to the preceding query is safe to rely on. */
+  int (*is_canonical)(channel_t *, int);
   /* Check if this channel matches a specified extend_info_t */
   int (*matches_extend_info)(channel_t *, extend_info_t *);
   /* Check if this channel matches a target address when extending */
