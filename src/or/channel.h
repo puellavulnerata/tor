@@ -108,6 +108,11 @@ struct channel_s {
   */
   unsigned int is_bad_for_new_circs:1;
 
+  /** True iff we have decided that the other end of this connection
+   * is a client.  Channels with this flag set should never be used
+   * to satisfy an EXTEND request.  */
+  unsigned int is_client:1;
+
   /** Set by lower layer if this is local; i.e., everything it communicates
    * with for this channel returns true for is_local_addr().  This is used
    * to decide whether to declare reachability when we receive something on
@@ -293,9 +298,10 @@ const char * channel_get_remote_descr(channel_t *chan);
 size_t channel_get_write_queue_len(channel_t *chan);
 unsigned int channel_is_bad_for_new_circs(channel_t *chan);
 void channel_mark_bad_for_new_circs(channel_t *chan);
+int channel_is_client(channel_t *chan);
 int channel_is_local(channel_t *chan);
 int channel_is_outgoing(channel_t *chan);
-void channel_mark_as_client(channel_t *chan);
+void channel_mark_client(channel_t *chan);
 int channel_matches_extend_info(channel_t *chan, extend_info_t *extend_info);
 int channel_nonopen_was_started_here(channel_t *chan);
 void channel_set_circid_type(channel_t *chan, crypto_pk_t *identity_rcvd);
