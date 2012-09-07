@@ -159,7 +159,7 @@ struct channel_s {
   /* Get a text description of the remote endpoint; canonicalized if the
    * arg is 0, or the one we originally connected to/received from if it's
    * 1. */
-  const char * (*get_remote_descr)(int);
+  const char * (*get_remote_descr)(channel_t *, int);
   /* Check if the lower layer has queued writes */
   int (*has_queued_writes)(channel_t *);
   /* If the second param is zero, ask the lower layer if this is 'canonical',
