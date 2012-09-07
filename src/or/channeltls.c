@@ -52,6 +52,9 @@ struct channel_tls_s {
 
 static void channel_tls_close_method(channel_t *chan);
 static int channel_tls_has_queued_writes_method(channel_t *chan);
+static int
+channel_tls_matches_extend_info_method(channel_t *chan,
+                                       extend_info_t *extend_info);
 static int channel_tls_matches_target_method(channel_t *chan,
                                              const tor_addr_t *target);
 static int channel_tls_write_cell_method(channel_t *chan,
@@ -103,6 +106,7 @@ channel_tls_connect(const tor_addr_t *addr, uint16_t port,
   chan->state = CHANNEL_STATE_OPENING;
   chan->close = channel_tls_close_method;
   chan->has_queued_writes = channel_tls_has_queued_writes_method;
+  chan->matches_extend_info = channel_tls_matches_extend_info_method;
   chan->matches_target = channel_tls_matches_target_method;
   chan->write_cell = channel_tls_write_cell_method;
   chan->write_packed_cell = channel_tls_write_packed_cell_method;
@@ -173,6 +177,23 @@ channel_tls_has_queued_writes_method(channel_t *chan)
   outbuf_len = connection_get_outbuf_len(TO_CONN(tlschan->conn));
 
   return (outbuf_len > 0);
+}
+
+/** The upper layer wants to know if this channel matches an extend_info_t
+ */
+
+static int
+channel_tls_matches_extend_info_method(channel_t *chan,
+                                       extend_info_t *extend_info)
+{
+  channel_tls_t *tlschan = BASE_CHAN_TO_TLS(chan);
+
+  tor_assert(tlschan);
+  tor_assert(extend_info);
+
+  return (tor_addr_eq(&(extend_info->addr),
+                      &(TO_CONN(tlschan->conn)->addr)) &&
+         (extend_info->port == TO_CONN(tlschan->conn)->port));
 }
 
 /** The upper layer wants to know if this channel matches a target
