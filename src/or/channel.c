@@ -85,6 +85,14 @@ static ssize_t
 channel_flush_some_cells_from_outgoing_queue(channel_t *chan,
                                              ssize_t num_cells);
 
+/** Compare two channels while trying to pick on to extend circuits on
+  */
+
+static int channel_is_better(time_t now,
+                             channel_t *a,
+                             channel_t *b,
+                             int forgive_new_connections);
+
 /** Indicate whether a given channel state is valid
  */
 
@@ -509,7 +517,7 @@ channel_find_by_global_id(uint64_t global_identifier)
 }
 
 channel_t *
-channel_find_by_remote_digest(char *identity_digest)
+channel_find_by_remote_digest(const char *identity_digest)
 {
   channel_t *rv = NULL, *tmp;
 
@@ -526,7 +534,7 @@ channel_find_by_remote_digest(char *identity_digest)
 }
 
 channel_t *
-channel_find_by_remote_nickname(char *nickname)
+channel_find_by_remote_nickname(const char *nickname)
 {
   channel_t *rv = NULL;
 
@@ -1746,6 +1754,174 @@ channel_connect(const tor_addr_t *addr, uint16_t port,
   return channel_tls_connect(addr, port, id_digest);
 }
 
+/** Decide which of two channels to prefer for extending a circuit; this
+ * returns true iff a is 'better' than b.  The most important criterion
+ * here is that a canonical channel is always better than a non-canonical
+ * one, but the number of circuits and the age are used as tie-breakers.
+ *
+ * This is based connection_or_is_better() of connection_or.c
+ */
+
+static int
+channel_is_better(time_t now, channel_t *a, channel_t *b,
+                  int forgive_new_connections)
+{
+  int a_grace, b_grace;
+  int a_is_canonical, b_is_canonical;
+  int a_has_circs, b_has_circs;
+
+  /*
+   * Do not definitively deprecate a new channel with no circuits on it
+   * until this much time has passed.
+   */
+#define NEW_CHAN_GRACE_PERIOD (15*60)
+
+  tor_assert(a);
+  tor_assert(b);
+
+  /* Check if one is canonical and the other isn't first */
+  a_is_canonical = channel_is_canonical(a);
+  b_is_canonical = channel_is_canonical(b);
+
+  if (a_is_canonical && !b_is_canonical) return 1;
+  if (!a_is_canonical && b_is_canonical) return 0;
+
+  /*
+   * Okay, if we're here they tied on canonicity. Next we check if
+   * they have any circuits, and if one does and the other doesn't,
+   * we prefer the one that does, unless we are forgiving and the
+   * one that has no circuits is in its grace period.
+   */
+
+  a_has_circs = (a->n_circuits > 0);
+  b_has_circs = (b->n_circuits > 0);
+  a_grace = (forgive_new_connections &&
+             (now < channel_when_created(a) + NEW_CHAN_GRACE_PERIOD));
+  b_grace = (forgive_new_connections &&
+             (now < channel_when_created(b) + NEW_CHAN_GRACE_PERIOD));
+
+  if (a_has_circs && !b_has_circs && !b_grace) return 1;
+  if (!a_has_circs && b_has_circs && !a_grace) return 0;
+
+  /* They tied on circuits too; just prefer whichever is newer */
+
+  if (channel_when_created(a) > channel_when_created(b)) return 1;
+  else return 0;
+}
+
+/** Pick a suitable channel to extend a circuit to given the desired digest
+ * the address we believe is correct for that digest; this tries to see
+ * if we already have one for the requested endpoint, but if there is no good
+ * channel, set *msg_out to a message describing the channel's state
+ * and our next action, and set *launch_out to a boolean indicated whether
+ * the caller should try to launch a new channel with channel_connect().
+ */
+
+channel_t *
+channel_get_for_extend(const char *digest,
+                       const tor_addr_t *target_addr,
+                       const char **msg_out,
+                       int *launch_out)
+{
+  channel_t *chan, *best = NULL;
+  int n_inprogress_goodaddr = 0, n_old = 0;
+  int n_noncanonical = 0, n_possible = 0;
+  time_t now = approx_time();
+
+  tor_assert(msg_out);
+  tor_assert(launch_out);
+
+  if (!channel_identity_map) {
+    *msg_out = "Router not connected (nothing is).  Connecting.";
+    *launch_out = 1;
+    return NULL;
+  }
+
+  chan = channel_find_by_remote_digest(digest);
+
+  /* Walk the list, unrefing the old one and refing the new at each
+   * iteration.
+   */
+  for (; chan; chan = channel_next_with_digest_unref(chan)) {
+    tor_assert(tor_memeq(chan->identity_digest, digest, DIGEST_LEN));
+    if (chan->state == CHANNEL_STATE_CLOSING ||
+        chan->state == CHANNEL_STATE_CLOSED ||
+        chan->state == CHANNEL_STATE_ERROR ||
+        chan->state == CHANNEL_STATE_LISTENING)
+      continue;
+
+    /* Never return a channel on which the other end appears to be
+     * a client. */
+    if (channel_is_client(chan)) {
+      continue;
+    }
+
+    /* Never return a non-open connection. */
+    if (chan->state != CHANNEL_STATE_OPEN) {
+      /* If the address matches, don't launch a new connection for this
+       * circuit. */
+      if (!channel_matches_target_addr_for_extend(target_addr))
+        ++n_inprogress_goodaddr;
+      continue;
+    }
+
+    /* Never return a connection that shouldn't be used for circs. */
+    if (channel_is_bad_for_new_circs(chan)) {
+      ++n_old;
+      continue;
+    }
+
+    /* Never return a non-canonical connection using a recent link protocol
+     * if the address is not what we wanted.
+     *
+     * The channel_is_canonical_is_reliable() function asks the lower layer
+     * if we should trust channel_is_canonical().  The below is from the
+     * comments of the old circuit_or_get_for_extend() and applies when
+     * the lower-layer transport is channel_tls_t.
+     *
+     * (For old link protocols, we can't rely on is_canonical getting
+     * set properly if we're talking to the right address, since we might
+     * have an out-of-date descriptor, and we will get no NETINFO cell to
+     * tell us about the right address.)
+     */
+    if (!channel_is_canonical(chan) &&
+         channel_is_canonical_is_reliable(chan) &&
+        !channel_matches_target_addr_for_extend(target_addr)) {
+      ++n_noncanonical;
+      continue;
+    }
+
+    ++n_possible;
+
+    if (!best) {
+      best = chan; /* If we have no 'best' so far, this one is good enough. */
+      continue;
+    }
+
+    if (channel_is_better(now, chan, best, 0))
+      best = chan;
+  }
+
+  if (best) {
+    *msg_out = "Connection is fine; using it.";
+    *launch_out = 0;
+    return best;
+  } else if (n_inprogress_goodaddr) {
+    *msg_out = "Connection in progress; waiting.";
+    *launch_out = 0;
+    return NULL;
+  } else if (n_old || n_noncanonical) {
+    *msg_out = "Connections all too old, or too non-canonical. "
+               " Launching a new one.";
+    *launch_out = 1;
+    return NULL;
+  } else {
+    *msg_out = "Not connected. Connecting.";
+    *launch_out = 1;
+    return NULL;
+  }
+}
+
 /** Return text descriptions provided by the lower layer of the remote
  * endpoint for this channel. */
 
@@ -1825,6 +2001,18 @@ channel_mark_client(channel_t *chan)
   tor_assert(chan);
 
   chan->is_client = 1;
+}
+
+/** The is_canonical flag is determined by the lower layer and can't be
+ * set in a transport-independent way. */
+
+int
+channel_is_canonical(channel_t *chan)
+{
+  tor_assert(chan);
+  tor_assert(chan->is_canonical);
+
+  return chan->is_canonical(chan);
 }
 
 /** Get the incoming flag; this is set when a listener spawns a channel.
