@@ -371,7 +371,8 @@ command_process_relay_cell(cell_t *cell, channel_t *chan)
         log_fn(LOG_PROTOCOL_WARN, LD_OR,
                "Received too many RELAY_EARLY cells on circ %d from %s."
                "  Closing circuit.",
-               cell->circ_id, channel_get_canonical_remote_descr(chan));
+               cell->circ_id,
+               safe_str(channel_get_canonical_remote_descr(chan)));
         circuit_mark_for_close(circ, END_CIRC_REASON_TORPROTOCOL);
         return;
       }
