@@ -798,61 +798,6 @@ connection_or_mark_bad_for_new_circs(or_connection_t *or_conn)
     channel_mark_bad_for_new_circs(TLS_CHAN_TO_BASE(or_conn->chan));
 }
 
-/** Return true iff <b>a</b> is "better" than <b>b</b> for new circuits.
- *
- * A more canonical connection is always better than a less canonical
- * connection.  That aside, a connection is better if it has circuits and the
- * other does not, or if it was created more recently.
- *
- * Requires that both input connections are open; not is_bad_for_new_circs,
- * and not impossibly non-canonical.
- *
- * If <b>forgive_new_connections</b> is true, then we do not call
- * <b>a</b>better than <b>b</b> simply because b has no circuits,
- * unless b is also relatively old.
- */
-static int
-connection_or_is_better(time_t now,
-                        const or_connection_t *a,
-                        const or_connection_t *b,
-                        int forgive_new_connections)
-{
-  int newer, a_has_circs = 0, b_has_circs = 0;
-/** Do not definitively deprecate a new connection with no circuits on it
- * until this much time has passed. */
-#define NEW_CONN_GRACE_PERIOD (15*60)
-
-  if (a->chan && TLS_CHAN_TO_BASE(a->chan)->n_circuits > 0) a_has_circs = 1;
-  if (b->chan && TLS_CHAN_TO_BASE(b->chan)->n_circuits > 0) b_has_circs = 1;
-
-  if (b->is_canonical && !a->is_canonical)
-    return 0; /* A canonical connection is better than a non-canonical
-               * one, no matter how new it is or which has circuits. */
-
-  newer = b->_base.timestamp_created < a->_base.timestamp_created;
-
-  if (
-      /* We prefer canonical connections regardless of newness. */
-      (!b->is_canonical && a->is_canonical) ||
-      /* If both have circuits we prefer the newer: */
-      (b_has_circs && a_has_circs && newer) ||
-      /* If neither has circuits we prefer the newer: */
-      (!b_has_circs && !a_has_circs && newer))
-    return 1;
-
-  /* If one has no circuits and the other does... */
-  if (!b_has_circs && a_has_circs) {
-    /* Then it's bad, unless it's in its grace period and we're forgiving. */
-    if (forgive_new_connections &&
-        now < b->_base.timestamp_created + NEW_CONN_GRACE_PERIOD)
-      return 0;
-    else
-      return 1;
-  }
-
-  return 0;
-}
-
 /** How old do we let a connection to an OR get before deciding it's
  * too old for new circuits? */
 #define TIME_BEFORE_OR_CONN_IS_TOO_OLD (60*60*24*7)
@@ -871,8 +816,8 @@ connection_or_is_better(time_t now,
  *    - all open non-canonical connections for which a 'better' non-canonical
  *      connection exists to the same router at the same address.
  *
- * See connection_or_is_better() for our idea of what makes one OR connection
- * better than another.
+ * See channel_is_better() in channel.c for our idea of what makes one OR
+ * connection better than another.
  */
 static void
 connection_or_group_set_badness(or_connection_t *head, int force)
@@ -931,8 +876,13 @@ connection_or_group_set_badness(or_connection_t *head, int force)
       continue;
     }
 
-    if (!best || connection_or_is_better(now, or_conn, best, 0))
+    if (!best ||
+        channel_is_better(now,
+                          TLS_CHAN_TO_BASE(or_conn->chan),
+                          TLS_CHAN_TO_BASE(best->chan),
+                          0)) {
       best = or_conn;
+    }
   }
 
   if (!best)
@@ -957,7 +907,10 @@ connection_or_group_set_badness(or_connection_t *head, int force)
         connection_or_is_bad_for_new_circs(or_conn) ||
         or_conn->_base.state != OR_CONN_STATE_OPEN)
       continue;
-    if (or_conn != best && connection_or_is_better(now, best, or_conn, 1)) {
+    if (or_conn != best &&
+        channel_is_better(now,
+                          TLS_CHAN_TO_BASE(best->chan),
+                          TLS_CHAN_TO_BASE(or_conn->chan), 1)) {
       /* This isn't the best conn, _and_ the best conn is better than it,
          even when we're being forgiving. */
       if (best->is_canonical) {
