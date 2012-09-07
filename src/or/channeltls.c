@@ -51,6 +51,8 @@ struct channel_tls_s {
 /* channel_tls_t method declarations */
 
 static void channel_tls_close_method(channel_t *chan);
+static const char *
+channel_tls_get_remote_descr_method(channel_t *chan, int req);
 static int channel_tls_has_queued_writes_method(channel_t *chan);
 static int channel_tls_is_canonical_method(channel_t *chan, int req);
 static int
@@ -106,6 +108,7 @@ channel_tls_connect(const tor_addr_t *addr, uint16_t port,
   channel_init(chan);
   chan->state = CHANNEL_STATE_OPENING;
   chan->close = channel_tls_close_method;
+  chan->get_remote_descr = channel_tls_get_remote_descr_method;
   chan->has_queued_writes = channel_tls_has_queued_writes_method;
   chan->is_canonical = channel_tls_is_canonical_method;
   chan->matches_extend_info = channel_tls_matches_extend_info_method;
@@ -161,6 +164,50 @@ channel_tls_close_method(channel_t *chan)
              tlschan);
     channel_change_state(chan, CHANNEL_STATE_ERROR);
   }
+}
+
+/** Return a text description of the remote endpoint of the channel
+ * suitable for use in log messages.  The req parameter is 0 for the
+ * canonical address or 1 for the actual address seen.
+ */
+
+static const char *
+channel_tls_get_remote_descr_method(channel_t *chan, int req)
+{
+#define MAX_DESCR_LEN 32
+
+  static char buf[MAX_DESCR_LEN + 1];
+  channel_tls_t *tlschan = BASE_CHAN_TO_TLS(chan);
+  connection_t *conn;
+  const char *answer = NULL;
+  char *addr_str;
+
+  tor_assert(tlschan);
+  tor_assert(tlschan->conn);
+
+  conn = TO_CONN(tlschan->conn);
+
+  switch (req) {
+    case 0:
+      /* Canonical address */
+      tor_snprintf(buf, MAX_DESCR_LEN + 1,
+                   "%s:%u", conn->address, conn->port);
+      answer = buf;
+      break;
+    case 1:
+      /* Actual address */
+      addr_str = tor_dup_addr(&(tlschan->conn->real_addr));
+      tor_snprintf(buf, MAX_DESCR_LEN + 1,
+                   "%s:%u", addr_str, conn->port);
+      tor_free(addr_str);
+      answer = buf;
+      break;
+    default:
+      /* Something's broken in channel.c */
+      tor_assert(1);
+  }
+
+  return answer;
 }
 
 /** Tell the upper layer if we have queued writes on the outbuf of the
