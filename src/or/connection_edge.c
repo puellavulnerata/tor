@@ -3079,7 +3079,7 @@ connection_exit_begin_conn(cell_t *cell, circuit_t *circ)
        */
       log_fn(LOG_PROTOCOL_WARN, LD_PROTOCOL,
              "Attempt by %s to open a stream %s. Closing.",
-             channel_get_remote_descr(or_circ->p_chan),
+             channel_get_canonical_remote_descr(or_circ->p_chan),
              or_circ->is_first_hop ? "on first hop of circuit" :
                                      "from unknown relay");
       relay_send_end_cell_from_edge(rh.stream_id, circ,
@@ -3102,7 +3102,7 @@ connection_exit_begin_conn(cell_t *cell, circuit_t *circ)
      * we might already have corrected _base.addr[ess] for the relay's
      * canonical IP address. */
     if (or_circ && or_circ->p_chan)
-      address = tor_strdup(channel_get_real_remote_descr(or_circ->p_chan));
+      address = tor_strdup(channel_get_actual_remote_descr(or_circ->p_chan));
     else
       address = tor_strdup("127.0.0.1");
     port = 1; /* XXXX This value is never actually used anywhere, and there
