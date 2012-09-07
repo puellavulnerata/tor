@@ -155,6 +155,8 @@ struct channel_s {
   void (*free)(channel_t *);
   /* Close an open channel */
   void (*close)(channel_t *);
+  /* Check if the lower layer has queued writes */
+  int (*has_queued_writes)(channel_t *);
   /* Write a cell to an open channel */
   int (*write_cell)(channel_t *, cell_t *);
   /* Write a packed cell to an open channel */
