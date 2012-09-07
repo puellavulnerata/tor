@@ -162,6 +162,8 @@ struct channel_s {
   const char * (*get_remote_descr)(int);
   /* Check if the lower layer has queued writes */
   int (*has_queued_writes)(channel_t *);
+  /* Check if this channel matches a specified extend_info_t */
+  int (*matches_extend_info)(channel_t *, extend_info_t *);
   /* Write a cell to an open channel */
   int (*write_cell)(channel_t *, cell_t *);
   /* Write a packed cell to an open channel */
