@@ -16,6 +16,7 @@
 #include "circuitbuild.h"
 #include "circuitlist.h"
 #include "circuituse.h"
+#include "command.h"
 #include "config.h"
 #include "connection.h"
 #include "connection_edge.h"
@@ -123,6 +124,9 @@ static int unit_tests = 0;
 
 /********* END VARIABLES ************/
 
+static channel_t * channel_connect_for_circuit(const tor_addr_t *addr,
+                                               uint16_t port,
+                                               const char *id_digest);
 static int circuit_deliver_create_cell(circuit_t *circ,
                                        uint8_t cell_type, const char *payload);
 static int onion_pick_cpath_exit(origin_circuit_t *circ, extend_info_t *exit);
@@ -138,6 +142,22 @@ static void bridge_free(bridge_info_t *bridge);
 
 static int entry_guard_inc_first_hop_count(entry_guard_t *guard);
 static void pathbias_count_success(origin_circuit_t *circ);
+
+/** This function tries to get a channel to the specified endpoint,
+ * and then calls command_setup_channel() to give it the right
+ * callbacks.
+ */
+static channel_t *
+channel_connect_for_circuit(const tor_addr_t *addr, uint16_t port,
+                            const char *id_digest)
+{
+  channel_t *chan;
+
+  chan = channel_connect(addr, port, id_digest);
+  if (chan) command_setup_channel(chan);
+
+  return chan;
+}
 
 /**
  * This function decides if CBT learning should be disabled. It returns
@@ -1973,9 +1993,10 @@ circuit_handle_first_hop(origin_circuit_t *circ)
     if (should_launch) {
       if (circ->build_state->onehop_tunnel)
         control_event_bootstrap(BOOTSTRAP_STATUS_CONN_DIR, 0);
-      n_chan = channel_connect(&firsthop->extend_info->addr,
-                                firsthop->extend_info->port,
-                                firsthop->extend_info->identity_digest);
+      n_chan = channel_connect_for_circuit(
+          &firsthop->extend_info->addr,
+          firsthop->extend_info->port,
+          firsthop->extend_info->identity_digest);
       if (!n_chan) { /* connect failed, forget the whole thing */
         log_info(LD_CIRC,"connect to firsthop failed. Closing.");
         return -END_CIRC_REASON_CONNECTFAILED;
@@ -2482,7 +2503,7 @@ circuit_extend(cell_t *cell, circuit_t *circ)
 
     if (should_launch) {
       /* we should try to open a connection */
-      n_chan = channel_connect(&n_addr, n_port, id_digest);
+      n_chan = channel_connect_for_circuit(&n_addr, n_port, id_digest);
       if (!n_chan) {
         log_info(LD_CIRC,"Launching n_chan failed. Closing circuit.");
         circuit_mark_for_close(circ, END_CIRC_REASON_CONNECTFAILED);
