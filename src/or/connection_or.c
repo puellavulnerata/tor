@@ -1150,12 +1150,11 @@ connection_tls_start_handshake(or_connection_t *conn, int receiving)
     tor_assert(!(conn->chan));
     chan_listener = channel_tls_get_listener();
     if (!chan_listener) {
-      log_info(LD_CHANNEL,
-               "Rejecting incoming or_connection_t because no "
-               "channel_tls_listener is available.");
-      return -1;
+      chan_listener = channel_tls_start_listener();
+      command_setup_listener(chan_listener);
     }
     chan = channel_tls_handle_incoming(conn);
+    channel_queue_incoming(chan_listener, chan);
     channel_queue_incoming(chan_listener, chan);
   }
 
