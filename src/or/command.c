@@ -43,6 +43,10 @@ uint64_t stats_n_relay_cells_processed = 0;
 /** How many CELL_DESTROY cells have we received, ever? */
 uint64_t stats_n_destroy_cells_processed = 0;
 
+/* Handle an incoming channel */
+static void command_handle_incoming_channel(channel_t *listener,
+                                            channel_t *chan);
+
 /* These are the main functions for processing cells */
 static void command_process_create_cell(cell_t *cell, channel_t *chan);
 static void command_process_created_cell(cell_t *cell, channel_t *chan);
@@ -455,6 +459,19 @@ command_process_destroy_cell(cell_t *cell, channel_t *chan)
   }
 }
 
+/** Callback to handle a new channel; call command_setup_channel() to give
+ * it the right cell handlers.
+ */
+
+static void
+command_handle_incoming_channel(channel_t *listener, channel_t *chan)
+{
+  tor_assert(listener);
+  tor_assert(chan);
+
+  command_setup_channel(chan);
+}
+
 /** Given a channel, install the right handlers to process incoming
  * cells on it.
  */
@@ -467,4 +484,17 @@ command_setup_channel(channel_t *chan)
   channel_set_cell_handlers(chan,
                             command_process_cell,
                             command_process_var_cell);
+}
+
+/** Given a listener, install the right handler to process incoming
+ * channels on it.
+ */
+
+void
+command_setup_listener(channel_t *listener)
+{
+  tor_assert(listener);
+  tor_assert(listener->state == CHANNEL_STATE_LISTENING);
+
+  channel_set_listener(listener, command_handle_incoming_channel);
 }
