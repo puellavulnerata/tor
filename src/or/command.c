@@ -12,7 +12,9 @@
 /* In-points to command.c:
  *
  * - command_process_cell(), called from
- *   connection_or_process_cells_from_inbuf() in connection_or.c
+ *   incoming cell handlers of channel_t instances;
+ *   callbacks registered in command_setup_channel(),
+ *   called when channels are created in circuitbuild.c
  */
 
 #include "or.h"
@@ -83,7 +85,7 @@ command_time_process_cell(cell_t *cell, channel_t *chan, int *time,
  * process each type of cell.
  */
 void
-command_process_cell(cell_t *cell, channel_t *chan)
+command_process_cell(channel_t *chan, cell_t *cell)
 {
 #ifdef KEEP_TIMING_STATS
   /* how many of each cell have we seen so far this second? needs better
@@ -151,6 +153,23 @@ command_process_cell(cell_t *cell, channel_t *chan)
              cell->command);
       break;
   }
+}
+
+/** Process an incoming var_cell from a channel; in the current protocol all
+ * the var_cells are handshake-related and handles below the channel layer,
+ * so this just logs a warning and drops the cell.
+ */
+
+void
+command_process_var_cell(channel_t *chan, var_cell_t *var_cell)
+{
+  tor_assert(chan);
+  tor_assert(var_cell);
+
+  log_info(LD_PROTOCOL,
+           "Received unexpected var_cell above the channel layer of type %d"
+           "; dropping it.",
+           var_cell->command);
 }
 
 /** Process a 'create' <b>cell</b> that just arrived from <b>chan</b>. Make a
@@ -436,3 +455,16 @@ command_process_destroy_cell(cell_t *cell, channel_t *chan)
   }
 }
 
+/** Given a channel, install the right handlers to process incoming
+ * cells on it.
+ */
+
+void
+command_setup_channel(channel_t *chan)
+{
+  tor_assert(chan);
+
+  channel_set_cell_handlers(chan,
+                            command_process_cell,
+                            command_process_var_cell);
+}
