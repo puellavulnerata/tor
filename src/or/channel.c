@@ -1785,6 +1785,29 @@ channel_send_destroy(circid_t circ_id, channel_t *chan, int reason)
   return 0;
 }
 
+/** This gets called periodically from run_scheduled_events() in main.c;
+ * it cleans up closed channels. */
+
+void
+channel_run_cleanup(void)
+{
+  channel_t *tmp = NULL;
+
+  /* Check if we need to do anything */
+  if (!finished_channels || smartlist_len(finished_channels) == 0) return;
+
+  /* Iterate through finished_channels and get rid of them */
+  SMARTLIST_FOREACH_BEGIN(finished_channels, channel_t *, curr) {
+    tmp = curr;
+    /* Remove it from the list */
+    SMARTLIST_DEL_CURRENT(finished_channels, curr);
+    /* Also unregister it */
+    channel_unregister(tmp);
+    /* ... and free it */
+    channel_free(tmp);
+  } SMARTLIST_FOREACH_END(curr);
+}
+
 /** Connect to a given addr/port/digest; this eventually should get replaced
   * with something transport-independent that picks an appropriate subclass
   * constructor to call.
