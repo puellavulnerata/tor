@@ -41,6 +41,9 @@ uint64_t stats_n_authenticate_cells_processed = 0;
 /** How many CELL_AUTHORIZE cells have we received, ever? */
 uint64_t stats_n_authorize_cells_processed = 0;
 
+/** Active listener, if any */
+channel_tls_t *channel_tls_listener = NULL;
+
 struct channel_tls_s {
   /* Base channel_t struct */
   channel_t _base;
@@ -147,6 +150,45 @@ channel_tls_connect(const tor_addr_t *addr, uint16_t port,
   return chan;
 }
 
+/** Return the current channel_tls_t listener
+ */
+
+channel_t *
+channel_tls_get_listener(void)
+{
+  return TLS_CHAN_TO_BASE(channel_tls_listener);
+}
+
+/** Return the current channel_tls_t listener, or start one if we
+ * haven't yet.
+ */
+
+channel_t *
+channel_tls_start_listener(void)
+{
+  channel_tls_t *listener;
+  channel_t *lchan;
+
+  if (!channel_tls_listener) {
+    listener = tor_malloc_zero(sizeof(*listener));
+    lchan = TLS_CHAN_TO_BASE(listener);
+    channel_init(lchan);
+    lchan->state = CHANNEL_STATE_LISTENING;
+    lchan->get_remote_descr = channel_tls_get_remote_descr_method;
+    lchan->has_queued_writes = channel_tls_has_queued_writes_method;
+    lchan->is_canonical = channel_tls_is_canonical_method;
+    lchan->matches_extend_info = channel_tls_matches_extend_info_method;
+    lchan->matches_target = channel_tls_matches_target_method;
+    lchan->write_cell = channel_tls_write_cell_method;
+    lchan->write_packed_cell = channel_tls_write_packed_cell_method;
+    lchan->write_var_cell = channel_tls_write_var_cell_method;
+
+    channel_tls_listener = listener;
+  } else lchan = TLS_CHAN_TO_BASE(channel_tls_listener);
+
+  return lchan;
+}
+
 /** Close a channel_tls_t */
 
 static void
@@ -156,13 +198,22 @@ channel_tls_close_method(channel_t *chan)
 
   tor_assert(tlschan);
 
-  if (tlschan->conn) connection_or_close_normally(tlschan->conn);
-  else {
-    /* Weird - we'll have to change the state ourselves, I guess */
-    log_info(LD_CHANNEL,
-             "Tried to close channel_tls_t %p with NULL conn",
-             tlschan);
-    channel_change_state(chan, CHANNEL_STATE_ERROR);
+  if (chan->state != CHANNEL_STATE_LISTENING) {
+    if (tlschan->conn) connection_or_close_normally(tlschan->conn);
+    else {
+      /* Weird - we'll have to change the state ourselves, I guess */
+      log_info(LD_CHANNEL,
+               "Tried to close channel_tls_t %p with NULL conn",
+               tlschan);
+      channel_change_state(chan, CHANNEL_STATE_ERROR);
+    }
+  } else {
+    /* Listeners we just go ahead and free, but make sure to check if
+     * they're channel_tls_listener to NULL it out. */
+    if (chan == TLS_CHAN_TO_BASE(channel_tls_listener))
+      channel_tls_listener = NULL;
+
+    channel_free(chan);
   }
 }
 
