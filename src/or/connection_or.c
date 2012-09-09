@@ -1141,6 +1141,24 @@ connection_or_close_for_error(or_connection_t *orconn)
 int
 connection_tls_start_handshake(or_connection_t *conn, int receiving)
 {
+  channel_t *chan_listener, *chan;
+
+  /* Incoming connections will need a new channel passed to the
+   * channel_tls_listener */
+  if (receiving) {
+    /* It shouldn't already be set */
+    tor_assert(!(conn->chan));
+    chan_listener = channel_tls_get_listener();
+    if (!chan_listener) {
+      log_info(LD_CHANNEL,
+               "Rejecting incoming or_connection_t because no "
+               "channel_tls_listener is available.");
+      return -1;
+    }
+    chan = channel_tls_handle_incoming(conn);
+    channel_queue_incoming(chan_listener, chan);
+  }
+
   connection_or_change_state(conn, OR_CONN_STATE_TLS_HANDSHAKING);
   tor_assert(!conn->tls);
   conn->tls = tor_tls_new(conn->_base.s, receiving);
