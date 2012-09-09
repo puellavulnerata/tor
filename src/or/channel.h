@@ -218,6 +218,11 @@ void channel_set_var_cell_handler(channel_t *chan,
                                   void (*var_cell_handler)(channel_t *,
                                                            var_cell_t *));
 
+/* Clean up closed channels periodically; called from run_scheduled_events()
+ * in main.c
+ */
+void channel_run_cleanup(void);
+
 #ifdef _TOR_CHANNEL_INTERNAL
 
 /* Channel operations for subclasses and internal use only */
