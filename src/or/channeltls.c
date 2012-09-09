@@ -189,6 +189,48 @@ channel_tls_start_listener(void)
   return lchan;
 }
 
+/** Create a new channel around an incoming or_connection_t
+ */
+
+channel_t *
+channel_tls_handle_incoming(or_connection_t *orconn)
+{
+  channel_tls_t *tlschan = tor_malloc_zero(sizeof(*tlschan));
+  channel_t *chan = TLS_CHAN_TO_BASE(tlschan);
+
+  tor_assert(orconn);
+  tor_assert(!(orconn->chan));
+
+  channel_init(chan);
+  chan->state = CHANNEL_STATE_OPENING;
+  chan->close = channel_tls_close_method;
+  chan->get_remote_descr = channel_tls_get_remote_descr_method;
+  chan->has_queued_writes = channel_tls_has_queued_writes_method;
+  chan->is_canonical = channel_tls_is_canonical_method;
+  chan->matches_extend_info = channel_tls_matches_extend_info_method;
+  chan->matches_target = channel_tls_matches_target_method;
+  chan->write_cell = channel_tls_write_cell_method;
+  chan->write_packed_cell = channel_tls_write_packed_cell_method;
+  chan->write_var_cell = channel_tls_write_var_cell_method;
+
+  if (is_local_addr(&(TO_CONN(orconn)->addr))) channel_mark_local(chan);
+  channel_mark_incoming(chan);
+
+  chan->active_circuit_pqueue = smartlist_new();
+  chan->active_circuit_pqueue_last_recalibrated = cell_ewma_get_tick();
+
+  /* If we got one, we should register and refcount it */
+  if (chan) {
+    channel_ref(chan);
+    channel_register(chan);
+  }
+
+  /* Set this connection's channel to the one we just created */
+  orconn->chan = tlschan;
+
+  return chan;
+}
+
 /** Close a channel_tls_t */
 
 static void
