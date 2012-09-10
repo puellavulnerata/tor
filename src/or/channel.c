@@ -273,7 +273,7 @@ channel_register(channel_t *chan)
                 "Channel %p (global ID %lu) in state %s (%d) registered "
                 "with no identity digest",
                 chan, chan->global_identifier,
-                channel_state_to_string(chan->state), state);
+                channel_state_to_string(chan->state), chan->state);
       }
     }
   }
