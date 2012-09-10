@@ -44,13 +44,6 @@ uint64_t stats_n_authorize_cells_processed = 0;
 /** Active listener, if any */
 channel_tls_t *channel_tls_listener = NULL;
 
-struct channel_tls_s {
-  /* Base channel_t struct */
-  channel_t _base;
-  /* or_connection_t pointer */
-  or_connection_t *conn;
-};
-
 /* channel_tls_t method declarations */
 
 static void channel_tls_close_method(channel_t *chan);
@@ -121,6 +114,10 @@ channel_tls_connect(const tor_addr_t *addr, uint16_t port,
   chan->write_packed_cell = channel_tls_write_packed_cell_method;
   chan->write_var_cell = channel_tls_write_var_cell_method;
 
+  log_debug(LD_CHANNEL,
+            "In channel_tls_connect() for channel %p (global id %lu)",
+            tlschan, chan->global_identifier);
+
   if (is_local_addr(addr)) channel_mark_local(chan);
   channel_mark_outgoing(chan);
 
@@ -128,11 +125,16 @@ channel_tls_connect(const tor_addr_t *addr, uint16_t port,
   chan->active_circuit_pqueue_last_recalibrated = cell_ewma_get_tick();
 
   /* Set up or_connection stuff */
-  tlschan->conn = connection_or_connect(addr, port, id_digest, tlschan);
+  connection_or_connect(addr, port, id_digest, tlschan);
+  /* connection_or_connect() will fill in tlschan->conn */
   if (!(tlschan->conn)) {
     channel_change_state(chan, CHANNEL_STATE_ERROR);
     goto err;
   }
+
+  log_debug(LD_CHANNEL,
+            "Got orconn %p for channel with global id %lu",
+            tlschan->conn, chan->global_identifier);
 
   goto done;
 
@@ -193,6 +195,11 @@ channel_tls_start_listener(void)
     lchan->write_var_cell = channel_tls_write_var_cell_method;
 
     channel_tls_listener = listener;
+
+    log_debug(LD_CHANNEL,
+              "Starting TLS listener channel %p with global id %lu",
+              lchan, lchan->global_identifier);
+              
   } else lchan = TLS_CHAN_TO_BASE(channel_tls_listener);
 
   return lchan;

@@ -1015,6 +1015,7 @@ connection_or_connect(const tor_addr_t *_addr, uint16_t port,
   /* set up conn so it's got all the data we need to remember */
   connection_or_init_conn_from_address(conn, &addr, port, id_digest, 1);
   conn->chan = chan;
+  chan->conn = conn;
   connection_or_change_state(conn, OR_CONN_STATE_CONNECTING);
   control_event_or_conn_status(conn, OR_CONN_EVENT_LAUNCHED, 0);
 
