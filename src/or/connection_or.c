@@ -1173,7 +1173,6 @@ connection_tls_start_handshake(or_connection_t *conn, int receiving)
     }
     chan = channel_tls_handle_incoming(conn);
     channel_queue_incoming(chan_listener, chan);
-    channel_queue_incoming(chan_listener, chan);
   }
 
   connection_or_change_state(conn, OR_CONN_STATE_TLS_HANDSHAKING);
