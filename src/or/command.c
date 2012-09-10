@@ -498,3 +498,4 @@ command_setup_listener(channel_t *listener)
 
   channel_set_listener(listener, command_handle_incoming_channel);
 }
+
