@@ -54,6 +54,8 @@ struct channel_tls_s {
 /* channel_tls_t method declarations */
 
 static void channel_tls_close_method(channel_t *chan);
+static int
+channel_tls_get_remote_addr_method(channel_t *chan, tor_addr_t *addr_out);
 static const char *
 channel_tls_get_remote_descr_method(channel_t *chan, int req);
 static int channel_tls_has_queued_writes_method(channel_t *chan);
@@ -111,6 +113,7 @@ channel_tls_connect(const tor_addr_t *addr, uint16_t port,
   channel_init(chan);
   chan->state = CHANNEL_STATE_OPENING;
   chan->close = channel_tls_close_method;
+  chan->get_remote_addr = channel_tls_get_remote_addr_method;
   chan->get_remote_descr = channel_tls_get_remote_descr_method;
   chan->has_queued_writes = channel_tls_has_queued_writes_method;
   chan->is_canonical = channel_tls_is_canonical_method;
@@ -257,6 +260,25 @@ channel_tls_close_method(channel_t *chan)
 
     channel_free(chan);
   }
+}
+
+/** Implement the get_remote_addr method for channel_tls_t; copy the
+ * remote endpoint of the channel to addr_out and return 1 (always
+ * succeeds for this transport).
+ */
+
+static int
+channel_tls_get_remote_addr_method(channel_t *chan, tor_addr_t *addr_out)
+{
+  channel_tls_t *tlschan = BASE_CHAN_TO_TLS(chan);
+
+  tor_assert(tlschan);
+  tor_assert(addr_out);
+  tor_assert(tlschan->conn);
+
+  tor_addr_copy(addr_out, &(TO_CONN(tlschan->conn)->addr));
+
+  return 1;
 }
 
 /** Return a text description of the remote endpoint of the channel
