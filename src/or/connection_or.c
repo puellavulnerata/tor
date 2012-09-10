@@ -428,6 +428,9 @@ connection_or_process_inbuf(or_connection_t *conn)
         tor_assert(TO_CONN(conn)->proxy_state == PROXY_CONNECTED);
         if (connection_tls_start_handshake(conn, 0) < 0)
           ret = -1;
+        /* Touch the channel's active timestamp if there is one */
+        if (conn->chan)
+          channel_timestamp_active(TLS_CHAN_TO_BASE(conn->chan));
       }
       if (ret < 0) {
         connection_or_close_for_error(conn);
@@ -1775,6 +1778,10 @@ connection_or_write_cell_to_buf(const cell_t *cell, or_connection_t *conn)
 
   connection_write_to_buf(networkcell.body, CELL_NETWORK_SIZE, TO_CONN(conn));
 
+  /* Touch the channel's active timestamp if there is one */
+  if (conn->chan)
+    channel_timestamp_active(TLS_CHAN_TO_BASE(conn->chan));
+
   if (conn->_base.state == OR_CONN_STATE_OR_HANDSHAKING_V3)
     or_handshake_state_record_cell(conn->handshake_state, cell, 0);
 
@@ -1801,6 +1808,10 @@ connection_or_write_var_cell_to_buf(const var_cell_t *cell,
     or_handshake_state_record_var_cell(conn->handshake_state, cell, 0);
   if (cell->command != CELL_PADDING)
     conn->timestamp_last_added_nonpadding = approx_time();
+
+  /* Touch the channel's active timestamp if there is one */
+  if (conn->chan)
+    channel_timestamp_active(TLS_CHAN_TO_BASE(conn->chan));
 }
 
 /** See whether there's a variable-length cell waiting on <b>or_conn</b>'s
@@ -1837,6 +1848,11 @@ connection_or_process_cells_from_inbuf(or_connection_t *conn)
     if (connection_fetch_var_cell_from_buf(conn, &var_cell)) {
       if (!var_cell)
         return 0; /* not yet. */
+
+      /* Touch the channel's active timestamp if there is one */
+      if (conn->chan)
+        channel_timestamp_active(TLS_CHAN_TO_BASE(conn->chan));
+
       circuit_build_times_network_is_live(&circ_times);
       channel_tls_handle_var_cell(var_cell, conn);
       var_cell_free(var_cell);
@@ -1846,6 +1862,10 @@ connection_or_process_cells_from_inbuf(or_connection_t *conn)
       if (connection_get_inbuf_len(TO_CONN(conn))
           < CELL_NETWORK_SIZE) /* whole response available? */
         return 0; /* not yet */
+
+      /* Touch the channel's active timestamp if there is one */
+      if (conn->chan)
+        channel_timestamp_active(TLS_CHAN_TO_BASE(conn->chan));
 
       circuit_build_times_network_is_live(&circ_times);
       connection_fetch_from_buf(buf, CELL_NETWORK_SIZE, TO_CONN(conn));
