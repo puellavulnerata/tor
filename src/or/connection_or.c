@@ -145,8 +145,11 @@ connection_or_set_identity_digest(or_connection_t *conn, const char *digest)
     return;
 
   /* If the identity was set previously, remove the old mapping. */
-  if (! tor_digest_is_zero(conn->identity_digest))
+  if (! tor_digest_is_zero(conn->identity_digest)) {
     connection_or_remove_from_identity_map(conn);
+    if (conn->chan)
+      channel_clear_identity_digest(TLS_CHAN_TO_BASE(conn->chan));
+  }
 
   memcpy(conn->identity_digest, digest, DIGEST_LEN);
 
@@ -156,6 +159,10 @@ connection_or_set_identity_digest(or_connection_t *conn, const char *digest)
 
   tmp = digestmap_set(orconn_identity_map, digest, conn);
   conn->next_with_same_id = tmp;
+
+  /* Deal with channels */
+  if (conn->chan)
+    channel_set_identity_digest(TLS_CHAN_TO_BASE(conn->chan), digest);
 
 #if 1
   /* Testing code to check for bugs in representation. */
@@ -1012,10 +1019,16 @@ connection_or_connect(const tor_addr_t *_addr, uint16_t port,
 
   conn = or_connection_new(tor_addr_family(&addr));
 
-  /* set up conn so it's got all the data we need to remember */
-  connection_or_init_conn_from_address(conn, &addr, port, id_digest, 1);
+  /*
+   * Set up conn so it's got all the data we need to remember for channels 
+   *
+   * This stuff needs to happen before connection_or_init_conn_from_address()
+   * so connection_or_set_identity_digest() and such know where to look to
+   * keep the channel up to date.
+   */
   conn->chan = chan;
   chan->conn = conn;
+  connection_or_init_conn_from_address(conn, &addr, port, id_digest, 1);
   connection_or_change_state(conn, OR_CONN_STATE_CONNECTING);
   control_event_or_conn_status(conn, OR_CONN_EVENT_LAUNCHED, 0);
 
