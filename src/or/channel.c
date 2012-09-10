@@ -1736,7 +1736,7 @@ channel_flush_some_cells_from_outgoing_queue(channel_t *chan,
   }
 
   /* Did we drain the queue? */
-  if (smartlist_len(chan->outgoing_queue) == 0) {
+  if (!(chan->outgoing_queue) || smartlist_len(chan->outgoing_queue) == 0) {
     /* Timestamp it */
     channel_timestamp_drained(chan);
   }
