@@ -70,19 +70,20 @@ connection_cpu_finished_flushing(connection_t *conn)
 /** Pack global_id and circ_id; set *tag to the result. (See note on
  * cpuworker_main for wire format.) */
 static void
-tag_pack(char *tag, uint64_t conn_id, circid_t circ_id)
+tag_pack(char *tag, uint64_t chan_id, circid_t circ_id)
 {
   /*XXXX RETHINK THIS WHOLE MESS !!!! !NM NM NM NM*/
-  set_uint64(tag, conn_id);
+  /*XXXX DOUBLEPLUSTHIS!!!! AS AS AS AS*/
+  set_uint64(tag, chan_id);
   set_uint16(tag+8, circ_id);
 }
 
 /** Unpack <b>tag</b> into addr, port, and circ_id.
  */
 static void
-tag_unpack(const char *tag, uint64_t *conn_id, circid_t *circ_id)
+tag_unpack(const char *tag, uint64_t *chan_id, circid_t *circ_id)
 {
-  *conn_id = get_uint64(tag);
+  *chan_id = get_uint64(tag);
   *circ_id = get_uint16(tag+8);
 }
 
@@ -133,10 +134,8 @@ connection_cpu_process_inbuf(connection_t *conn)
 {
   char success;
   char buf[LEN_ONION_RESPONSE];
-  uint64_t conn_id;
+  uint64_t chan_id;
   circid_t circ_id;
-  connection_t *tmp_conn;
-  or_connection_t *tmp_or_conn;
   channel_t *p_chan = NULL;
   circuit_t *circ;
 
@@ -155,15 +154,12 @@ connection_cpu_process_inbuf(connection_t *conn)
     connection_fetch_from_buf(buf,LEN_ONION_RESPONSE-1,conn);
 
     /* parse out the circ it was talking about */
-    tag_unpack(buf, &conn_id, &circ_id);
+    tag_unpack(buf, &chan_id, &circ_id);
     circ = NULL;
-    tmp_conn = connection_get_by_global_id(conn_id);
-    if (tmp_conn && !tmp_conn->marked_for_close &&
-        tmp_conn->type == CONN_TYPE_OR) {
-      tmp_or_conn = TO_OR_CONN(tmp_conn);
-      p_chan = (tmp_or_conn != NULL) ?
-        TLS_CHAN_TO_BASE(tmp_or_conn->chan) : NULL;
-    }
+    log_debug(LD_OR,
+              "Unpacking cpuworker reply, chan_id is %lu, circ_id is %d",
+              chan_id, circ_id);
+    p_chan = channel_find_by_global_id(chan_id);
 
     if (p_chan)
       circ = circuit_get_by_circid_channel(circ_id, p_chan);
