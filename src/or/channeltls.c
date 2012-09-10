@@ -144,11 +144,8 @@ channel_tls_connect(const tor_addr_t *addr, uint16_t port,
   chan = NULL;
 
  done:
-  /* If we got one, we should register and refcount it */
-  if (chan) {
-    channel_ref(chan);
-    channel_register(chan);
-  }
+  /* If we got one, we should register it */
+  if (chan) channel_register(chan);
 
   return chan;
 }
@@ -222,11 +219,8 @@ channel_tls_handle_incoming(or_connection_t *orconn)
   chan->active_circuit_pqueue = smartlist_new();
   chan->active_circuit_pqueue_last_recalibrated = cell_ewma_get_tick();
 
-  /* If we got one, we should register and refcount it */
-  if (chan) {
-    channel_ref(chan);
-    channel_register(chan);
-  }
+  /* If we got one, we should register it */
+  if (chan) channel_register(chan);
 
   /* Set this connection's channel to the one we just created */
   orconn->chan = tlschan;
