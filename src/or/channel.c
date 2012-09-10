@@ -1152,7 +1152,7 @@ channel_write_cell(channel_t *chan, cell_t *cell)
       channel_timestamp_drained(chan);
     }
   }
-  
+
   if (!sent) {
     /* Not sent, queue it */
     if (!(chan->outgoing_queue)) chan->outgoing_queue = smartlist_new();
@@ -1207,7 +1207,7 @@ channel_write_packed_cell(channel_t *chan, packed_cell_t *packed_cell)
       channel_timestamp_drained(chan);
     }
   }
-  
+
   if (!sent) {
     /* Not sent, queue it */
     if (!(chan->outgoing_queue)) chan->outgoing_queue = smartlist_new();
@@ -1267,7 +1267,7 @@ channel_write_var_cell(channel_t *chan, var_cell_t *var_cell)
       channel_timestamp_drained(chan);
     }
   }
-  
+
   if (!sent) {
     /* Not sent, queue it */
     if (!(chan->outgoing_queue)) chan->outgoing_queue = smartlist_new();
@@ -1460,7 +1460,7 @@ channel_flush_some_cells(channel_t *chan, ssize_t num_cells)
 
 /**
  * Flush cells from just the channel's out going cell queue
- * 
+ *
  * This gets called from channel_flush_some_cells() above to flush cells
  * just from the queue without trying for active_circuits.
  *
@@ -1634,7 +1634,7 @@ channel_more_to_flush(channel_t *chan)
 
 /**
  * Notify the channel we're done flushing the output in the lower layer
- * 
+ *
  * Connection.c will call this when we've flushed the output; there's some
  * dirreq-related maintenance to do.
  *
@@ -1653,7 +1653,7 @@ channel_notify_flushed(channel_t *chan)
 
 /**
  * Process the queue of incoming channels on a listener
- * 
+ *
  * Use a listener's registered callback to process as many entries in the
  * queue of incoming channels as possible.
  *
@@ -1697,7 +1697,6 @@ channel_process_incoming(channel_t *listener)
 /**
  * Take actions required when a channel becomes open
  *
- * 
  * Handle actions we should do when we know a channel is open; a lot of
  * this comes from the old connection_or_set_state_open() of connection_or.c.
  *
@@ -2063,7 +2062,7 @@ channel_connect(const tor_addr_t *addr, uint16_t port,
 
 /**
  * Decide which of two channels to prefer for extending a circuit
- * 
+ *
  * This function is called while extending a circuit and returns true iff
  * a is 'better' than b.  The most important criterion here is that a
  * canonical channel is always better than a non-canonical one, but the
@@ -2250,7 +2249,7 @@ channel_get_for_extend(const char *digest,
 
 /**
  * Return text description of the remote endpoint
- * 
+ *
  * This function return a test provided by the lower layer of the remote
  * endpoint for this channel; it should specify the actual address connected
  * to/from.
@@ -2271,7 +2270,7 @@ channel_get_actual_remote_descr(channel_t *chan)
 
 /**
  * Return text description of the remote endpoint canonical address
- * 
+ *
  * This function return a test provided by the lower layer of the remote
  * endpoint for this channel; it should use the known canonical address for
  * this OR's identity digest if possible.
@@ -2376,7 +2375,7 @@ channel_mark_bad_for_new_circs(channel_t *chan)
 
 /**
  * Get the client flag
- * 
+ *
  * This returns the client flag of a channel, which will be set if
  * command_process_create_cell() in command.c thinks this is a connection
  * from a client.
