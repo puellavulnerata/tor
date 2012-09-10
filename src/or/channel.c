@@ -63,7 +63,7 @@ static smartlist_t *finished_channels = NULL;
 /* Counter for ID numbers */
 static uint64_t n_channels_allocated = 0;
 
-/** Digest->channel map
+/* Digest->channel map
  *
  * Similar to the one used in connection_or.c, this maps from the identity
  * digest of a remote endpoint to a channel_t to that endpoint.  Channels
@@ -85,7 +85,15 @@ static ssize_t
 channel_flush_some_cells_from_outgoing_queue(channel_t *chan,
                                              ssize_t num_cells);
 
-/** Indicate whether a given channel state is valid
+/***********************************
+ * Channel state utility functions *
+ **********************************/
+
+/**
+ * Indicate whether a given channel state is valid
+ *
+ * @param state A channel state
+ * @return A boolean value indicating whether state is a valid channel state
  */
 
 int
@@ -111,8 +119,16 @@ channel_state_is_valid(channel_state_t state)
   return is_valid;
 }
 
-/** Indicate whether a channel state transition is valid (see the state
- * definitions and transition table in or.h at the channel_state_t typedef).
+/**
+ * Indicate whether a channel state transition is valid
+ *
+ * This function takes two channel states and indicates whether a
+ * transition between them is permitted (see the state definitions and
+ * transition table in or.h at the channel_state_t typedef).
+ *
+ * @param from Proposed state to transition from
+ * @param to Proposed state to transition to
+ * @return A boolean value indicating whether the posposed transition is valid
  */
 
 int
@@ -159,7 +175,11 @@ channel_state_can_transition(channel_state_t from, channel_state_t to)
   return is_valid;
 }
 
-/** Return a human-readable description for a channel state
+/**
+ * Return a human-readable description for a channel state
+ *
+ * @param state A channel state
+ * @return A pointer to a string with a human-readable description of state
  */
 
 const char *
@@ -200,6 +220,15 @@ channel_state_to_string(channel_state_t state)
 /***************************************
  * Channel registration/unregistration *
  ***************************************/
+
+/**
+ * Register a channel
+ *
+ * This function registers a newly created channel in the global lists/maps
+ * of active channels.
+ *
+ * @param chan A pointer to an unregistered channel
+ */
 
 void
 channel_register(channel_t *chan)
@@ -251,6 +280,15 @@ channel_register(channel_t *chan)
   chan->registered = 1;
 }
 
+/**
+ * Unregister a channel
+ *
+ * This function removes a channel from the global lists and maps and is used
+ * when freeing a closed/errored channel.
+ *
+ * @param chan A pointer to a channel to be unregistered
+ */
+
 void
 channel_unregister(channel_t *chan)
 {
@@ -296,6 +334,16 @@ channel_unregister(channel_t *chan)
  * Channel digest map maintenance
  *********************************/
 
+/**
+ * Add a channel to the digest map
+ *
+ * This function adds a channel to the digest map and inserts it into the
+ * correct linked list if channels with that remote endpoint identity digest
+ * already exist.
+ *
+ * @param chan A pointer to a channel to add
+ */
+
 static void
 channel_add_to_digest_map(channel_t *chan)
 {
@@ -333,6 +381,15 @@ channel_add_to_digest_map(channel_t *chan)
             channel_state_to_string(chan->state), chan->state,
             hex_str(chan->identity_digest, DIGEST_LEN));
 }
+
+/**
+ * Remove a channel from the digest map
+ *
+ * This function removes a channel from the digest map and the linked list of
+ * channels for that digest if more than one exists.
+ *
+ * @param chan A pointer to a channel to remove
+ */
 
 static void
 channel_remove_from_digest_map(channel_t *chan)
@@ -434,9 +491,20 @@ channel_remove_from_digest_map(channel_t *chan)
   }
 }
 
-/** These are for looking up registered channels by various things;
- * the channel_t returned is refcounted and should be unrefed when the
- * caller is done with it.
+/****************************
+ * Channel lookup functions *
+ ***************************/
+
+/**
+ * Find channel by global ID
+ *
+ * This function searches for a channel by the global_identifier assigned
+ * at initialization time.  This identifier is unique for the lifetime of the
+ * Tor process.
+ *
+ * @param global_identifier The global_identifier value to search for
+ * @return A pointer to the channel with that global identifier, or NULL if
+ *         none exists.
  */
 
 channel_t *
@@ -456,6 +524,18 @@ channel_find_by_global_id(uint64_t global_identifier)
   return rv;
 }
 
+/**
+ * Find channel by digest of the remote endpoint
+ *
+ * This function looks up a channel by the digest of its remote endpoint in
+ * the channel digest map.  It's possible that more than one channel to a
+ * given endpoint exists.  Use channel_next_with_digest() and
+ * channel_prev_with_digest() to walk the list.
+ *
+ * @param identity_digest A digest to search for
+ * @return A channel pointer, or NULL if no channel to this endpoint exists.
+ */
+
 channel_t *
 channel_find_by_remote_digest(const char *identity_digest)
 {
@@ -471,6 +551,19 @@ channel_find_by_remote_digest(const char *identity_digest)
 
   return rv;
 }
+
+/**
+ * Find channel by remote nickname
+ *
+ * This function looks up a channel by the nickname of the remote
+ * endpoint.  It's possible that more than one channel to that endpoint
+ * nickname exists, but there is not currently any supported way to iterate
+ * them.  Use digests.
+ *
+ * @param nickname A node nickname
+ * @return A channel pointer to a channel to a node with that nickname, or
+ *         NULL if none is available.
+ */
 
 channel_t *
 channel_find_by_remote_nickname(const char *nickname)
@@ -491,7 +584,16 @@ channel_find_by_remote_nickname(const char *nickname)
   return rv;
 }
 
-/** Channel digest list-walkers */
+/**
+ * Next channel with digest
+ *
+ * This function takes a channel and finds the next channel in the list
+ * with the same digest.
+ *
+ * @param chan Channel pointer to iterate
+ * @return A pointer to the next channel after chan with the same remote
+ *         endpoint identity digest, or NULL if none exists.
+ */
 
 channel_t *
 channel_next_with_digest(channel_t *chan)
@@ -504,6 +606,17 @@ channel_next_with_digest(channel_t *chan)
   return rv;
 }
 
+/**
+ * Previous channel with digest
+ *
+ * This function takes a channel and finds the previos channel in the list
+ * with the same digest.
+ *
+ * @param chan Channel pointer to iterate
+ * @return A pointer to the previous channel after chan with the same remote
+ *         endpoint identity digest, or NULL if none exists.
+ */
+
 channel_t *
 channel_prev_with_digest(channel_t *chan)
 {
@@ -515,7 +628,14 @@ channel_prev_with_digest(channel_t *chan)
   return rv;
 }
 
-/** Internal-only channel init function
+/**
+ * Internal-only channel init function
+ *
+ * This function should be called by subclasses to set up some per-channel
+ * variables.  I.e., this is the superclass constructor.  Before this, the
+ * channel should be allocated with tor_malloc_zero().
+ *
+ * @param chan Pointer to a channel to initialize.
  */
 
 void
@@ -536,7 +656,13 @@ channel_init(channel_t *chan)
   channel_timestamp_created(chan);
 }
 
-/** Internal-only channel free function
+/**
+ * Internal-only channel free function
+ *
+ * Nothing outside of channel.c should call this; it frees channels after
+ * they have closed and been unregistered.
+ *
+ * @param chan Channel to free
  */
 
 void
@@ -560,7 +686,14 @@ channel_free(channel_t *chan)
   tor_free(chan);
 }
 
-/** Return the current registered listener for a channel
+/**
+ * Return the current registered listener for a channel
+ *
+ * This function returns a function pointer to the current registered
+ * handler for new incoming channels on a listener channel.
+ *
+ * @param chan Channel to get listener for
+ * @return Function pointer to an incoming channel handler
  */
 
 void
@@ -573,7 +706,14 @@ void
   else return NULL;
 }
 
-/** Set the listener for a channel
+/**
+ * Set the listener for a channel
+ *
+ * This function sets the handler for new incoming channels on a listener
+ * channel.
+ *
+ * @param chan Listener channel to set handler on
+ * @param listener Function pointer to new incoming channel handler
  */
 
 void
@@ -591,7 +731,14 @@ channel_set_listener(channel_t *chan,
   if (chan->listener) channel_process_incoming(chan);
 }
 
-/** Return the fixed-length cell handler for a channel
+/**
+ * Return the fixed-length cell handler for a channel
+ *
+ * This function gets the handler for incoming fixed-length cells installed
+ * on a channel.
+ *
+ * @param chan Channel to get the fixed-length cell handler for
+ * @return A function pointer to chan's fixed-length cell handler, if any.
  */
 
 void
@@ -609,7 +756,14 @@ void
   }
 }
 
-/** Return the variable-length cell handler for a channel
+/**
+ * Return the variable-length cell handler for a channel
+ *
+ * This function gets the handler for incoming variable-length cells
+ * installed on a channel.
+ *
+ * @param chan Channel to get the variable-length cell handler for
+ * @return A function pointer to chan's variable-length cell handler, if any.
  */
 
 void
@@ -627,7 +781,15 @@ void
   }
 }
 
-/** Set the fixed-length cell handler for a channel
+/**
+ * Set the fixed-length cell handler for a channel
+ *
+ * This function sets the fixed-length cell handler for a channel and
+ * processes any incoming cells that had been blocked in the queue because
+ * none was available.
+ *
+ * @param chan Channel to set the fixed-length cell handler for
+ * @param cell_handler Function pointer to new fixed-length cell handler
  */
 
 void
@@ -661,7 +823,17 @@ channel_set_cell_handler(channel_t *chan,
       chan->cell_handler) channel_process_cells(chan);
 }
 
-/** Set both fixed- and variable-length cell handlers at once
+/**
+ * Set the both cell handlers for a channel
+ *
+ * This function sets both the fixed-length and variable length cell handlers
+ * for a channel and processes any incoming cells that had been blocked in the
+ * queue because none were available.
+ *
+ * @param chan Channel to set the fixed-length cell handler for
+ * @param cell_handler Function pointer to new fixed-length cell handler
+ * @param var_cell_handler Function pointer to new variable-length cell
+          handler
  */
 
 void
@@ -702,7 +874,15 @@ channel_set_cell_handlers(channel_t *chan,
        chan->var_cell_handler)) channel_process_cells(chan);
 }
 
-/** Set the variable-length cell handler for a channel
+/**
+ * Set the variable-length cell handler for a channel
+ *
+ * This function sets the variable-length cell handler for a channel and
+ * processes any incoming cells that had been blocked in the queue because
+ * none was available.
+ *
+ * @param chan Channel to set the variable-length cell handler for
+ * @param cell_handler Function pointer to new variable-length cell handler
  */
 
 void
@@ -737,8 +917,15 @@ channel_set_var_cell_handler(channel_t *chan,
       chan->var_cell_handler) channel_process_cells(chan);
 }
 
-/** Try to close a channel, invoking its close() method if it has one, and
- * free the channel_t. */
+/**
+ * Request a channel be closed
+ *
+ * This function tries to close a channel_t; it will go into the CLOSING
+ * state, and eventually the lower layer should put it into the CLOSED or
+ * ERROR state.  Then, channel_run_cleanup() will eventually free it.
+ *
+ * @param chan Channel to close
+ */
 
 void
 channel_request_close(channel_t *chan)
@@ -766,14 +953,21 @@ channel_request_close(channel_t *chan)
 
   /*
    * It's up to the lower layer to change state to CLOSED or ERROR when we're
-   * ready; we'll try to free channels that are in the finished list and
-   * have no refs.  It should do this by calling channel_closed().
+   * ready; we'll try to free channels that are in the finished list from
+   * channel_run_cleanup().  The lower layer should do this by calling
+   * channel_closed().
    */
 }
 
-/** Notify that the channel is being closed due to a non-error condition in
- * the lower layer.  This does not call the close() method, since the lower
- * layer already knows. */
+/**
+ * Close a channel from the lower layer
+ *
+ * Notify the channel code that the channel is being closed due to a non-error
+ * condition in the lower layer.  This does not call the close() method, since
+ * the lower layer already knows.
+ *
+ * @param chan Channel to notify for close
+ */
 
 void
 channel_close_from_lower_layer(channel_t *chan)
@@ -796,9 +990,15 @@ channel_close_from_lower_layer(channel_t *chan)
   channel_change_state(chan, CHANNEL_STATE_CLOSING);
 }
 
-/** Notify that the channel is being closed due to an error condition in
-  * the lower layer.  This does not call the close method, since the lower
-  * layer already knows. */
+/**
+ * Notify that the channel is being closed due to an error condition
+ *
+ * This function is called by the lower layer implementing the transport
+ * when a channel must be closed due to an error condition.  This does not
+ * call the channel's close method, since the lower layer already knows.
+ *
+ * @param chan Channel to notify for error
+ */
 
 void
 channel_close_for_error(channel_t *chan)
@@ -821,8 +1021,15 @@ channel_close_for_error(channel_t *chan)
   channel_change_state(chan, CHANNEL_STATE_CLOSING);
 }
 
-/** Notify that the lower layer is finished closing the channel and it
- * should be regarded as inactive. */
+/**
+ * Notify that the lower layer is finished closing the channel
+ *
+ * This function should be called by the lower layer when a channel
+ * is finished closing and it should be regarded as inactive and
+ * freed by the channel code.
+ *
+ * @param chan Channel to notify closure on
+ */
 
 void
 channel_closed(channel_t *chan)
@@ -851,7 +1058,14 @@ channel_closed(channel_t *chan)
   }
 }
 
-/** Clear the remote end metadata (identity_digest/nickname) of a channel */
+/**
+ * Clear the remote end metadata (identity_digest/nickname) of a channel
+ *
+ * This function clears all the remote end info from a channel; this is
+ * intended for use by the lower layer.
+ *
+ * @param chan Channel to clear
+ */
 
 void
 channel_clear_remote_end(channel_t *chan)
@@ -862,7 +1076,16 @@ channel_clear_remote_end(channel_t *chan)
   tor_free(chan->nickname);
 }
 
-/** Set the remote end metadata (identity_digest/nickname) of a channel */
+/**
+ * Set the remote end metadata (identity_digest/nickname) of a channel
+ *
+ * This function sets new remote end info on a channel; this is intended
+ * for use by the lower layer.
+ *
+ * @chan Channel to set data on
+ * @chan identity_digest New identity digest for chan
+ * @chan nickname New remote nickname for chan
+ */
 
 void
 channel_set_remote_end(channel_t *chan,
@@ -883,8 +1106,15 @@ channel_set_remote_end(channel_t *chan,
   if (nickname) chan->nickname = tor_strdup(nickname);
 }
 
-/** Write a cell to a channel using the write_cell() method.  This is
- * equivalent to connection_or_write_cell_to_buf(). */
+/**
+ * Write a cell to a channel
+ *
+ * Write a fixed-length cell to a channel using the write_cell() method.
+ * This is equivalent to the pre-channels connection_or_write_cell_to_buf().
+ *
+ * @param chan Channel to write a cell to
+ * @param cell Cell to write to chan
+ */
 
 void
 channel_write_cell(channel_t *chan, cell_t *cell)
@@ -935,8 +1165,14 @@ channel_write_cell(channel_t *chan, cell_t *cell)
   }
 }
 
-/** Write a packed cell to a channel using the write_packed_cell() method.
- * This is equivalent to connection_or_write_cell_to_buf(). */
+/**
+ * Write a packed cell to a channel
+ *
+ * Write a packed cell to a channel using the write_cell() method.
+ *
+ * @param chan Channel to write a cell to
+ * @param packed_cell Cell to write to chan
+ */
 
 void
 channel_write_packed_cell(channel_t *chan, packed_cell_t *packed_cell)
@@ -984,8 +1220,16 @@ channel_write_packed_cell(channel_t *chan, packed_cell_t *packed_cell)
   }
 }
 
-/** Write a var_cell_t to a channel using the write_var_cell() method. This
- * is equivalent to connection_or_write_var_cell_to_buf(). */
+/**
+ * Write a variable-length cell to a channel
+ *
+ * Write a variable-length cell to a channel using the write_cell() method.
+ * This is equivalent to the pre-channels
+ * connection_or_write_var_cell_to_buf().
+ *
+ * @param chan Channel to write a cell to
+ * @param var_cell Cell to write to chan
+ */
 
 void
 channel_write_var_cell(channel_t *chan, var_cell_t *var_cell)
@@ -1036,8 +1280,16 @@ channel_write_var_cell(channel_t *chan, var_cell_t *var_cell)
   }
 }
 
-/** Internal and subclass use only function to change channel state,
- * performing all transition validity checks. */
+/**
+ * Change channel state
+ *
+ * This internal and subclass use only function is used to change channel
+ * state, performing all transition validity checks and whatever actions
+ * are appropriate to the state transition in question.
+ *
+ * @param chan Channel to change state on
+ * @param to_state State to change chan to
+ */
 
 void
 channel_change_state(channel_t *chan, channel_state_t to_state)
@@ -1154,8 +1406,17 @@ channel_change_state(channel_t *chan, channel_state_t to_state)
   }
 }
 
-/** The lower layer wants more cells; try to oblige if we can. The num_cells
- * parameter indicates approximately how many to flush; use -1 for unlimited.
+/**
+ * Try to flush cells to the lower layer
+ *
+ * this is called by the lower layer to indicate that it wants more cells;
+ * it will try to write up to num_cells cells from the channel's cell queue or
+ * from circuits active on that channel, or as many as it has available if
+ * num_cells == -1.
+ *
+ * @param chan Channel to flush from
+ * @param num_cells Maximum number of cells to flush, or -1 for unlimited
+ * @return Number of cells flushed
  */
 
 #define MAX_CELLS_TO_GET_FROM_CIRCUITS_FOR_UNLIMITED 256
@@ -1197,8 +1458,16 @@ channel_flush_some_cells(channel_t *chan, ssize_t num_cells)
   return flushed;
 }
 
-/** This gets called from channel_flush_some_cells() above to flush cells
- * just from the queue without trying for active_circuits. */
+/**
+ * Flush cells from just the channel's out going cell queue
+ * 
+ * This gets called from channel_flush_some_cells() above to flush cells
+ * just from the queue without trying for active_circuits.
+ *
+ * @param chan Channel to flush from
+ * @param num_cells Maximum number of cells to flush, or -1 for unlimited
+ * @return Number of cells flushed
+ */
 
 static ssize_t
 channel_flush_some_cells_from_outgoing_queue(channel_t *chan,
@@ -1322,9 +1591,14 @@ channel_flush_some_cells_from_outgoing_queue(channel_t *chan,
   return flushed;
 }
 
-/** This tries to flush as many cells from the queue as the lower layer
+/**
+ * Try to flush as many cells as we possibly can from the queue
+ *
+ * This tries to flush as many cells from the queue as the lower layer
  * will take.  It just calls channel_flush_some_cells_from_outgoing_queue()
  * in unlimited mode.
+ *
+ * @param chan Channel to flush
  */
 
 void
@@ -1333,8 +1607,14 @@ channel_flush_cells(channel_t *chan)
   channel_flush_some_cells_from_outgoing_queue(chan, -1);
 }
 
-/** This gets used from the lower layer to check if any more cells are
+/**
+ * Check if any cells are available
+ *
+ * This gets used from the lower layer to check if any more cells are
  * available.
+ *
+ * @param chan Channel to check on
+ * @return 1 if cells are available, 0 otherwise
  */
 
 int
@@ -1352,8 +1632,14 @@ channel_more_to_flush(channel_t *chan)
   return 0;
 }
 
-/* Connection.c will call this when we've flushed the output; there's some
- * dirreq-related maintenance to do. */
+/**
+ * Notify the channel we're done flushing the output in the lower layer
+ * 
+ * Connection.c will call this when we've flushed the output; there's some
+ * dirreq-related maintenance to do.
+ *
+ * @param chan Channel to notify
+ */
 
 void
 channel_notify_flushed(channel_t *chan)
@@ -1365,8 +1651,14 @@ channel_notify_flushed(channel_t *chan)
                               DIRREQ_CHANNEL_BUFFER_FLUSHED);
 }
 
-/** Use a listener's registered callback to process the queue of incoming
- * channels. */
+/**
+ * Process the queue of incoming channels on a listener
+ * 
+ * Use a listener's registered callback to process as many entries in the
+ * queue of incoming channels as possible.
+ *
+ * @param listener Pointer to a listening channel.
+ */
 
 void
 channel_process_incoming(channel_t *listener)
@@ -1402,7 +1694,11 @@ channel_process_incoming(channel_t *listener)
   listener->incoming_list = NULL;
 }
 
-/** Handle actions we should do when we know a channel is open; a lot of
+/**
+ * Take actions required when a channel becomes open
+ *
+ * 
+ * Handle actions we should do when we know a channel is open; a lot of
  * this comes from the old connection_or_set_state_open() of connection_or.c.
  *
  * Because of this mechanism, future channel_t subclasses should take care
@@ -1410,6 +1706,8 @@ channel_process_incoming(channel_t *listener)
  * until there is positive confirmation that the network is operational.
  * In particular, anything UDP-based should not make this transition until a
  * packet is received from the other side.
+ *
+ * @param chan Channel that has become open
  */
 
 void
@@ -1452,8 +1750,16 @@ channel_do_open_actions(channel_t *chan)
   if (!not_using) circuit_n_chan_done(chan, 1);
 }
 
-/** Internal and subclass use only function to queue an incoming channel from
- * a listening one. */
+/**
+ * Queue an incoming channel on a listener
+ *
+ * Internal and subclass use only function to queue an incoming channel from
+ * a listening one.  A subclass of channel_t should call this when a new
+ * incoming channel is created.
+ *
+ * @param listener Listening channel to queue on
+ * @param incoming New incoming channel
+ */
 
 void
 channel_queue_incoming(channel_t *listener, channel_t *incoming)
@@ -1500,12 +1806,13 @@ channel_queue_incoming(channel_t *listener, channel_t *incoming)
   }
 }
 
-/*
- * Internal and subclass use only function to queue an incoming cell for the
- * callback to handle.
- */
-
-/** Process as many queued cells as we can
+/**
+ * Process queued incoming cells
+ *
+ * Process as many queued cells as we can from the incoming
+ * cell queue.
+ *
+ * @param chan Channel to process incoming cell queue on
  */
 
 void
@@ -1564,7 +1871,14 @@ channel_process_cells(channel_t *chan)
   }
 }
 
-/** Queue a fixed-length cell for processing, and process it if possible
+/**
+ * Queue incoming cell
+ *
+ * This should be called by a channel_t subclass to queue an incoming fixed-
+ * length cell for processing, and process it if possible.
+ *
+ * @param chan Channel the cell is arriving on
+ * @param cell Incoming cell to queue and process
  */
 
 void
@@ -1613,7 +1927,14 @@ channel_queue_cell(channel_t *chan, cell_t *cell)
   }
 }
 
-/** Queue a variable-length cell for processing, and process it if possible
+/**
+ * Queue incoming variable-length cell
+ *
+ * This should be called by a channel_t subclass to queue an incoming
+ * variable-length cell for processing, and process it if possible.
+ *
+ * @param chan Channel the cell is arriving on
+ * @param var_cell Incoming cell to queue and process
  */
 
 void
@@ -1659,11 +1980,17 @@ channel_queue_var_cell(channel_t *chan, var_cell_t *var_cell)
   }
 }
 
-/** Write a destroy cell with circ ID <b>circ_id</b> and reason <b>reason</b>
+/**
+ * Send destroy cell on a channel
+ *
+ * Write a destroy cell with circ ID <b>circ_id</b> and reason <b>reason</b>
  * onto channel <b>chan</b>.  Don't perform range-checking on reason:
  * we may want to propagate reasons from other cells.
  *
- * Return 0.
+ * @param circ_id Circuit ID to destroy
+ * @param chan Channel to send on
+ * @param reason Reason code
+ * @return Always 0
  */
 
 int
@@ -1684,8 +2011,12 @@ channel_send_destroy(circid_t circ_id, channel_t *chan, int reason)
   return 0;
 }
 
-/** This gets called periodically from run_scheduled_events() in main.c;
- * it cleans up closed channels. */
+/**
+ * Channel cleanup
+ *
+ * This gets called periodically from run_scheduled_events() in main.c;
+ * it cleans up after closed channels.
+ */
 
 void
 channel_run_cleanup(void)
@@ -1707,10 +2038,21 @@ channel_run_cleanup(void)
   } SMARTLIST_FOREACH_END(curr);
 }
 
-/** Connect to a given addr/port/digest; this eventually should get replaced
-  * with something transport-independent that picks an appropriate subclass
-  * constructor to call.
-  */
+/**
+ * Connect to a given addr/port/digest
+ *
+ * This sets up a new outgoing channel; in the future if multiple
+ * channel_t subclasses are available, this is where the selection policy
+ * should go.  It may also be desirable to fold port into tor_addr_t
+ * or make a new type including a tor_addr_t and port, so we have a
+ * single abstract object encapsulating all the protocol details of
+ * how to contact an OR.
+ *
+ * @param addr Address of remote node to establish a channel to
+ * @param port ORport of remote OR
+ * @param id_digest Identity digest of remote OR
+ * @return New channel, or NULL if failure
+ */
 
 channel_t *
 channel_connect(const tor_addr_t *addr, uint16_t port,
@@ -1719,12 +2061,21 @@ channel_connect(const tor_addr_t *addr, uint16_t port,
   return channel_tls_connect(addr, port, id_digest);
 }
 
-/** Decide which of two channels to prefer for extending a circuit; this
- * returns true iff a is 'better' than b.  The most important criterion
- * here is that a canonical channel is always better than a non-canonical
- * one, but the number of circuits and the age are used as tie-breakers.
+/**
+ * Decide which of two channels to prefer for extending a circuit
+ * 
+ * This function is called while extending a circuit and returns true iff
+ * a is 'better' than b.  The most important criterion here is that a
+ * canonical channel is always better than a non-canonical one, but the
+ * number of circuits and the age are used as tie-breakers.
  *
  * This is based on the former connection_or_is_better() of connection_or.c
+ *
+ * @param now Current time to use for deciding grace period for new channels
+ * @param a Channel A for comparison
+ * @param b Channel B for comparison
+ * @param forgive_new_connections Whether to use grace period for new channels
+ * @return 1 iff a is better than b
  */
 
 int
@@ -1774,12 +2125,22 @@ channel_is_better(time_t now, channel_t *a, channel_t *b,
   else return 0;
 }
 
-/** Pick a suitable channel to extend a circuit to given the desired digest
+/**
+ * Get a channel to extend a circuit
+ *
+ * Pick a suitable channel to extend a circuit to given the desired digest
  * the address we believe is correct for that digest; this tries to see
  * if we already have one for the requested endpoint, but if there is no good
  * channel, set *msg_out to a message describing the channel's state
  * and our next action, and set *launch_out to a boolean indicated whether
  * the caller should try to launch a new channel with channel_connect().
+ *
+ * @param digest Endpoint digest we want
+ * @param target_addr Endpoint address we want
+ * @param msg_out Write out status message here if we fail
+ * @param launch_out Write 1 here if caller should try to connect a new
+ *        channel.
+ * @return Pointer to selected channel, or NULL if none available
  */
 
 channel_t *
@@ -1887,8 +2248,16 @@ channel_get_for_extend(const char *digest,
   }
 }
 
-/** Return text descriptions provided by the lower layer of the remote
- * endpoint for this channel. */
+/**
+ * Return text description of the remote endpoint
+ * 
+ * This function return a test provided by the lower layer of the remote
+ * endpoint for this channel; it should specify the actual address connected
+ * to/from.
+ *
+ * @param chan Channel to describe
+ * @return Pointer to string description
+ */
 
 const char *
 channel_get_actual_remote_descr(channel_t *chan)
@@ -1900,6 +2269,17 @@ channel_get_actual_remote_descr(channel_t *chan)
   return chan->get_remote_descr(chan, 1);
 }
 
+/**
+ * Return text description of the remote endpoint canonical address
+ * 
+ * This function return a test provided by the lower layer of the remote
+ * endpoint for this channel; it should use the known canonical address for
+ * this OR's identity digest if possible.
+ *
+ * @param chan Channel to describe
+ * @return Pointer to string description
+ */
+
 const char *
 channel_get_canonical_remote_descr(channel_t *chan)
 {
@@ -1910,8 +2290,16 @@ channel_get_canonical_remote_descr(channel_t *chan)
   return chan->get_remote_descr(chan, 0);
 }
 
-/** Write the remote address out to a tor_addr_t if the underlying transport
- * supports this operation, and return 1 if successful. */
+/**
+ * Get remote address if possible
+ *
+ * Write the remote address out to a tor_addr_t if the underlying transport
+ * supports this operation.
+ *
+ * @param chan Channel to request remote address from
+ * @param addr_out Write the address out here
+ * @return 1 if successful, 0 if not
+ */
 
 int
 channel_get_addr_if_possible(channel_t *chan, tor_addr_t *addr_out)
@@ -1924,8 +2312,14 @@ channel_get_addr_if_possible(channel_t *chan, tor_addr_t *addr_out)
   else return 0;
 }
 
-/** Indicate if either we have queued cells, or if not, whether the underlying
+/**
+ * Check if there are outgoing queue writes on this channel
+ *
+ * Indicate if either we have queued cells, or if not, whether the underlying
  * lower-layer transport thinks it has an output queue.
+ *
+ * @param chan Channel to query
+ * @return 1 if there are queued writes, 0 otherwise
  */
 
 int
@@ -1946,7 +2340,15 @@ channel_has_queued_writes(channel_t *chan)
   return has_writes;
 }
 
-/** Get/set is_bad_for_new_circs flag */
+/**
+ * Check the is_bad_for_new_circs flag
+ *
+ * This function returns the is_bad_for_new_circs flag of the specified
+ * channel.
+ *
+ * @param chan Channel to get flag on
+ * @return Flag value
+ */
 
 int
 channel_is_bad_for_new_circs(channel_t *chan)
@@ -1956,6 +2358,14 @@ channel_is_bad_for_new_circs(channel_t *chan)
   return chan->is_bad_for_new_circs;
 }
 
+/**
+ * Mark a channel as bad for new circuits
+ *
+ * Set the is_bad_for_new_circs_flag on chan.
+ *
+ * @param chan Channel to mark
+ */
+
 void
 channel_mark_bad_for_new_circs(channel_t *chan)
 {
@@ -1964,8 +2374,16 @@ channel_mark_bad_for_new_circs(channel_t *chan)
   chan->is_bad_for_new_circs = 1;
 }
 
-/** Get the client flag; this will be set if command_process_create_cell()
- * in cmd.c thinks this is a connection from a client. */
+/**
+ * Get the client flag
+ * 
+ * This returns the client flag of a channel, which will be set if
+ * command_process_create_cell() in command.c thinks this is a connection
+ * from a client.
+ *
+ * @param chan Channel to query flag
+ * @return Flag value
+ */
 
 int
 channel_is_client(channel_t *chan)
@@ -1975,7 +2393,13 @@ channel_is_client(channel_t *chan)
   return chan->is_client;
 }
 
-/** Set the client flag */
+/**
+ * Set the client flag
+ *
+ * Mark a channel as being from a client
+ *
+ * @param chan Channel to mark
+ */
 
 void
 channel_mark_client(channel_t *chan)
@@ -1985,8 +2409,15 @@ channel_mark_client(channel_t *chan)
   chan->is_client = 1;
 }
 
-/** The is_canonical flag is determined by the lower layer and can't be
- * set in a transport-independent way. */
+/**
+ * Get the canonical flag for a channel
+ *
+ * This returns the is_canonical for a channel; this flag is determined by
+ * the lower layer and can't be set in a transport-independent way.
+ *
+ * @param chan Channel to query
+ * @return Flag value
+ */
 
 int
 channel_is_canonical(channel_t *chan)
@@ -1997,8 +2428,16 @@ channel_is_canonical(channel_t *chan)
   return chan->is_canonical(chan, 0);
 }
 
-/** Ask if the lower layer thinks it's safe to trust the result of
- * channel_is_canonical() */
+/**
+ * Test if the canonical flag is reliable
+ *
+ * This function asks if the lower layer thinks it's safe to trust the
+ * result of channel_is_canonical()
+ *
+ * @param chan Channel to query
+ * @return 1 if the lower layer thinks the is_canonical flag is reliable, 0
+ *         otherwise.
+ */
 
 int
 channel_is_canonical_is_reliable(channel_t *chan)
@@ -2009,8 +2448,15 @@ channel_is_canonical_is_reliable(channel_t *chan)
   return chan->is_canonical(chan, 1);
 }
 
-/** Get the incoming flag; this is set when a listener spawns a channel.
- * If this returns true the channel was remotely initiated. */
+/**
+ * Test incoming flag
+ *
+ * This function gets the incoming flag; this is set when a listener spawns
+ * a channel.  If this returns true the channel was remotely initiated.
+ *
+ * @param chan Channel to query
+ * @return Flag value
+ */
 
 int
 channel_is_incoming(channel_t *chan)
@@ -2020,7 +2466,14 @@ channel_is_incoming(channel_t *chan)
   return chan->is_incoming;
 }
 
-/** Set the incoming flag */
+/**
+ * Set the incoming flag
+ *
+ * This function is called when a channel arrives on a listening channel
+ * to mark it as incoming.
+ *
+ * @param chan Channel to mark
+ */
 
 void
 channel_mark_incoming(channel_t *chan)
@@ -2030,11 +2483,18 @@ channel_mark_incoming(channel_t *chan)
   chan->is_incoming = 1;
 }
 
-/** Get local flag; the lower layer should set this when setting up the
- * channel if is_local_addr() is true for all of the destinations it will
- * communicate with on behalf of this channel.  It's used to decide whether
- * to declare the network reachable when seeing incoming traffic on the
- * channel. */
+/**
+ * Test local flag
+ *
+ * This function gets the local flag; the lower layer should set this when
+ * setting up the channel if is_local_addr() is true for all of the
+ * destinations it will communicate with on behalf of this channel.  It's
+ * used to decide whether to declare the network reachable when seeing incoming
+ * traffic on the channel.
+ *
+ * @param chan Channel to query
+ * @return Flag value
+ */
 
 int
 channel_is_local(channel_t *chan)
@@ -2044,9 +2504,15 @@ channel_is_local(channel_t *chan)
   return chan->is_local;
 }
 
-/* Set the local flag; this internal-only function should be called by the
- * lower layer if the channel is to a local address.  See above or the
- * description of the is_local bit in channel.h */
+/**
+ * Set the local flag
+ *
+ * This internal-only function should be called by the lower layer if the
+ * channel is to a local address.  See channel_is_local() above or the
+ * description of the is_local bit in channel.h
+ *
+ * @param chan Channel to mark
+ */
 
 void
 channel_mark_local(channel_t *chan)
@@ -2056,9 +2522,16 @@ channel_mark_local(channel_t *chan)
   chan->is_local = 1;
 }
 
-/** Get the outgoing flag; this is the inverse of the incoming bit set when
- * a listener spawns a channel.  If this returns true the channel was locally
- * initiated. */
+/**
+ * Test outgoing flag
+ *
+ * This function gets the outgoing flag; this is the inverse of the incoming
+ * bit set when a listener spawns a channel.  If this returns true the channel
+ * was locally initiated.
+ *
+ * @param chan Channel to query
+ * @return Flag value
+ */
 
 int
 channel_is_outgoing(channel_t *chan)
@@ -2068,7 +2541,14 @@ channel_is_outgoing(channel_t *chan)
   return !(chan->is_incoming);
 }
 
-/** Clear the incoming flag */
+/**
+ * Mark a channel as outgoing
+ *
+ * This function clears the incoming flag and thus marks a channel as
+ * outgoing.
+ *
+ * @param chan Channel to mark
+ */
 
 void
 channel_mark_outgoing(channel_t *chan)
@@ -2078,10 +2558,18 @@ channel_mark_outgoing(channel_t *chan)
   chan->is_incoming = 0;
 }
 
-/** Timestamp updates */
+/*********************
+ * Timestamp updates *
+ ********************/
 
-/** Update the created timestamp; this should only be called from
- * channel_init(). */
+/**
+ * Update the created timestamp
+ *
+ * This updates the channel's created timestamp and should only be called
+ * from channel_init().
+ *
+ * @param chan Channel to update
+ */
 
 void
 channel_timestamp_created(channel_t *chan)
@@ -2093,13 +2581,17 @@ channel_timestamp_created(channel_t *chan)
   chan->timestamp_created = now;
 }
 
-/** Update the last active timestamp.  This should be called by the
- * lower layer whenever there is activity on the channel which does
- * not lead to a cell being transmitted or received; the active
- * timestamp is also updated from channel_timestamp_recv() and
- * channel_timestamp_xmit(), but it should be updated for things
- * like the v3 handshake and stuff that produce activity only
- * visible to the lower layer.
+/**
+ * Update the last active timestamp.
+ *
+ * This function updates the channe's last active timestamp; it should be
+ * called by the lower layer whenever there is activity on the channel which
+ * does not lead to a cell being transmitted or received; the active timestamp
+ * is also updated from channel_timestamp_recv() and channel_timestamp_xmit(),
+ * but it should be updated for things like the v3 handshake and stuff that
+ * produce activity only visible to the lower layer.
+ *
+ * @param chan Channel to update
  */
 
 void
@@ -2112,7 +2604,14 @@ channel_timestamp_active(channel_t *chan)
   chan->timestamp_active = now;
 }
 
-/** Mark a channel relay.c thinks just got used as client */
+/**
+ * Update client timestamp
+ *
+ * This function is called by relay.c to timestamp a channel that appears to
+ * be used as a client.
+ *
+ * @param chan Channel to update
+ */
 
 void
 channel_timestamp_client(channel_t *chan)
@@ -2124,9 +2623,13 @@ channel_timestamp_client(channel_t *chan)
   chan->timestamp_client = now;
 }
 
-/** Update the last drained timestamp.  This is called whenever we
- * transmit a cell which leaves the outgoing cell queue completely
- * empty.  It also updates the xmit time and the active time.
+/**
+ * Update the last drained timestamp
+ *
+ * This is called whenever we transmit a cell which leaves the outgoing cell
+ * queue completely empty.  It also updates the xmit time and the active time.
+ *
+ * @param chan Channel to update
  */
 
 void
@@ -2141,9 +2644,13 @@ channel_timestamp_drained(channel_t *chan)
   chan->timestamp_xmit = now;
 }
 
-/** Update the recv timestamp.  This is called whenever we get an
- * incoming cell from the lower layer.  This also updates the active
- * timestamp.
+/**
+ * Update the recv timestamp
+ *
+ * This is called whenever we get an incoming cell from the lower layer.
+ * This also updates the active timestamp.
+ *
+ * @param chan Channel to update
  */
 
 void
@@ -2157,9 +2664,12 @@ channel_timestamp_recv(channel_t *chan)
   chan->timestamp_recv = now;
 }
 
-/** Update the xmit timestamp.  This is called whenever we pass an
- * outgoing cell to the lower layer.  This also updates the active
- * timestamp.
+/**
+ * Update the xmit timestamp
+ * This is called whenever we pass an outgoing cell to the lower layer.  This
+ * also updates the active timestamp.
+ *
+ * @param chan Channel to update
  */
 
 void
@@ -2173,7 +2683,16 @@ channel_timestamp_xmit(channel_t *chan)
   chan->timestamp_xmit = now;
 }
 
-/** Timestamp queries - see above comments for meaning of the timestamps */
+/***************************************************************
+ * Timestamp queries - see above for definitions of timestamps *
+ **************************************************************/
+
+/**
+ * Query created timestamp
+ *
+ * @param chan Channel to query
+ * @return Created timestamp value for chan
+ */
 
 time_t
 channel_when_created(channel_t *chan)
@@ -2183,6 +2702,13 @@ channel_when_created(channel_t *chan)
   return chan->timestamp_created;
 }
 
+/**
+ * Query last active timestamp
+ *
+ * @param chan Channel to query
+ * @return Last active timestamp value for chan
+ */
+
 time_t
 channel_when_last_active(channel_t *chan)
 {
@@ -2190,6 +2716,13 @@ channel_when_last_active(channel_t *chan)
 
   return chan->timestamp_active;
 }
+
+/**
+ * Query client timestamp
+ *
+ * @param chan Channel to query
+ * @return Client timestamp value for chan
+ */
 
 time_t
 channel_when_last_client(channel_t *chan)
@@ -2199,6 +2732,13 @@ channel_when_last_client(channel_t *chan)
   return chan->timestamp_client;
 }
 
+/**
+ * Query drained timestamp
+ *
+ * @param chan Channel to query
+ * @return drained timestamp value for chan
+ */
+
 time_t
 channel_when_last_drained(channel_t *chan)
 {
@@ -2206,6 +2746,13 @@ channel_when_last_drained(channel_t *chan)
 
   return chan->timestamp_drained;
 }
+
+/**
+ * Query recv timestamp
+ *
+ * @param chan Channel to query
+ * @return Recv timestamp value for chan
+ */
 
 time_t
 channel_when_last_recv(channel_t *chan)
@@ -2215,6 +2762,13 @@ channel_when_last_recv(channel_t *chan)
   return chan->timestamp_recv;
 }
 
+/**
+ * Query xmit timestamp
+ *
+ * @param chan Channel to query
+ * @return Xmit timestamp value for chan
+ */
+
 time_t
 channel_when_last_xmit(channel_t *chan)
 {
@@ -2223,8 +2777,16 @@ channel_when_last_xmit(channel_t *chan)
   return chan->timestamp_xmit;
 }
 
-/** Call the lower layer and ask if this channel matches a given
- * extend_info_t */
+/**
+ * Check if a channel matches an extend_info_t
+ *
+ * This function calls the lower layer and asks if this channel matches a
+ * given extend_info_t.
+ *
+ * @param chan Channel to test
+ * @param extend_info Pointer to extend_info_t to match
+ * @return 1 if they match, 0 otherwise
+ */
 
 int
 channel_matches_extend_info(channel_t *chan, extend_info_t *extend_info)
@@ -2236,8 +2798,15 @@ channel_matches_extend_info(channel_t *chan, extend_info_t *extend_info)
   return chan->matches_extend_info(chan, extend_info);
 }
 
-/** Call into the lower layer and see if this channel thinks it matches a
- * given target address for circuit extension purposes.
+/**
+ * Check if a channel matches a given target address
+ *
+ * This function calls into the lower layer and asks if this channel thinks
+ * it matches a given target address for circuit extension purposes.
+ *
+ * @param chan Channel to test
+ * @param target Address to match
+ * @return 1 if they match, 0 otherwise
  */
 
 int
@@ -2251,7 +2820,15 @@ channel_matches_target_addr_for_extend(channel_t *chan,
   return chan->matches_target(chan, target);
 }
 
-/** Set up circuit ID stuff; this replaces connection_or_set_circid_type() */
+/**
+ * Set up circuit ID generation
+ *
+ * This is called when setting up a channel and replaces the old
+ * connection_or_set_circid_type()
+ *
+ * @param chan Channel to set up
+ * @param identity_rcvd Remote end's identity public key
+ */
 
 void
 channel_set_circid_type(channel_t *chan, crypto_pk_t *identity_rcvd)
