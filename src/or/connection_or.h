@@ -69,8 +69,6 @@ void connection_or_write_cell_to_buf(const cell_t *cell,
                                      or_connection_t *conn);
 void connection_or_write_var_cell_to_buf(const var_cell_t *cell,
                                          or_connection_t *conn);
-int connection_or_send_destroy(circid_t circ_id, or_connection_t *conn,
-                               int reason);
 int connection_or_send_versions(or_connection_t *conn, int v3_plus);
 int connection_or_send_netinfo(or_connection_t *conn);
 int connection_or_send_certs_cell(or_connection_t *conn);
