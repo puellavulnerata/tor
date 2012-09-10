@@ -902,8 +902,18 @@ circuit_get_by_circid_channel_impl(circid_t circ_id, channel_t *chan)
     found = HT_FIND(chan_circid_map, &chan_circid_map, &search);
     _last_circid_chan_ent = found;
   }
-  if (found && found->circuit)
+  if (found && found->circuit) {
+    log_debug(LD_CIRC,
+              "circuit_get_by_circid_channel_impl() returning circuit %p for"
+              " circ_id %d, channel ID %lu (%p)",
+              found->circuit, circ_id, chan->global_identifier, chan);
     return found->circuit;
+  }
+
+  log_debug(LD_CIRC,
+            "circuit_get_by_circid_channel_impl() found nothing for"
+            " circ_id %d, channel ID %lu (%p)",
+            circ_id, chan->global_identifier, chan);
 
   return NULL;
   /* The rest of this checks for bugs. Disabled by default. */
