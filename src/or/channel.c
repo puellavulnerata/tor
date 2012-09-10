@@ -270,8 +270,10 @@ channel_register(channel_t *chan)
         channel_add_to_digest_map(chan);
       } else {
         log_info(LD_CHANNEL,
-                 "Channel in state %s registered with no identity digest",
-                 channel_state_to_string(chan->state));
+                "Channel %p (global ID %lu) in state %s (%d) registered "
+                "with no identity digest",
+                chan, chan->global_identifier,
+                channel_state_to_string(chan->state), state);
       }
     }
   }
@@ -1059,6 +1061,100 @@ channel_closed(channel_t *chan)
 }
 
 /**
+ * Clear the identity_digest of a channel
+ *
+ * This function clears the identity digest of the remote endpoint for a
+ * channel; this is intended for use by the lower layer.
+ *
+ * @param chan Channel to clear
+ */
+
+void
+channel_clear_identity_digest(channel_t *chan)
+{
+  int state_not_in_map;
+
+  tor_assert(chan);
+
+  log_debug(LD_CHANNEL,
+            "Clearing remote endpoint digest on channel %p with "
+            "global ID %lu",
+            chan, chan->global_identifier);
+
+  state_not_in_map =
+    (chan->state == CHANNEL_STATE_LISTENING ||
+     chan->state == CHANNEL_STATE_CLOSING ||
+     chan->state == CHANNEL_STATE_CLOSED ||
+     chan->state == CHANNEL_STATE_ERROR);
+
+  if (!state_not_in_map && chan->registered &&
+      !tor_digest_is_zero(chan->identity_digest))
+    /* if it's registered get it out of the digest map */
+    channel_remove_from_digest_map(chan);
+
+  memset(chan->identity_digest, 0, sizeof(chan->identity_digest));
+}
+
+/**
+ * Set the identity_digest of a channel
+ *
+ * This function sets the identity digest of the remote endpoint for a
+ * channel; this is intended for use by the lower layer.
+ *
+ * @param chan Channel to clear
+ * @param identity_digest New identity digest for chan
+ */
+
+void
+channel_set_identity_digest(channel_t *chan,
+                            const char *identity_digest)
+{
+  int was_in_digest_map, should_be_in_digest_map, state_not_in_map;
+
+  tor_assert(chan);
+
+  log_debug(LD_CHANNEL,
+            "Setting remote endpoint digest on channel %p with "
+            "global ID %lu to digest %s",
+            chan, chan->global_identifier,
+            identity_digest ?
+              hex_str(identity_digest, DIGEST_LEN) : "(null)");
+
+  state_not_in_map =
+    (chan->state == CHANNEL_STATE_LISTENING ||
+     chan->state == CHANNEL_STATE_CLOSING ||
+     chan->state == CHANNEL_STATE_CLOSED ||
+     chan->state == CHANNEL_STATE_ERROR);
+  was_in_digest_map =
+    !state_not_in_map &&
+    chan->registered &&
+    !tor_digest_is_zero(chan->identity_digest);
+  should_be_in_digest_map =
+    !state_not_in_map &&
+    chan->registered &&
+    (identity_digest &&
+     !tor_digest_is_zero(identity_digest));
+
+  if (was_in_digest_map)
+    /* We should always remove it; we'll add it back if we're writing
+     * in a new digest.
+     */
+    channel_remove_from_digest_map(chan);
+
+  if (identity_digest) {
+    memcpy(chan->identity_digest,
+           identity_digest,
+           sizeof(chan->identity_digest));
+  } else {
+    memset(chan->identity_digest, 0, sizeof(chan->identity_digest));
+  }
+
+  /* Put it in the digest map if we should */
+  if (should_be_in_digest_map)
+    channel_add_to_digest_map(chan);
+}
+
+/**
  * Clear the remote end metadata (identity_digest/nickname) of a channel
  *
  * This function clears all the remote end info from a channel; this is
@@ -1073,6 +1169,11 @@ channel_clear_remote_end(channel_t *chan)
   int state_not_in_map;
 
   tor_assert(chan);
+
+  log_debug(LD_CHANNEL,
+            "Clearing remote endpoint identity on channel %p with "
+            "global ID %lu",
+            chan, chan->global_identifier);
 
   state_not_in_map =
     (chan->state == CHANNEL_STATE_LISTENING ||
@@ -1108,6 +1209,14 @@ channel_set_remote_end(channel_t *chan,
   int was_in_digest_map, should_be_in_digest_map, state_not_in_map;
 
   tor_assert(chan);
+
+  log_debug(LD_CHANNEL,
+            "Setting remote endpoint identity on channel %p with "
+            "global ID %lu to nickname %s, digest %s",
+            chan, chan->global_identifier,
+            nickname ? nickname : "(null)",
+            identity_digest ?
+              hex_str(identity_digest, DIGEST_LEN) : "(null)");
 
   state_not_in_map =
     (chan->state == CHANNEL_STATE_LISTENING ||
@@ -1172,8 +1281,8 @@ channel_write_cell(channel_t *chan, cell_t *cell)
              chan->state == CHANNEL_STATE_MAINT);
 
   log_debug(LD_CHANNEL,
-            "Writing cell_t %p to channel %p",
-            cell, chan);
+            "Writing cell_t %p to channel %p with global ID %lu",
+            cell, chan, chan->global_identifier);
 
   /* Increment the timestamp unless it's padding */
   if (!(cell->command == CELL_PADDING ||
@@ -1230,8 +1339,8 @@ channel_write_packed_cell(channel_t *chan, packed_cell_t *packed_cell)
              chan->state == CHANNEL_STATE_MAINT);
 
   log_debug(LD_CHANNEL,
-            "Writing packed_cell_t %p to channel %p",
-            packed_cell, chan);
+            "Writing packed_cell_t %p to channel %p with global ID %lu",
+            packed_cell, chan, chan->global_identifier);
 
   /* Increment the timestamp */
   chan->timestamp_last_added_nonpadding = approx_time();
@@ -1287,8 +1396,8 @@ channel_write_var_cell(channel_t *chan, var_cell_t *var_cell)
              chan->state == CHANNEL_STATE_MAINT);
 
   log_debug(LD_CHANNEL,
-            "Writing var_cell_t %p to channel %p",
-            var_cell, chan);
+            "Writing var_cell_t %p to channel %p with global ID %lu",
+            var_cell, chan, chan->global_identifier);
 
   /* Increment the timestamp unless it's padding */
   if (!(var_cell->command == CELL_PADDING ||
