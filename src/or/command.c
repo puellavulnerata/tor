@@ -191,6 +191,10 @@ command_process_create_cell(cell_t *cell, channel_t *chan)
   tor_assert(cell);
   tor_assert(chan);
 
+  log_debug(LD_OR,
+            "Got a CREATE cell for circ_id %d on channel %lu (%p)",
+            cell->circ_id, chan->global_identifier, chan);
+
   if (we_are_hibernating()) {
     log_info(LD_OR,
              "Received create cell but we're shutting down. Sending back "
