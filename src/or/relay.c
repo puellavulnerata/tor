@@ -2458,8 +2458,12 @@ channel_flush_from_first_active_circuit(channel_t *chan, int max)
                                 DIRREQ_CIRC_QUEUE_FLUSHED);
 
     channel_write_packed_cell(chan, cell);
+    /*
+     * Don't packed_cell_free_unchecked(cell) here because the channel will
+     * do so when it gets out of the channel queue (probably already did, in
+     * which case that was an immediate double-free bug).
+     */
 
-    packed_cell_free_unchecked(cell);
     ++n_flushed;
     if (cell_ewma) {
       cell_ewma_t *tmp;
