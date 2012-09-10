@@ -1438,7 +1438,8 @@ channel_change_state(channel_t *chan, channel_state_t to_state)
       channel_process_cells(chan);
     if (chan->outgoing_queue && smartlist_len(chan->outgoing_queue) > 0)
       channel_flush_cells(chan);
-  } else if (to_state == CHANNEL_STATE_CLOSED) {
+  } else if (to_state == CHANNEL_STATE_CLOSED ||
+             to_state == CHANNEL_STATE_ERROR) {
     /* Assert that all queues are empty */
     tor_assert(!(chan->cell_queue) ||
                 smartlist_len(chan->cell_queue) == 0);
