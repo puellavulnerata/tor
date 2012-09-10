@@ -1070,7 +1070,20 @@ channel_closed(channel_t *chan)
 void
 channel_clear_remote_end(channel_t *chan)
 {
+  int state_not_in_map;
+
   tor_assert(chan);
+
+  state_not_in_map = 
+    (chan->state == CHANNEL_STATE_LISTENING ||
+     chan->state == CHANNEL_STATE_CLOSING ||
+     chan->state == CHANNEL_STATE_CLOSED ||
+     chan->state == CHANNEL_STATE_ERROR);
+
+  if (!state_not_in_map && chan->registered &&
+      !tor_digest_is_zero(chan->identity_digest))
+    /* if it's registered get it out of the digest map */
+    channel_remove_from_digest_map(chan);
 
   memset(chan->identity_digest, 0, sizeof(chan->identity_digest));
   tor_free(chan->nickname);
@@ -1092,18 +1105,46 @@ channel_set_remote_end(channel_t *chan,
                        const char *identity_digest,
                        const char *nickname)
 {
+  int was_in_digest_map, should_be_in_digest_map, state_not_in_map;
+
   tor_assert(chan);
+
+  state_not_in_map = 
+    (chan->state == CHANNEL_STATE_LISTENING ||
+     chan->state == CHANNEL_STATE_CLOSING ||
+     chan->state == CHANNEL_STATE_CLOSED ||
+     chan->state == CHANNEL_STATE_ERROR);
+  was_in_digest_map =
+    !state_not_in_map &&
+    chan->registered &&
+    !tor_digest_is_zero(chan->identity_digest);
+  should_be_in_digest_map =
+    !state_not_in_map &&
+    chan->registered &&
+    (identity_digest &&
+     !tor_digest_is_zero(identity_digest));
+
+  if (was_in_digest_map)
+    /* We should always remove it; we'll add it back if we're writing
+     * in a new digest.
+     */
+    channel_remove_from_digest_map(chan);
 
   if (identity_digest) {
     memcpy(chan->identity_digest,
            identity_digest,
            sizeof(chan->identity_digest));
+
   } else {
     memset(chan->identity_digest, 0, sizeof(chan->identity_digest));
   }
 
   tor_free(chan->nickname);
   if (nickname) chan->nickname = tor_strdup(nickname);
+
+  /* Put it in the digest map if we should */
+  if (should_be_in_digest_map)
+    channel_add_to_digest_map(chan);
 }
 
 /**
@@ -1371,19 +1412,21 @@ channel_change_state(channel_t *chan, channel_state_t to_state)
       if (listening_channels) smartlist_remove(listening_channels, chan);
     }
 
-    /* Now we need to handle the identity map */
-    was_in_id_map = !(from_state == CHANNEL_STATE_LISTENING ||
-                      from_state == CHANNEL_STATE_CLOSING ||
-                      from_state == CHANNEL_STATE_CLOSED ||
-                      from_state == CHANNEL_STATE_ERROR);
-    is_in_id_map = !(to_state == CHANNEL_STATE_LISTENING ||
-                     to_state == CHANNEL_STATE_CLOSING ||
-                     to_state == CHANNEL_STATE_CLOSED ||
-                     to_state == CHANNEL_STATE_ERROR);
+    if (!tor_digest_is_zero(chan->identity_digest)) {
+      /* Now we need to handle the identity map */
+      was_in_id_map = !(from_state == CHANNEL_STATE_LISTENING ||
+                        from_state == CHANNEL_STATE_CLOSING ||
+                        from_state == CHANNEL_STATE_CLOSED ||
+                        from_state == CHANNEL_STATE_ERROR);
+      is_in_id_map = !(to_state == CHANNEL_STATE_LISTENING ||
+                       to_state == CHANNEL_STATE_CLOSING ||
+                       to_state == CHANNEL_STATE_CLOSED ||
+                       to_state == CHANNEL_STATE_ERROR);
 
-    if (!was_in_id_map && is_in_id_map) channel_add_to_digest_map(chan);
-    else if (was_in_id_map && !is_in_id_map)
-      channel_remove_from_digest_map(chan);
+      if (!was_in_id_map && is_in_id_map) channel_add_to_digest_map(chan);
+      else if (was_in_id_map && !is_in_id_map)
+        channel_remove_from_digest_map(chan);
+    }
   }
 
   /* Tell circuits if we opened and stuff */
