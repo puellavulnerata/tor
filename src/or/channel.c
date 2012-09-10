@@ -1074,7 +1074,7 @@ channel_clear_remote_end(channel_t *chan)
 
   tor_assert(chan);
 
-  state_not_in_map = 
+  state_not_in_map =
     (chan->state == CHANNEL_STATE_LISTENING ||
      chan->state == CHANNEL_STATE_CLOSING ||
      chan->state == CHANNEL_STATE_CLOSED ||
@@ -1109,7 +1109,7 @@ channel_set_remote_end(channel_t *chan,
 
   tor_assert(chan);
 
-  state_not_in_map = 
+  state_not_in_map =
     (chan->state == CHANNEL_STATE_LISTENING ||
      chan->state == CHANNEL_STATE_CLOSING ||
      chan->state == CHANNEL_STATE_CLOSED ||
