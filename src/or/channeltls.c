@@ -233,6 +233,10 @@ channel_tls_handle_incoming(or_connection_t *orconn)
   chan->write_packed_cell = channel_tls_write_packed_cell_method;
   chan->write_var_cell = channel_tls_write_var_cell_method;
 
+  /* Link the channel and orconn to each other */
+  tlschan->conn = orconn;
+  orconn->chan = tlschan;
+
   if (is_local_addr(&(TO_CONN(orconn)->addr))) channel_mark_local(chan);
   channel_mark_incoming(chan);
 
@@ -241,9 +245,6 @@ channel_tls_handle_incoming(or_connection_t *orconn)
 
   /* If we got one, we should register it */
   if (chan) channel_register(chan);
-
-  /* Set this connection's channel to the one we just created */
-  orconn->chan = tlschan;
 
   return chan;
 }
