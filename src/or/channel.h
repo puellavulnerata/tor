@@ -156,6 +156,12 @@ struct channel_s {
   void (*free)(channel_t *);
   /* Close an open channel */
   void (*close)(channel_t *);
+  /* Ask the underlying transport what the remote endpoint address is, in
+   * a tor_addr_t.  This is optional and subclasses may leave this NULL.
+   * If they implement it, they should write the address out to the provided
+   * tor_addr_t *, and return 1 if successful or 0 if no address available.
+   */
+  int (*get_remote_addr)(channel_t *, tor_addr_t *);
   /* Get a text description of the remote endpoint; canonicalized if the
    * arg is 0, or the one we originally connected to/received from if it's
    * 1. */
@@ -335,6 +341,7 @@ channel_t * channel_prev_with_digest_unref(channel_t *chan);
  */
 
 const char * channel_get_actual_remote_descr(channel_t *chan);
+int channel_get_addr_if_possible(channel_t *chan, tor_addr_t *addr_out);
 const char * channel_get_canonical_remote_descr(channel_t *chan);
 int channel_has_queued_writes(channel_t *chan);
 int channel_is_bad_for_new_circs(channel_t *chan);
