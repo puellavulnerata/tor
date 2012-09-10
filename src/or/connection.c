@@ -686,6 +686,16 @@ _connection_mark_for_close(connection_t *conn, int line, const char *file)
     return;
   }
 
+  if (conn->type == CONN_TYPE_OR) {
+    /*
+     * Bad news if this happens without telling the controlling channel; do
+     * this so we can find things that call this wrongly when the asserts hit.
+     */
+    log_debug(LD_CHANNEL,
+              "Calling connection_mark_for_close on an OR conn at %s:%d",
+              file, line);
+  }
+
   conn->marked_for_close = line;
   conn->marked_for_close_file = file;
   add_connection_to_closeable_list(conn);
@@ -2676,11 +2686,10 @@ connection_handle_read_impl(connection_t *conn)
   before = buf_datalen(conn->inbuf);
   if (connection_read_to_buf(conn, &max_to_read, &socket_error) < 0) {
     /* There's a read error; kill the connection.*/
-    if (conn->type == CONN_TYPE_OR &&
-        conn->state == OR_CONN_STATE_CONNECTING) {
-      connection_or_connect_failed(TO_OR_CONN(conn),
-                                   errno_to_orconn_end_reason(socket_error),
-                                   tor_socket_strerror(socket_error));
+    if (conn->type == CONN_TYPE_OR) {
+      connection_or_notify_error(TO_OR_CONN(conn),
+                                 errno_to_orconn_end_reason(socket_error),
+                                 tor_socket_strerror(socket_error));
     }
     if (CONN_IS_EDGE(conn)) {
       edge_connection_t *edge_conn = TO_EDGE_CONN(conn);

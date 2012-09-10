@@ -978,6 +978,40 @@ connection_or_connect_failed(or_connection_t *conn,
     control_event_bootstrap_problem(msg, reason);
 }
 
+/** <b>conn</b> got an error in connection_handle_read_impl() and
+ * is going to die soon.
+ *
+ * <b>reason</b> specifies the or_conn_end_reason for the failure;
+ * <b>msg</b> specifies the strerror-style error message.
+ */
+void
+connection_or_notify_error(or_connection_t *conn,
+                           int reason, const char *msg)
+{
+  channel_t *chan;
+
+  tor_assert(conn);
+
+  /* If we're connecting, call connect_failed() too */
+  if (TO_CONN(conn)->state == OR_CONN_STATE_CONNECTING)
+    connection_or_connect_failed(conn, reason, msg);
+
+  /* Tell the controlling channel if we have one */
+  if (conn->chan) {
+    chan = TLS_CHAN_TO_BASE(conn->chan);
+    /* This shouldn't ever happen in the listening state */
+    tor_assert(chan->state != CHANNEL_STATE_LISTENING);
+    /* Don't transition if we're already in closing, closed or error */
+    if (!(chan->state == CHANNEL_STATE_CLOSING ||
+          chan->state == CHANNEL_STATE_CLOSED ||
+          chan->state == CHANNEL_STATE_ERROR)) {
+      channel_close_for_error(chan);
+    }
+  }
+
+  /* No need to mark for error because connection.c is about to do that */
+}
+
 /** Launch a new OR connection to <b>addr</b>:<b>port</b> and expect to
  * handshake with an OR with identity digest <b>id_digest</b>.  Optionally,
  * pass in a pointer to a channel using this connection.
