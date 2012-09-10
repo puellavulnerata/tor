@@ -2460,7 +2460,7 @@ channel_is_canonical_is_reliable(channel_t *chan)
 int
 channel_is_incoming(channel_t *chan)
 {
-  tor_assert(chan);;
+  tor_assert(chan);
 
   return chan->is_incoming;
 }
@@ -2535,7 +2535,7 @@ channel_mark_local(channel_t *chan)
 int
 channel_is_outgoing(channel_t *chan)
 {
-  tor_assert(chan);;
+  tor_assert(chan);
 
   return !(chan->is_incoming);
 }
