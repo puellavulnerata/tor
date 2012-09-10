@@ -1507,6 +1507,7 @@ channel_process_incoming(channel_t *listener)
 void
 channel_do_open_actions(channel_t *chan)
 {
+  tor_addr_t remote_addr;
   int started_here, not_using = 0;
   time_t now = time(NULL);
 
@@ -1532,11 +1533,11 @@ channel_do_open_actions(channel_t *chan)
   } else {
     /* only report it to the geoip module if it's not a known router */
     if (!router_get_by_id_digest(chan->identity_digest)) {
-      /* TODO figure out addressing */
-      /*
-      geoip_note_client_seen(GEOIP_CLIENT_CONNECT, &(chan->addr),
-                             now);
-       */
+      if (channel_get_addr_if_possible(chan, &remote_addr)) {
+        geoip_note_client_seen(GEOIP_CLIENT_CONNECT, &remote_addr,
+                               now);
+      }
+      /* Otherwise the underlying transport can't tell us this, so skip it */
     }
   }
 
@@ -2009,6 +2010,20 @@ channel_get_canonical_remote_descr(channel_t *chan)
 
   /* Param 0 indicates the canonicalized description */
   return chan->get_remote_descr(chan, 0);
+}
+
+/** Write the remote address out to a tor_addr_t if the underlying transport
+ * supports this operation, and return 1 if successful. */
+
+int
+channel_get_addr_if_possible(channel_t *chan, tor_addr_t *addr_out)
+{
+  tor_assert(chan);
+  tor_assert(addr_out);
+
+  if (chan->get_remote_addr) return chan->get_remote_addr(chan, addr_out);
+  /* Else no support, method not implemented */
+  else return 0;
 }
 
 /** Indicate if either we have queued cells, or if not, whether the underlying
