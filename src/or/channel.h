@@ -239,10 +239,13 @@ void channel_free(channel_t *chan);
 /* State/metadata setters */
 
 void channel_change_state(channel_t *chan, channel_state_t to_state);
+void channel_clear_identity_digest(channel_t *chan);
 void channel_clear_remote_end(channel_t *chan);
 void channel_mark_local(channel_t *chan);
 void channel_mark_incoming(channel_t *chan);
 void channel_mark_outgoing(channel_t *chan);
+void channel_set_identity_digest(channel_t *chan,
+                                 const char *identity_digest);
 void channel_set_remote_end(channel_t *chan,
                             const char *identity_digest,
                             const char *nickname);
