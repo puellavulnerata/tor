@@ -15,6 +15,17 @@
 #define BASE_CHAN_TO_TLS(c) ((channel_tls_t *)(c))
 #define TLS_CHAN_TO_BASE(c) ((channel_t *)(c))
 
+#ifdef _TOR_CHANNEL_INTERNAL
+
+struct channel_tls_s {
+  /* Base channel_t struct */
+  channel_t _base;
+  /* or_connection_t pointer */
+  or_connection_t *conn;
+};
+
+#endif /* _TOR_CHANNEL_INTERNAL */
+
 channel_t * channel_tls_connect(const tor_addr_t *addr, uint16_t port,
                                 const char *id_digest);
 channel_t * channel_tls_get_listener(void);
