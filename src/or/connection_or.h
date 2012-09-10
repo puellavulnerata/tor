@@ -33,6 +33,8 @@ void connection_or_update_token_buckets(smartlist_t *conns,
 
 void connection_or_connect_failed(or_connection_t *conn,
                                   int reason, const char *msg);
+void connection_or_notify_error(or_connection_t *conn,
+                                int reason, const char *msg);
 or_connection_t *connection_or_connect(const tor_addr_t *addr, uint16_t port,
                                        const char *id_digest,
                                        channel_tls_t *chan);
