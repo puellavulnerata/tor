@@ -24,16 +24,6 @@ struct channel_s {
   /* Current channel state */
   channel_state_t state;
 
-  /*
-   * Refcount - number of references things outside channel.c hold, including
-   * or_connection_t->chan.  If this only appears in the list of channels, it
-   * should be zero.  If this is an active channel with a corresponding
-   * or_connection_t, but otherwise only appears in the lists of channels, it
-   * should be one.  Channel functions will automatically ref/unref when
-   * handing channels to callbacks.
-   */
-  size_t refcount;
-
   /* Globally unique ID number for a channel over the lifetime of a Tor
    * process.
    */
@@ -190,11 +180,6 @@ int channel_state_is_valid(channel_state_t state);
 int channel_state_can_transition(channel_state_t from, channel_state_t to);
 const char * channel_state_to_string(channel_state_t state);
 
-/* Channel refcount functions */
-channel_t * channel_ref(channel_t *chan);
-size_t channel_num_refs(channel_t *chan);
-void channel_unref(channel_t *chan);
-
 /* Abstract channel operations */
 
 void channel_request_close(channel_t *chan);
@@ -326,15 +311,10 @@ channel_t * channel_find_by_remote_digest(const char *identity_digest);
 channel_t * channel_find_by_remote_nickname(const char *nickname);
 
 /** For things returned by channel_find_by_remote_digest(), walk the list.
- * The *_unref versions also unref the input, so you can easily put them
- * in a while loop to walk a list without worrying about refcount
- * maintenance.
  */
 
 channel_t * channel_next_with_digest(channel_t *chan);
-channel_t * channel_next_with_digest_unref(channel_t *chan);
 channel_t * channel_prev_with_digest(channel_t *chan);
-channel_t * channel_prev_with_digest_unref(channel_t *chan);
 
 /*
  * Metadata queries/updates
