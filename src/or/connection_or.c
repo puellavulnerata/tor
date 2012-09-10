@@ -405,7 +405,7 @@ connection_or_reached_eof(or_connection_t *conn)
   tor_assert(conn);
 
   log_info(LD_OR,"OR connection reached EOF. Closing.");
-  connection_or_close_normally(conn);
+  connection_or_close_normally(conn, 1);
 
   return 0;
 }
@@ -440,7 +440,7 @@ connection_or_process_inbuf(or_connection_t *conn)
           channel_timestamp_active(TLS_CHAN_TO_BASE(conn->chan));
       }
       if (ret < 0) {
-        connection_or_close_for_error(conn);
+        connection_or_close_for_error(conn, 0);
       }
 
       return ret;
@@ -473,7 +473,7 @@ connection_or_process_inbuf(or_connection_t *conn)
            connection_or_nonopen_was_started_here(conn) ? "to" : "from",
            conn->_base.address, conn->_base.port,
            conn_state_to_string(conn->_base.type, conn->_base.state));
-    connection_or_close_for_error(conn);
+    connection_or_close_for_error(conn, 0);
     ret = -1;
   }
 
@@ -568,7 +568,7 @@ connection_or_finished_connecting(or_connection_t *or_conn)
   if (proxy_type != PROXY_NONE) {
     /* start proxy handshake */
     if (connection_proxy_connect(conn, proxy_type) < 0) {
-      connection_or_close_for_error(or_conn);
+      connection_or_close_for_error(or_conn, 0);
       return -1;
     }
 
@@ -579,7 +579,7 @@ connection_or_finished_connecting(or_connection_t *or_conn)
 
   if (connection_tls_start_handshake(or_conn, 0) < 0) {
     /* TLS handshaking error of some kind. */
-    connection_or_close_for_error(or_conn);
+    connection_or_close_for_error(or_conn, 0);
     return -1;
   }
   return 0;
@@ -1103,12 +1103,13 @@ connection_or_connect(const tor_addr_t *_addr, uint16_t port,
  */
 
 void
-connection_or_close_normally(or_connection_t *orconn)
+connection_or_close_normally(or_connection_t *orconn, int flush)
 {
   channel_t *chan = NULL;
 
   tor_assert(orconn);
-  connection_mark_for_close(TO_CONN(orconn));
+  if (flush) connection_mark_and_flush(TO_CONN(orconn));
+  else connection_mark_for_close(TO_CONN(orconn));
   if (orconn->chan) {
     chan = TLS_CHAN_TO_BASE(orconn->chan);
     /* This shouldn't ever happen in the listening state */
@@ -1127,12 +1128,13 @@ connection_or_close_normally(or_connection_t *orconn)
  */
 
 void
-connection_or_close_for_error(or_connection_t *orconn)
+connection_or_close_for_error(or_connection_t *orconn, int flush)
 {
   channel_t *chan = NULL;
 
   tor_assert(orconn);
-  connection_mark_for_close(TO_CONN(orconn));
+  if (flush) connection_mark_and_flush(TO_CONN(orconn));
+  else connection_mark_for_close(TO_CONN(orconn));
   if (orconn->chan) {
     chan = TLS_CHAN_TO_BASE(orconn->chan);
     /* This shouldn't ever happen in the listening state */
@@ -1235,7 +1237,7 @@ connection_or_tls_renegotiated_cb(tor_tls_t *tls, void *_conn)
   if (connection_tls_finish_handshake(conn) < 0) {
     /* XXXX_TLS double-check that it's ok to do this from inside read. */
     /* XXXX_TLS double-check that this verifies certificates. */
-    connection_or_close_for_error(conn);
+    connection_or_close_for_error(conn, 0);
   }
 }
 
@@ -1323,7 +1325,7 @@ connection_or_handle_event_cb(struct bufferevent *bufev, short event,
     if (conn->_base.state == OR_CONN_STATE_TLS_HANDSHAKING) {
       if (tor_tls_finish_handshake(conn->tls) < 0) {
         log_warn(LD_OR, "Problem finishing handshake");
-        connection_or_close_for_error(conn);
+        connection_or_close_for_error(conn, 0);
         return;
       }
     }
@@ -1334,7 +1336,7 @@ connection_or_handle_event_cb(struct bufferevent *bufev, short event,
           if (tor_tls_received_v3_certificate(conn->tls)) {
             log_info(LD_OR, "Client got a v3 cert!");
             if (connection_or_launch_v3_or_handshake(conn) < 0)
-              connection_or_close_for_error(conn);
+              connection_or_close_for_error(conn, 0);
             return;
           } else {
             connection_or_change_state(conn,
@@ -1342,7 +1344,7 @@ connection_or_handle_event_cb(struct bufferevent *bufev, short event,
             tor_tls_unblock_renegotiation(conn->tls);
             if (bufferevent_ssl_renegotiate(conn->_base.bufev)<0) {
               log_warn(LD_OR, "Start_renegotiating went badly.");
-              connection_or_close_for_error(conn);
+              connection_or_close_for_error(conn, 0);
             }
             tor_tls_unblock_renegotiation(conn->tls);
             return; /* ???? */
@@ -1367,18 +1369,18 @@ connection_or_handle_event_cb(struct bufferevent *bufev, short event,
         } else if (handshakes > 2) {
           log_warn(LD_OR, "More than two handshakes done on connection. "
                    "Closing.");
-          connection_or_close_for_error(conn);
+          connection_or_close_for_error(conn, 0);
         } else {
           log_warn(LD_BUG, "We were unexpectedly told that a connection "
                    "got %d handshakes. Closing.", handshakes);
-          connection_or_close_for_error(conn);
+          connection_or_close_for_error(conn, 0);
         }
         return;
       }
     }
     connection_watch_events(TO_CONN(conn), READ_EVENT|WRITE_EVENT);
     if (connection_tls_finish_handshake(conn) < 0)
-      connection_or_close_for_error(conn); /* ???? */
+      connection_or_close_for_error(conn, 0); /* ???? */
     return;
   }
 
