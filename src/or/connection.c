@@ -1289,12 +1289,19 @@ static int
 connection_init_accepted_conn(connection_t *conn,
                               const listener_connection_t *listener)
 {
+  int rv;
+
   connection_start_reading(conn);
 
   switch (conn->type) {
     case CONN_TYPE_OR:
       control_event_or_conn_status(TO_OR_CONN(conn), OR_CONN_EVENT_NEW, 0);
-      return connection_tls_start_handshake(TO_OR_CONN(conn), 1);
+      rv = connection_tls_start_handshake(TO_OR_CONN(conn), 1);
+      if (rv < 0) {
+        connection_or_close_for_error(TO_OR_CONN(conn), 0);
+      }
+      return rv;
+      break;
     case CONN_TYPE_AP:
       TO_ENTRY_CONN(conn)->isolation_flags = listener->isolation_flags;
       TO_ENTRY_CONN(conn)->session_group = listener->session_group;
