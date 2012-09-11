@@ -3222,9 +3222,9 @@ connection_handle_write_impl(connection_t *conn, int force)
         if (CONN_IS_EDGE(conn))
           connection_edge_end_errno(TO_EDGE_CONN(conn));
         if (conn->type == CONN_TYPE_OR)
-          connection_or_connect_failed(TO_OR_CONN(conn),
-                                       errno_to_orconn_end_reason(e),
-                                       tor_socket_strerror(e));
+          connection_or_notify_error(TO_OR_CONN(conn),
+                                     errno_to_orconn_end_reason(e),
+                                     tor_socket_strerror(e));
 
         connection_close_immediate(conn);
         connection_mark_for_close(conn);
@@ -3249,6 +3249,10 @@ connection_handle_write_impl(connection_t *conn, int force)
       connection_stop_writing(conn);
       if (connection_tls_continue_handshake(or_conn) < 0) {
         /* Don't flush; connection is dead. */
+        connection_or_notify_error(or_conn,
+                                   END_OR_CONN_REASON_MISC,
+                                   "TLS error in connection_tls_"
+                                   "continue_handshake()");
         connection_close_immediate(conn);
         connection_mark_for_close(conn);
         return -1;
@@ -3271,9 +3275,14 @@ connection_handle_write_impl(connection_t *conn, int force)
     switch (result) {
       CASE_TOR_TLS_ERROR_ANY:
       case TOR_TLS_CLOSE:
-        log_info(LD_NET,result!=TOR_TLS_CLOSE?
+        log_info(LD_NET, result != TOR_TLS_CLOSE ?
                  "tls error. breaking.":"TLS connection closed on flush");
         /* Don't flush; connection is dead. */
+        connection_or_notify_error(or_conn,
+                                   END_OR_CONN_REASON_MISC,
+                                   result != TOR_TLS_CLOSE ?
+                                     "TLS error in during flush" :
+                                     "TLS closed during flush");
         connection_close_immediate(conn);
         connection_mark_for_close(conn);
         return -1;
@@ -3332,8 +3341,16 @@ connection_handle_write_impl(connection_t *conn, int force)
   if (result > 0) {
     /* If we wrote any bytes from our buffer, then call the appropriate
      * functions. */
-    if (connection_flushed_some(conn) < 0)
+    if (connection_flushed_some(conn) < 0) {
+      if (connection_speaks_cells(conn)) {
+        connection_or_notify_error(TO_OR_CONN(conn),
+                                   END_OR_CONN_REASON_MISC,
+                                   "Got error back from "
+                                   "connection_flushed_some()");
+      }
+
       connection_mark_for_close(conn);
+    }
   }
 
   if (!connection_wants_to_flush(conn)) { /* it's done flushing */

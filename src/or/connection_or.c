@@ -978,8 +978,8 @@ connection_or_connect_failed(or_connection_t *conn,
     control_event_bootstrap_problem(msg, reason);
 }
 
-/** <b>conn</b> got an error in connection_handle_read_impl() and
- * is going to die soon.
+/** <b>conn</b> got an error in connection_handle_read_impl() or
+ * connection_handle_write_impl() and is going to die soon.
  *
  * <b>reason</b> specifies the or_conn_end_reason for the failure;
  * <b>msg</b> specifies the strerror-style error message.
