@@ -43,5 +43,8 @@ void channel_tls_handle_state_change_on_orconn(channel_tls_t *chan,
 void channel_tls_handle_var_cell(var_cell_t *var_cell,
                                  or_connection_t *conn);
 
+/* Cleanup at shutdown */
+void channel_tls_free_all(void);
+
 #endif
 
