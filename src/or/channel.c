@@ -2088,7 +2088,7 @@ channel_process_cells(channel_t *chan)
       /* Can't handle this one */
       break;
     }
-  } SMARTLIST_FOREACH_END(chan);
+  } SMARTLIST_FOREACH_END(q);
 
   /* If the list is empty, free it */
   if (smartlist_len(chan->cell_queue) == 0 ) {
