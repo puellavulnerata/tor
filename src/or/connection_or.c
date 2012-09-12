@@ -1054,7 +1054,7 @@ connection_or_connect(const tor_addr_t *_addr, uint16_t port,
   conn = or_connection_new(tor_addr_family(&addr));
 
   /*
-   * Set up conn so it's got all the data we need to remember for channels 
+   * Set up conn so it's got all the data we need to remember for channels
    *
    * This stuff needs to happen before connection_or_init_conn_from_address()
    * so connection_or_set_identity_digest() and such know where to look to

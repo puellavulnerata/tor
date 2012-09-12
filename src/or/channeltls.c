@@ -199,7 +199,6 @@ channel_tls_start_listener(void)
     log_debug(LD_CHANNEL,
               "Starting TLS listener channel %p with global id %lu",
               lchan, lchan->global_identifier);
-              
   } else lchan = TLS_CHAN_TO_BASE(channel_tls_listener);
 
   return lchan;
