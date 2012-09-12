@@ -683,7 +683,7 @@ channel_free(channel_t *chan)
   channel_clear_remote_end(chan);
 
   smartlist_free(chan->active_circuit_pqueue);
-  
+
   /* We're in CLOSED or ERROR, so the cell queue is already empty */
 
   tor_free(chan);
