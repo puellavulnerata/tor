@@ -113,6 +113,12 @@ struct channel_s {
    */
   unsigned int is_local:1;
 
+  /** Set this if this channel is created in CHANNEL_STATE_LISTEN, so
+   * lower-layer close methods that see the channel in CHANNEL_STATE_CLOSING
+   * know.
+   */
+  unsigned int was_listener:1;
+
   /** Channel timestamps */
   time_t timestamp_client; /* Client used this, according to relay.c */
   time_t timestamp_created; /* Channel created */
@@ -214,6 +220,9 @@ void channel_set_var_cell_handler(channel_t *chan,
  */
 void channel_run_cleanup(void);
 
+/* Close all channels and deallocate everything */
+void channel_free_all(void);
+
 #ifdef _TOR_CHANNEL_INTERNAL
 
 /* Channel operations for subclasses and internal use only */
@@ -235,6 +244,7 @@ void channel_closed(channel_t *chan);
 
 /* Free a channel */
 void channel_free(channel_t *chan);
+void channel_force_free(channel_t *chan);
 
 /* State/metadata setters */
 
