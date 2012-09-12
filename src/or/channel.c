@@ -682,7 +682,10 @@ channel_free(channel_t *chan)
 
   channel_clear_remote_end(chan);
 
-  smartlist_free(chan->active_circuit_pqueue);
+  if (chan->active_circuit_pqueue) {
+    smartlist_free(chan->active_circuit_pqueue);
+    chan->active_circuit_pqueue = NULL;
+  }
 
   /* We're in CLOSED or ERROR, so the cell queue is already empty */
 
