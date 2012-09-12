@@ -185,6 +185,8 @@ channel_tls_start_listener(void)
     lchan = TLS_CHAN_TO_BASE(listener);
     channel_init(lchan);
     lchan->state = CHANNEL_STATE_LISTENING;
+    lchan->was_listener = 1;
+    lchan->close = channel_tls_close_method;
     lchan->get_remote_descr = channel_tls_get_remote_descr_method;
     lchan->has_queued_writes = channel_tls_has_queued_writes_method;
     lchan->is_canonical = channel_tls_is_canonical_method;
@@ -202,6 +204,33 @@ channel_tls_start_listener(void)
   } else lchan = TLS_CHAN_TO_BASE(channel_tls_listener);
 
   return lchan;
+}
+
+/**
+ * Free everything on shutdown
+ *
+ * Not much to do here, since channel_free_all() takes care of a lot, but let's
+ * get rid of the listener.
+ */
+
+void
+channel_tls_free_all(void)
+{
+  channel_t *base = NULL;
+
+  log_debug(LD_CHANNEL,
+            "Shutting down TLS channels...");
+
+  if (channel_tls_listener) {
+    base = TLS_CHAN_TO_BASE(channel_tls_listener);
+    channel_unregister(base);
+    channel_request_close(base);
+    channel_free(base);
+    channel_tls_listener = NULL;
+  }
+
+  log_debug(LD_CHANNEL,
+            "Done shutting down TLS channels");
 }
 
 /**
@@ -264,10 +293,11 @@ static void
 channel_tls_close_method(channel_t *chan)
 {
   channel_tls_t *tlschan = BASE_CHAN_TO_TLS(chan);
+  channel_t *tmp = NULL;
 
   tor_assert(tlschan);
 
-  if (chan->state != CHANNEL_STATE_LISTENING) {
+  if (!(chan->state == CHANNEL_STATE_LISTENING || chan->was_listener)) {
     if (tlschan->conn) connection_or_close_normally(tlschan->conn, 1);
     else {
       /* Weird - we'll have to change the state ourselves, I guess */
@@ -277,12 +307,34 @@ channel_tls_close_method(channel_t *chan)
       channel_change_state(chan, CHANNEL_STATE_ERROR);
     }
   } else {
-    /* Listeners we just go ahead and free, but make sure to check if
-     * they're channel_tls_listener to NULL it out. */
+    /*
+     * Listeners we just go ahead and change state through to CLOSED, but
+     * make sure to check if they're channel_tls_listener to NULL it out.
+     */
     if (chan == TLS_CHAN_TO_BASE(channel_tls_listener))
       channel_tls_listener = NULL;
 
-    channel_free(chan);
+    if (!(chan->state == CHANNEL_STATE_CLOSING ||
+          chan->state == CHANNEL_STATE_CLOSED ||
+          chan->state == CHANNEL_STATE_ERROR)) {
+      channel_change_state(chan, CHANNEL_STATE_CLOSING);
+    }
+
+    if (chan->incoming_list) {
+      SMARTLIST_FOREACH_BEGIN(chan->incoming_list, channel_t *, ichan) {
+        tmp = ichan;
+        SMARTLIST_DEL_CURRENT(chan->incoming_list, ichan);
+        channel_request_close(tmp);
+      } SMARTLIST_FOREACH_END(ichan);
+
+      smartlist_free(chan->incoming_list);
+      chan->incoming_list = NULL;
+    }
+
+    if (!(chan->state == CHANNEL_STATE_CLOSED ||
+          chan->state == CHANNEL_STATE_ERROR)) {
+      channel_change_state(chan, CHANNEL_STATE_CLOSED);
+    }
   }
 }
 
