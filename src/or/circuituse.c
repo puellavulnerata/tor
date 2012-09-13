@@ -1164,6 +1164,7 @@ circuit_try_attaching_streams(origin_circuit_t *circ)
 void
 circuit_build_failed(origin_circuit_t *circ)
 {
+  channel_t *n_chan = NULL;
   /* we should examine circ and see if it failed because of
    * the last hop or an earlier hop. then use this info below.
    */
@@ -1183,8 +1184,10 @@ circuit_build_failed(origin_circuit_t *circ)
     const char *n_chan_id = circ->cpath->extend_info->identity_digest;
     int already_marked = 0;
     if (circ->_base.n_chan) {
-      channel_t *n_chan = circ->_base.n_chan;
-      if (n_chan->is_bad_for_new_circs) {
+      n_chan = circ->_base.n_chan;
+      tor_assert(!(n_chan->is_listener));
+
+      if (n_chan->u.cell_chan.is_bad_for_new_circs) {
         /* We only want to blame this router when a fresh healthy
          * connection fails. So don't mark this router as newly failed,
          * since maybe this was just an old circuit attempt that's
@@ -1198,7 +1201,7 @@ circuit_build_failed(origin_circuit_t *circ)
                "Our circuit failed to get a response from the first hop "
                "(%s). I'm going to try to rotate to a better connection.",
                channel_get_canonical_remote_descr(n_chan));
-      n_chan->is_bad_for_new_circs = 1;
+      n_chan->u.cell_chan.is_bad_for_new_circs = 1;
     } else {
       log_info(LD_OR,
                "Our circuit died before the first hop with no connection");
