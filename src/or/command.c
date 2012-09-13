@@ -190,6 +190,7 @@ command_process_create_cell(cell_t *cell, channel_t *chan)
 
   tor_assert(cell);
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
   log_debug(LD_OR,
             "Got a CREATE cell for circ_id %d on channel %lu (%p)",
@@ -219,8 +220,10 @@ command_process_create_cell(cell_t *cell, channel_t *chan)
   /* If the high bit of the circuit ID is not as expected, close the
    * circ. */
   id_is_high = cell->circ_id & (1<<15);
-  if ((id_is_high && chan->circ_id_type == CIRC_ID_TYPE_HIGHER) ||
-      (!id_is_high && chan->circ_id_type == CIRC_ID_TYPE_LOWER)) {
+  if ((id_is_high &&
+       chan->u.cell_chan.circ_id_type == CIRC_ID_TYPE_HIGHER) ||
+      (!id_is_high &&
+       chan->u.cell_chan.circ_id_type == CIRC_ID_TYPE_LOWER)) {
     log_fn(LOG_PROTOCOL_WARN, LD_PROTOCOL,
            "Received create cell with unexpected circ_id %d. Closing.",
            cell->circ_id);
@@ -230,7 +233,7 @@ command_process_create_cell(cell_t *cell, channel_t *chan)
   }
 
   if (circuit_id_in_use_on_channel(cell->circ_id, chan)) {
-    const node_t *node = node_get_by_id(chan->identity_digest);
+    const node_t *node = node_get_by_id(chan->u.cell_chan.identity_digest);
     log_fn(LOG_PROTOCOL_WARN, LD_PROTOCOL,
            "Received CREATE cell (circID %d) for known circ. "
            "Dropping (age %d).",
