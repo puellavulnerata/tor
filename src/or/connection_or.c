@@ -335,8 +335,10 @@ connection_or_get_num_circuits(or_connection_t *conn)
 {
   tor_assert(conn);
 
-  if (conn->chan) return TLS_CHAN_TO_BASE(conn->chan)->n_circuits;
-  else return 0;
+  if (conn->chan) {
+    tor_assert(!(TLS_CHAN_TO_BASE(conn->chan)->is_listener));
+    return TLS_CHAN_TO_BASE(conn->chan)->u.cell_chan.n_circuits;
+  } else return 0;
 }
 
 /**************************************************************/
