@@ -2699,8 +2699,12 @@ connection_handle_read_impl(connection_t *conn)
     /* There's a read error; kill the connection.*/
     if (conn->type == CONN_TYPE_OR) {
       connection_or_notify_error(TO_OR_CONN(conn),
-                                 errno_to_orconn_end_reason(socket_error),
-                                 tor_socket_strerror(socket_error));
+                                 socket_error != 0 ?
+                                   errno_to_orconn_end_reason(socket_error) :
+                                   END_OR_CONN_REASON_CONNRESET,
+                                 socket_error != 0 ?
+                                   tor_socket_strerror(socket_error) :
+                                   "(unknown, errno was 0)");
     }
     if (CONN_IS_EDGE(conn)) {
       edge_connection_t *edge_conn = TO_EDGE_CONN(conn);
