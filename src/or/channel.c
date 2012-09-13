@@ -238,10 +238,19 @@ channel_register(channel_t *chan)
   /* No-op if already registered */
   if (chan->registered) return;
 
-  log_debug(LD_CHANNEL,
-            "Registering channel %p in state %s (%d) with digest %s",
-            chan, channel_state_to_string(chan->state), chan->state,
-            hex_str(chan->identity_digest, DIGEST_LEN));
+  if (chan->is_listener) {
+    log_debug(LD_CHANNEL,
+              "Registering listener channel %p (ID %lu) in state %s (%d)",
+              chan, chan->global_identifier,
+              channel_state_to_string(chan->state), chan->state);
+  } else {
+    log_debug(LD_CHANNEL,
+              "Registering cell channel %p (ID %lu) in state %s (%d) "
+              "with digest %s",
+              chan, chan->global_identifier,
+              channel_state_to_string(chan->state), chan->state,
+              hex_str(chan->u.cell_chan.identity_digest, DIGEST_LEN));
+  }
 
   /* Make sure we have all_channels, then add it */
   if (!all_channels) all_channels = smartlist_new();
@@ -259,21 +268,24 @@ channel_register(channel_t *chan)
     smartlist_add(active_channels, chan);
 
     /* Is it a listener? */
-    if (chan->state == CHANNEL_STATE_LISTENING) {
+    if (chan->is_listener &&
+        chan->state == CHANNEL_STATE_LISTENING) {
       /* Put it in the listening list, creating it if necessary */
       if (!listening_channels) listening_channels = smartlist_new();
       smartlist_add(listening_channels, chan);
     } else if (chan->state != CHANNEL_STATE_CLOSING) {
-      /* It should have a digest set */
-      if (!tor_digest_is_zero(chan->identity_digest)) {
-        /* Yeah, we're good, add it to the map */
-        channel_add_to_digest_map(chan);
-      } else {
-        log_info(LD_CHANNEL,
-                "Channel %p (global ID %lu) in state %s (%d) registered "
-                "with no identity digest",
-                chan, chan->global_identifier,
-                channel_state_to_string(chan->state), chan->state);
+      if (!(chan->is_listener)) {
+        /* It should have a digest set */
+        if (!tor_digest_is_zero(chan->u.cell_chan.identity_digest)) {
+          /* Yeah, we're good, add it to the map */
+          channel_add_to_digest_map(chan);
+        } else {
+          log_info(LD_CHANNEL,
+                  "Channel %p (global ID %lu) in state %s (%d) registered "
+                  "with no identity digest",
+                  chan, chan->global_identifier,
+                  channel_state_to_string(chan->state), chan->state);
+        }
       }
     }
   }
@@ -321,14 +333,16 @@ channel_unregister(channel_t *chan)
   /* Mark it as unregistered */
   chan->registered = 0;
 
-  /* Should it be in the digest map? */
-  if (!tor_digest_is_zero(chan->identity_digest) &&
-      !(chan->state == CHANNEL_STATE_LISTENING ||
-        chan->state == CHANNEL_STATE_CLOSING ||
-        chan->state == CHANNEL_STATE_CLOSED ||
-        chan->state == CHANNEL_STATE_ERROR)) {
-    /* Remove it */
-    channel_remove_from_digest_map(chan);
+  if (!(chan->is_listener)) {
+    /* Should it be in the digest map? */
+    if (!tor_digest_is_zero(chan->u.cell_chan.identity_digest) &&
+        !(chan->state == CHANNEL_STATE_LISTENING ||
+          chan->state == CHANNEL_STATE_CLOSING ||
+          chan->state == CHANNEL_STATE_CLOSED ||
+          chan->state == CHANNEL_STATE_ERROR)) {
+      /* Remove it */
+      channel_remove_from_digest_map(chan);
+    }
   }
 }
 
@@ -352,28 +366,34 @@ channel_add_to_digest_map(channel_t *chan)
   channel_t *tmp;
 
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
+
   /* Assert that the state makes sense */
   tor_assert(!(chan->state == CHANNEL_STATE_LISTENING ||
                chan->state == CHANNEL_STATE_CLOSING ||
                chan->state == CHANNEL_STATE_CLOSED ||
                chan->state == CHANNEL_STATE_ERROR));
+
   /* Assert that there is a digest */
-  tor_assert(!tor_digest_is_zero(chan->identity_digest));
+  tor_assert(!tor_digest_is_zero(chan->u.cell_chan.identity_digest));
 
   /* Allocate the identity map if we have to */
   if (!channel_identity_map) channel_identity_map = digestmap_new();
 
   /* Insert it */
-  tmp = digestmap_set(channel_identity_map, chan->identity_digest, chan);
+  tmp = digestmap_set(channel_identity_map,
+                      chan->u.cell_chan.identity_digest,
+                      chan);
   if (tmp) {
+    tor_assert(!(tmp->is_listener));
     /* There already was one, this goes at the head of the list */
-    chan->next_with_same_id = tmp;
-    chan->prev_with_same_id = NULL;
-    tmp->prev_with_same_id = chan;
+    chan->u.cell_chan.next_with_same_id = tmp;
+    chan->u.cell_chan.prev_with_same_id = NULL;
+    tmp->u.cell_chan.prev_with_same_id = chan;
   } else {
     /* First with this digest */
-    chan->next_with_same_id = NULL;
-    chan->prev_with_same_id = NULL;
+    chan->u.cell_chan.next_with_same_id = NULL;
+    chan->u.cell_chan.prev_with_same_id = NULL;
   }
 
   log_debug(LD_CHANNEL,
@@ -381,7 +401,7 @@ channel_add_to_digest_map(channel_t *chan)
             "with digest %s",
             chan, chan->global_identifier,
             channel_state_to_string(chan->state), chan->state,
-            hex_str(chan->identity_digest, DIGEST_LEN));
+            hex_str(chan->u.cell_chan.identity_digest, DIGEST_LEN));
 }
 
 /**
@@ -397,9 +417,12 @@ static void
 channel_remove_from_digest_map(channel_t *chan)
 {
   channel_t *tmp, *head;
+
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
+
   /* Assert that there is a digest */
-  tor_assert(!tor_digest_is_zero(chan->identity_digest));
+  tor_assert(!tor_digest_is_zero(chan->u.cell_chan.identity_digest));
 
   /* Make sure we have a map */
   if (!channel_identity_map) {
@@ -411,55 +434,72 @@ channel_remove_from_digest_map(channel_t *chan)
              "Trying to remove channel %p (%lu) with digest %s from "
              "identity map, but didn't have any identity map",
              chan, chan->global_identifier,
-             hex_str(chan->identity_digest, DIGEST_LEN));
+             hex_str(chan->u.cell_chan.identity_digest, DIGEST_LEN));
     /* Clear out its next/prev pointers */
-    if (chan->next_with_same_id)
-      chan->next_with_same_id->prev_with_same_id = chan->prev_with_same_id;
-    if (chan->prev_with_same_id)
-      chan->prev_with_same_id->next_with_same_id = chan->next_with_same_id;
-    chan->next_with_same_id = NULL;
-    chan->prev_with_same_id = NULL;
+    if (chan->u.cell_chan.next_with_same_id) {
+      tor_assert(!(chan->u.cell_chan.next_with_same_id->is_listener));
+      chan->u.cell_chan.next_with_same_id->u.cell_chan.prev_with_same_id
+        = chan->u.cell_chan.prev_with_same_id;
+    }
+    if (chan->u.cell_chan.prev_with_same_id) {
+      tor_assert(!(chan->u.cell_chan.prev_with_same_id->is_listener));
+      chan->u.cell_chan.prev_with_same_id->u.cell_chan.next_with_same_id
+        = chan->u.cell_chan.next_with_same_id;
+    }
+    chan->u.cell_chan.next_with_same_id = NULL;
+    chan->u.cell_chan.prev_with_same_id = NULL;
 
     return;
   }
 
   /* Look for it in the map */
-  tmp = digestmap_get(channel_identity_map, chan->identity_digest);
+  tmp = digestmap_get(channel_identity_map, chan->u.cell_chan.identity_digest);
   if (tmp) {
     /* Okay, it's here */
     head = tmp; /* Keep track of list head */
     /* Look for this channel */
-    while (tmp && tmp != chan) tmp = tmp->next_with_same_id;
+    while (tmp && tmp != chan) {
+      tor_assert(!(tmp->is_listener));
+      tmp = tmp->u.cell_chan.next_with_same_id;
+    }
+
     if (tmp == chan) {
       /* Found it, good */
-      if (chan->next_with_same_id) {
-        chan->next_with_same_id->prev_with_same_id = chan->prev_with_same_id;
+      if (chan->u.cell_chan.next_with_same_id) {
+        tor_assert(!(chan->u.cell_chan.next_with_same_id->is_listener));
+        chan->u.cell_chan.next_with_same_id->u.cell_chan.prev_with_same_id
+          = chan->u.cell_chan.prev_with_same_id;
       }
       /* else we're the tail of the list */
-      if (chan->prev_with_same_id) {
+      if (chan->u.cell_chan.prev_with_same_id) {
+        tor_assert(!(chan->u.cell_chan.prev_with_same_id->is_listener));
         /* We're not the head of the list, so we can *just* unlink */
-        chan->prev_with_same_id->next_with_same_id = chan->next_with_same_id;
+        chan->u.cell_chan.prev_with_same_id->u.cell_chan.next_with_same_id
+          = chan->u.cell_chan.next_with_same_id;
       } else {
         /* We're the head, so we have to point the digest map entry at our
          * next if we have one, or remove it if we're also the tail */
-        if (chan->next_with_same_id) {
-          digestmap_set(channel_identity_map, chan->identity_digest,
-                        chan->next_with_same_id);
+        if (chan->u.cell_chan.next_with_same_id) {
+          tor_assert(!(chan->u.cell_chan.next_with_same_id->is_listener));
+          digestmap_set(channel_identity_map,
+                        chan->u.cell_chan.identity_digest,
+                        chan->u.cell_chan.next_with_same_id);
         } else {
-          digestmap_remove(channel_identity_map, chan->identity_digest);
+          digestmap_remove(channel_identity_map,
+                           chan->u.cell_chan.identity_digest);
         }
       }
 
       /* NULL out its next/prev pointers, and we're finished */
-      chan->next_with_same_id = NULL;
-      chan->prev_with_same_id = NULL;
+      chan->u.cell_chan.next_with_same_id = NULL;
+      chan->u.cell_chan.prev_with_same_id = NULL;
 
       log_debug(LD_CHANNEL,
                 "Removed channel %p (%lu) from identity map in state %s (%d) "
                 "with digest %s",
                 chan, chan->global_identifier,
                 channel_state_to_string(chan->state), chan->state,
-                hex_str(chan->identity_digest, DIGEST_LEN));
+                hex_str(chan->u.cell_chan.identity_digest, DIGEST_LEN));
     } else {
       /* This is not good */
       log_warn(LD_BUG,
@@ -467,14 +507,20 @@ channel_remove_from_digest_map(channel_t *chan)
                "identity map, but couldn't find it in the list for that "
                "digest",
                chan, chan->global_identifier,
-               hex_str(chan->identity_digest, DIGEST_LEN));
+               hex_str(chan->u.cell_chan.identity_digest, DIGEST_LEN));
       /* Unlink it and hope for the best */
-      if (chan->next_with_same_id)
-        chan->next_with_same_id->prev_with_same_id = chan->prev_with_same_id;
-      if (chan->prev_with_same_id)
-        chan->prev_with_same_id->next_with_same_id = chan->next_with_same_id;
-      chan->next_with_same_id = NULL;
-      chan->prev_with_same_id = NULL;
+      if (chan->u.cell_chan.next_with_same_id) {
+        tor_assert(!(chan->u.cell_chan.next_with_same_id->is_listener));
+        chan->u.cell_chan.next_with_same_id->u.cell_chan.prev_with_same_id
+          = chan->u.cell_chan.prev_with_same_id;
+      }
+      if (chan->u.cell_chan.prev_with_same_id) {
+        tor_assert(!(chan->u.cell_chan.prev_with_same_id->is_listener));
+        chan->u.cell_chan.prev_with_same_id->u.cell_chan.next_with_same_id
+          = chan->u.cell_chan.next_with_same_id;
+      }
+      chan->u.cell_chan.next_with_same_id = NULL;
+      chan->u.cell_chan.prev_with_same_id = NULL;
     }
   } else {
     /* Shouldn't happen */
@@ -482,14 +528,19 @@ channel_remove_from_digest_map(channel_t *chan)
              "Trying to remove channel %p (%lu) with digest %s from "
              "identity map, but couldn't find any with that digest",
              chan, chan->global_identifier,
-             hex_str(chan->identity_digest, DIGEST_LEN));
+             hex_str(chan->u.cell_chan.identity_digest, DIGEST_LEN));
     /* Clear out its next/prev pointers */
-    if (chan->next_with_same_id)
-      chan->next_with_same_id->prev_with_same_id = chan->prev_with_same_id;
-    if (chan->prev_with_same_id)
-      chan->prev_with_same_id->next_with_same_id = chan->next_with_same_id;
-    chan->next_with_same_id = NULL;
-    chan->prev_with_same_id = NULL;
+    if (chan->u.cell_chan.next_with_same_id) {
+      tor_assert(!(chan->u.cell_chan.next_with_same_id->is_listener));
+      chan->u.cell_chan.next_with_same_id->u.cell_chan.prev_with_same_id
+        = chan->u.cell_chan.prev_with_same_id;
+    }
+    if (chan->u.cell_chan.prev_with_same_id) {
+      chan->u.cell_chan.prev_with_same_id->u.cell_chan.next_with_same_id
+        = chan->u.cell_chan.next_with_same_id;
+    }
+    chan->u.cell_chan.next_with_same_id = NULL;
+    chan->u.cell_chan.prev_with_same_id = NULL;
   }
 }
 
@@ -576,9 +627,13 @@ channel_find_by_remote_nickname(const char *nickname)
 
   if (all_channels && smartlist_len(all_channels) > 0) {
     SMARTLIST_FOREACH_BEGIN(all_channels, channel_t *, curr) {
-      if (strncmp(curr->nickname, nickname, MAX_NICKNAME_LEN) == 0) {
-        rv = curr;
-        break;
+      if (!(curr->is_listener)) {
+        if (curr->u.cell_chan.nickname &&
+            strncmp(curr->u.cell_chan.nickname, nickname,
+                    MAX_NICKNAME_LEN) == 0) {
+          rv = curr;
+          break;
+        }
       }
     } SMARTLIST_FOREACH_END(curr);
   }
@@ -603,7 +658,10 @@ channel_next_with_digest(channel_t *chan)
   channel_t *rv = NULL;
 
   tor_assert(chan);
-  if (chan->next_with_same_id) rv = chan->next_with_same_id;
+  tor_assert(!(chan->is_listener));
+
+  if (chan->u.cell_chan.next_with_same_id)
+    rv = chan->u.cell_chan.next_with_same_id;
 
   return rv;
 }
@@ -625,13 +683,16 @@ channel_prev_with_digest(channel_t *chan)
   channel_t *rv = NULL;
 
   tor_assert(chan);
-  if (chan->prev_with_same_id) rv = chan->prev_with_same_id;
+  tor_assert(!(chan->is_listener));
+
+  if (chan->u.cell_chan.prev_with_same_id)
+    rv = chan->u.cell_chan.prev_with_same_id;
 
   return rv;
 }
 
 /**
- * Internal-only channel init function
+ * Internal-only channel init function for cell channels
  *
  * This function should be called by subclasses to set up some per-channel
  * variables.  I.e., this is the superclass constructor.  Before this, the
@@ -641,18 +702,46 @@ channel_prev_with_digest(channel_t *chan)
  */
 
 void
-channel_init(channel_t *chan)
+channel_init_for_cells(channel_t *chan)
 {
   tor_assert(chan);
 
   /* Assign an ID and bump the counter */
   chan->global_identifier = n_channels_allocated++;
 
+  /* Mark as a non-listener */
+  chan->is_listener = 0;
+
   /* Init timestamp */
-  chan->timestamp_last_added_nonpadding = time(NULL);
+  chan->u.cell_chan.timestamp_last_added_nonpadding = time(NULL);
 
   /* Init next_circ_id */
-  chan->next_circ_id = crypto_rand_int(1 << 15);
+  chan->u.cell_chan.next_circ_id = crypto_rand_int(1 << 15);
+
+  /* Timestamp it */
+  channel_timestamp_created(chan);
+}
+
+/**
+ * Internal-only channel init function for listener channels
+ *
+ * This function should be called by subclasses to set up some per-channel
+ * variables.  I.e., this is the superclass constructor.  Before this, the
+ * channel should be allocated with tor_malloc_zero().
+ *
+ * @param chan Pointer to a channel to initialize.
+ */
+
+void
+channel_init_listener(channel_t *chan)
+{
+  tor_assert(chan);
+
+  /* Assign an ID and bump the counter */
+  chan->global_identifier = n_channels_allocated++;
+
+  /* Mark as a listener */
+  chan->is_listener = 1;
 
   /* Timestamp it */
   channel_timestamp_created(chan);
@@ -680,11 +769,13 @@ channel_free(channel_t *chan)
   /* Call a free method if there is one */
   if (chan->free) chan->free(chan);
 
-  channel_clear_remote_end(chan);
+  if (!(chan->is_listener)) {
+    channel_clear_remote_end(chan);
 
-  if (chan->active_circuit_pqueue) {
-    smartlist_free(chan->active_circuit_pqueue);
-    chan->active_circuit_pqueue = NULL;
+    if (chan->u.cell_chan.active_circuit_pqueue) {
+      smartlist_free(chan->u.cell_chan.active_circuit_pqueue);
+      chan->u.cell_chan.active_circuit_pqueue = NULL;
+    }
   }
 
   /* We're in CLOSED or ERROR, so the cell queue is already empty */
@@ -700,7 +791,8 @@ channel_free(channel_t *chan)
  */
 
 void
-channel_force_free(channel_t *chan) {
+channel_force_free(channel_t *chan)
+{
   cell_queue_entry_t *tmp = NULL;
   channel_t *tmpchan = NULL;
 
@@ -709,54 +801,57 @@ channel_force_free(channel_t *chan) {
   /* Call a free method if there is one */
   if (chan->free) chan->free(chan);
 
-  channel_clear_remote_end(chan);
+  if (chan->is_listener) {
+    /*
+     * The incoming list just gets emptied and freed; we request close on
+     * any channels we find there, but since we got called while shutting
+     * down they will get deregistered and freed elsewhere anyway.
+     */
+    if (chan->u.listener.incoming_list) {
+      SMARTLIST_FOREACH_BEGIN(chan->u.listener.incoming_list,
+                              channel_t *, qchan) {
+        tmpchan = qchan;
+        SMARTLIST_DEL_CURRENT(chan->u.listener.incoming_list, qchan);
+        channel_request_close(tmpchan);
+      } SMARTLIST_FOREACH_END(qchan);
 
-  smartlist_free(chan->active_circuit_pqueue);
+      smartlist_free(chan->u.listener.incoming_list);
+      chan->u.listener.incoming_list = NULL;
+    }
+  } else {
+    channel_clear_remote_end(chan);
+    smartlist_free(chan->u.cell_chan.active_circuit_pqueue);
 
-  /* We might still have a cell queue; kill it */
-  if (chan->cell_queue) {
-    SMARTLIST_FOREACH_BEGIN(chan->cell_queue, cell_queue_entry_t *, q) {
-      tmp = q;
-      SMARTLIST_DEL_CURRENT(chan->cell_queue, q);
-      tor_free(q);
-    } SMARTLIST_FOREACH_END(q);
+    /* We might still have a cell queue; kill it */
+    if (chan->u.cell_chan.cell_queue) {
+      SMARTLIST_FOREACH_BEGIN(chan->u.cell_chan.cell_queue,
+                              cell_queue_entry_t *, q) {
+        tmp = q;
+        SMARTLIST_DEL_CURRENT(chan->u.cell_chan.cell_queue, q);
+        tor_free(q);
+      } SMARTLIST_FOREACH_END(q);
 
-    smartlist_free(chan->cell_queue);
-    chan->cell_queue = NULL;
-  }
-  
-  /* Outgoing cell queue is similar, but we can have to free packed cells */
-  if (chan->outgoing_queue) {
-    SMARTLIST_FOREACH_BEGIN(chan->outgoing_queue,
-                            cell_queue_entry_t *, q) {
-      tmp = q;
-      SMARTLIST_DEL_CURRENT(chan->outgoing_queue, q);
-      if (tmp->type == CELL_QUEUE_PACKED) {
-        if (tmp->u.packed.packed_cell) {
-          packed_cell_free(tmp->u.packed.packed_cell);
+      smartlist_free(chan->u.cell_chan.cell_queue);
+      chan->u.cell_chan.cell_queue = NULL;
+    }
+
+    /* Outgoing cell queue is similar, but we can have to free packed cells */
+    if (chan->u.cell_chan.outgoing_queue) {
+      SMARTLIST_FOREACH_BEGIN(chan->u.cell_chan.outgoing_queue,
+                              cell_queue_entry_t *, q) {
+        tmp = q;
+        SMARTLIST_DEL_CURRENT(chan->u.cell_chan.outgoing_queue, q);
+        if (tmp->type == CELL_QUEUE_PACKED) {
+          if (tmp->u.packed.packed_cell) {
+            packed_cell_free(tmp->u.packed.packed_cell);
+          }
         }
-      }
-      tor_free(tmp);
-    } SMARTLIST_FOREACH_END(q);
+        tor_free(tmp);
+      } SMARTLIST_FOREACH_END(q);
 
-    smartlist_free(chan->outgoing_queue);
-    chan->outgoing_queue = NULL;
-  }
-
-  /*
-   * The incoming list just gets emptied and freed; we request close on any
-   * channels we find there, but since we got called while shutting down they
-   * will get deregistered and freed elsewhere anyway.
-   */
-  if (chan->incoming_list) {
-    SMARTLIST_FOREACH_BEGIN(chan->incoming_list, channel_t *, qchan) {
-      tmpchan = qchan;
-      SMARTLIST_DEL_CURRENT(chan->incoming_list, qchan);
-      channel_request_close(tmpchan);
-    } SMARTLIST_FOREACH_END(qchan);
-
-    smartlist_free(chan->incoming_list);
-    chan->incoming_list = NULL;
+      smartlist_free(chan->u.cell_chan.outgoing_queue);
+      chan->u.cell_chan.outgoing_queue = NULL;
+    }
   }
 
   tor_free(chan);
@@ -777,9 +872,12 @@ void
   (channel_t *, channel_t *)
 {
   tor_assert(chan);
+  tor_assert(chan->is_listener);
 
-  if (chan->state == CHANNEL_STATE_LISTENING) return chan->listener;
-  else return NULL;
+  if (chan->state == CHANNEL_STATE_LISTENING)
+    return chan->u.listener.listener;
+
+  return NULL;
 }
 
 /**
@@ -797,14 +895,15 @@ channel_set_listener(channel_t *chan,
                      void (*listener)(channel_t *, channel_t *) )
 {
   tor_assert(chan);
+  tor_assert(chan->is_listener);
   tor_assert(chan->state == CHANNEL_STATE_LISTENING);
 
   log_debug(LD_CHANNEL,
            "Setting listener callback for channel %p to %p",
            chan, listener);
 
-  chan->listener = listener;
-  if (chan->listener) channel_process_incoming(chan);
+  chan->u.listener.listener = listener;
+  if (chan->u.listener.listener) channel_process_incoming(chan);
 }
 
 /**
@@ -822,14 +921,14 @@ void
   (channel_t *, cell_t *)
 {
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
   if (chan->state == CHANNEL_STATE_OPENING ||
       chan->state == CHANNEL_STATE_OPEN ||
-      chan->state == CHANNEL_STATE_MAINT) {
-    return chan->cell_handler;
-  } else {
-    return NULL;
-  }
+      chan->state == CHANNEL_STATE_MAINT)
+    return chan->u.cell_chan.cell_handler;
+
+  return NULL;
 }
 
 /**
@@ -847,14 +946,14 @@ void
   (channel_t *, var_cell_t *)
 {
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
   if (chan->state == CHANNEL_STATE_OPENING ||
       chan->state == CHANNEL_STATE_OPEN ||
-      chan->state == CHANNEL_STATE_MAINT) {
-    return chan->var_cell_handler;
-  } else {
-    return NULL;
-  }
+      chan->state == CHANNEL_STATE_MAINT)
+    return chan->u.cell_chan.var_cell_handler;
+
+  return NULL;
 }
 
 /**
@@ -875,6 +974,7 @@ channel_set_cell_handler(channel_t *chan,
   int changed = 0;
 
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
   tor_assert(chan->state == CHANNEL_STATE_OPENING ||
              chan->state == CHANNEL_STATE_OPEN ||
              chan->state == CHANNEL_STATE_MAINT);
@@ -887,16 +987,16 @@ channel_set_cell_handler(channel_t *chan,
    * Keep track whether we've changed it so we know if there's any point in
    * re-running the queue.
    */
-  if (cell_handler != chan->cell_handler) changed = 1;
+  if (cell_handler != chan->u.cell_chan.cell_handler) changed = 1;
 
   /* Change it */
-  chan->cell_handler = cell_handler;
+  chan->u.cell_chan.cell_handler = cell_handler;
 
   /* Re-run the queue if we have one and there's any reason to */
-  if (chan->cell_queue &&
-      (smartlist_len(chan->cell_queue) > 0) &&
+  if (chan->u.cell_chan.cell_queue &&
+      (smartlist_len(chan->u.cell_chan.cell_queue) > 0) &&
       changed &&
-      chan->cell_handler) channel_process_cells(chan);
+      chan->u.cell_chan.cell_handler) channel_process_cells(chan);
 }
 
 /**
@@ -921,6 +1021,7 @@ channel_set_cell_handlers(channel_t *chan,
   int try_again = 0;
 
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
   tor_assert(chan->state == CHANNEL_STATE_OPENING ||
              chan->state == CHANNEL_STATE_OPEN ||
              chan->state == CHANNEL_STATE_MAINT);
@@ -934,20 +1035,20 @@ channel_set_cell_handlers(channel_t *chan,
 
   /* Should we try the queue? */
   if (cell_handler &&
-      cell_handler != chan->cell_handler) try_again = 1;
+      cell_handler != chan->u.cell_chan.cell_handler) try_again = 1;
   if (var_cell_handler &&
-      var_cell_handler != chan->var_cell_handler) try_again = 1;
+      var_cell_handler != chan->u.cell_chan.var_cell_handler) try_again = 1;
 
   /* Change them */
-  chan->cell_handler = cell_handler;
-  chan->var_cell_handler = var_cell_handler;
+  chan->u.cell_chan.cell_handler = cell_handler;
+  chan->u.cell_chan.var_cell_handler = var_cell_handler;
 
   /* Re-run the queue if we have one and there's any reason to */
-  if (chan->cell_queue &&
-      (smartlist_len(chan->cell_queue) > 0) &&
+  if (chan->u.cell_chan.cell_queue &&
+      (smartlist_len(chan->u.cell_chan.cell_queue) > 0) &&
       try_again &&
-      (chan->cell_handler ||
-       chan->var_cell_handler)) channel_process_cells(chan);
+      (chan->u.cell_chan.cell_handler ||
+       chan->u.cell_chan.var_cell_handler)) channel_process_cells(chan);
 }
 
 /**
@@ -969,6 +1070,7 @@ channel_set_var_cell_handler(channel_t *chan,
   int changed = 0;
 
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
   tor_assert(chan->state == CHANNEL_STATE_OPENING ||
              chan->state == CHANNEL_STATE_OPEN ||
              chan->state == CHANNEL_STATE_MAINT);
@@ -981,16 +1083,16 @@ channel_set_var_cell_handler(channel_t *chan,
    * Keep track whether we've changed it so we know if there's any point in
    * re-running the queue.
    */
-  if (var_cell_handler != chan->var_cell_handler) changed = 1;
+  if (var_cell_handler != chan->u.cell_chan.var_cell_handler) changed = 1;
 
   /* Change it */
-  chan->var_cell_handler = var_cell_handler;
+  chan->u.cell_chan.var_cell_handler = var_cell_handler;
 
   /* Re-run the queue if we have one and there's any reason to */
-  if (chan->cell_queue &&
-      (smartlist_len(chan->cell_queue) > 0) &&
-      changed &&
-      chan->var_cell_handler) channel_process_cells(chan);
+  if (chan->u.cell_chan.cell_queue &&
+      (smartlist_len(chan->u.cell_chan.cell_queue) > 0) &&
+      changed && chan->u.cell_chan.var_cell_handler)
+    channel_process_cells(chan);
 }
 
 /**
@@ -1149,6 +1251,7 @@ channel_clear_identity_digest(channel_t *chan)
   int state_not_in_map;
 
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
   log_debug(LD_CHANNEL,
             "Clearing remote endpoint digest on channel %p with "
@@ -1162,11 +1265,12 @@ channel_clear_identity_digest(channel_t *chan)
      chan->state == CHANNEL_STATE_ERROR);
 
   if (!state_not_in_map && chan->registered &&
-      !tor_digest_is_zero(chan->identity_digest))
+      !tor_digest_is_zero(chan->u.cell_chan.identity_digest))
     /* if it's registered get it out of the digest map */
     channel_remove_from_digest_map(chan);
 
-  memset(chan->identity_digest, 0, sizeof(chan->identity_digest));
+  memset(chan->u.cell_chan.identity_digest, 0,
+         sizeof(chan->u.cell_chan.identity_digest));
 }
 
 /**
@@ -1186,6 +1290,7 @@ channel_set_identity_digest(channel_t *chan,
   int was_in_digest_map, should_be_in_digest_map, state_not_in_map;
 
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
   log_debug(LD_CHANNEL,
             "Setting remote endpoint digest on channel %p with "
@@ -1202,7 +1307,7 @@ channel_set_identity_digest(channel_t *chan,
   was_in_digest_map =
     !state_not_in_map &&
     chan->registered &&
-    !tor_digest_is_zero(chan->identity_digest);
+    !tor_digest_is_zero(chan->u.cell_chan.identity_digest);
   should_be_in_digest_map =
     !state_not_in_map &&
     chan->registered &&
@@ -1216,11 +1321,12 @@ channel_set_identity_digest(channel_t *chan,
     channel_remove_from_digest_map(chan);
 
   if (identity_digest) {
-    memcpy(chan->identity_digest,
+    memcpy(chan->u.cell_chan.identity_digest,
            identity_digest,
-           sizeof(chan->identity_digest));
+           sizeof(chan->u.cell_chan.identity_digest));
   } else {
-    memset(chan->identity_digest, 0, sizeof(chan->identity_digest));
+    memset(chan->u.cell_chan.identity_digest, 0,
+           sizeof(chan->u.cell_chan.identity_digest));
   }
 
   /* Put it in the digest map if we should */
@@ -1243,6 +1349,7 @@ channel_clear_remote_end(channel_t *chan)
   int state_not_in_map;
 
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
   log_debug(LD_CHANNEL,
             "Clearing remote endpoint identity on channel %p with "
@@ -1256,12 +1363,13 @@ channel_clear_remote_end(channel_t *chan)
      chan->state == CHANNEL_STATE_ERROR);
 
   if (!state_not_in_map && chan->registered &&
-      !tor_digest_is_zero(chan->identity_digest))
+      !tor_digest_is_zero(chan->u.cell_chan.identity_digest))
     /* if it's registered get it out of the digest map */
     channel_remove_from_digest_map(chan);
 
-  memset(chan->identity_digest, 0, sizeof(chan->identity_digest));
-  tor_free(chan->nickname);
+  memset(chan->u.cell_chan.identity_digest, 0,
+         sizeof(chan->u.cell_chan.identity_digest));
+  tor_free(chan->u.cell_chan.nickname);
 }
 
 /**
@@ -1283,6 +1391,7 @@ channel_set_remote_end(channel_t *chan,
   int was_in_digest_map, should_be_in_digest_map, state_not_in_map;
 
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
   log_debug(LD_CHANNEL,
             "Setting remote endpoint identity on channel %p with "
@@ -1300,7 +1409,7 @@ channel_set_remote_end(channel_t *chan,
   was_in_digest_map =
     !state_not_in_map &&
     chan->registered &&
-    !tor_digest_is_zero(chan->identity_digest);
+    !tor_digest_is_zero(chan->u.cell_chan.identity_digest);
   should_be_in_digest_map =
     !state_not_in_map &&
     chan->registered &&
@@ -1314,16 +1423,18 @@ channel_set_remote_end(channel_t *chan,
     channel_remove_from_digest_map(chan);
 
   if (identity_digest) {
-    memcpy(chan->identity_digest,
+    memcpy(chan->u.cell_chan.identity_digest,
            identity_digest,
-           sizeof(chan->identity_digest));
+           sizeof(chan->u.cell_chan.identity_digest));
 
   } else {
-    memset(chan->identity_digest, 0, sizeof(chan->identity_digest));
+    memset(chan->u.cell_chan.identity_digest, 0,
+           sizeof(chan->u.cell_chan.identity_digest));
   }
 
-  tor_free(chan->nickname);
-  if (nickname) chan->nickname = tor_strdup(nickname);
+  tor_free(chan->u.cell_chan.nickname);
+  if (nickname)
+    chan->u.cell_chan.nickname = tor_strdup(nickname);
 
   /* Put it in the digest map if we should */
   if (should_be_in_digest_map)
@@ -1346,9 +1457,11 @@ channel_write_cell(channel_t *chan, cell_t *cell)
   cell_queue_entry_t *q;
   int sent = 0;
 
-  tor_assert(chan != NULL);
-  tor_assert(cell != NULL);
-  tor_assert(chan->write_cell != NULL);
+  tor_assert(chan);
+  tor_assert(!(chan->is_listener));
+  tor_assert(cell);
+  tor_assert(chan->u.cell_chan.write_cell);
+
   /* Assert that the state makes sense for a cell write */
   tor_assert(chan->state == CHANNEL_STATE_OPENING ||
              chan->state == CHANNEL_STATE_OPEN ||
@@ -1361,14 +1474,14 @@ channel_write_cell(channel_t *chan, cell_t *cell)
   /* Increment the timestamp unless it's padding */
   if (!(cell->command == CELL_PADDING ||
         cell->command == CELL_VPADDING)) {
-    chan->timestamp_last_added_nonpadding = approx_time();
+    chan->u.cell_chan.timestamp_last_added_nonpadding = approx_time();
   }
 
   /* Can we send it right out?  If so, try */
-  if (!(chan->outgoing_queue &&
-        (smartlist_len(chan->outgoing_queue) > 0)) &&
-      chan->state == CHANNEL_STATE_OPEN) {
-    if (chan->write_cell(chan, cell)) {
+  if (!(chan->u.cell_chan.outgoing_queue &&
+        (smartlist_len(chan->u.cell_chan.outgoing_queue) > 0)) &&
+       chan->state == CHANNEL_STATE_OPEN) {
+    if (chan->u.cell_chan.write_cell(chan, cell)) {
       sent = 1;
       /* Timestamp for transmission */
       channel_timestamp_xmit(chan);
@@ -1379,11 +1492,12 @@ channel_write_cell(channel_t *chan, cell_t *cell)
 
   if (!sent) {
     /* Not sent, queue it */
-    if (!(chan->outgoing_queue)) chan->outgoing_queue = smartlist_new();
+    if (!(chan->u.cell_chan.outgoing_queue))
+      chan->u.cell_chan.outgoing_queue = smartlist_new();
     q = tor_malloc(sizeof(*q));
     q->type = CELL_QUEUE_FIXED;
     q->u.fixed.cell = cell;
-    smartlist_add(chan->outgoing_queue, q);
+    smartlist_add(chan->u.cell_chan.outgoing_queue, q);
     /* Try to process the queue? */
     if (chan->state == CHANNEL_STATE_OPEN) channel_flush_cells(chan);
   }
@@ -1404,9 +1518,11 @@ channel_write_packed_cell(channel_t *chan, packed_cell_t *packed_cell)
   cell_queue_entry_t *q;
   int sent = 0;
 
-  tor_assert(chan != NULL);
-  tor_assert(packed_cell != NULL);
-  tor_assert(chan->write_packed_cell != NULL);
+  tor_assert(chan);
+  tor_assert(!(chan->is_listener));
+  tor_assert(packed_cell);
+  tor_assert(chan->u.cell_chan.write_packed_cell);
+
   /* Assert that the state makes sense for a cell write */
   tor_assert(chan->state == CHANNEL_STATE_OPENING ||
              chan->state == CHANNEL_STATE_OPEN ||
@@ -1417,13 +1533,13 @@ channel_write_packed_cell(channel_t *chan, packed_cell_t *packed_cell)
             packed_cell, chan, chan->global_identifier);
 
   /* Increment the timestamp */
-  chan->timestamp_last_added_nonpadding = approx_time();
+  chan->u.cell_chan.timestamp_last_added_nonpadding = approx_time();
 
   /* Can we send it right out?  If so, try */
-  if (!(chan->outgoing_queue &&
-        (smartlist_len(chan->outgoing_queue) > 0)) &&
-      chan->state == CHANNEL_STATE_OPEN) {
-    if (chan->write_packed_cell(chan, packed_cell)) {
+  if (!(chan->u.cell_chan.outgoing_queue &&
+        (smartlist_len(chan->u.cell_chan.outgoing_queue) > 0)) &&
+       chan->state == CHANNEL_STATE_OPEN) {
+    if (chan->u.cell_chan.write_packed_cell(chan, packed_cell)) {
       sent = 1;
       /* Timestamp for transmission */
       channel_timestamp_xmit(chan);
@@ -1434,11 +1550,12 @@ channel_write_packed_cell(channel_t *chan, packed_cell_t *packed_cell)
 
   if (!sent) {
     /* Not sent, queue it */
-    if (!(chan->outgoing_queue)) chan->outgoing_queue = smartlist_new();
+    if (!(chan->u.cell_chan.outgoing_queue))
+      chan->u.cell_chan.outgoing_queue = smartlist_new();
     q = tor_malloc(sizeof(*q));
     q->type = CELL_QUEUE_PACKED;
     q->u.packed.packed_cell = packed_cell;
-    smartlist_add(chan->outgoing_queue, q);
+    smartlist_add(chan->u.cell_chan.outgoing_queue, q);
     /* Try to process the queue? */
     if (chan->state == CHANNEL_STATE_OPEN) channel_flush_cells(chan);
   }
@@ -1461,9 +1578,11 @@ channel_write_var_cell(channel_t *chan, var_cell_t *var_cell)
   cell_queue_entry_t *q;
   int sent = 0;
 
-  tor_assert(chan != NULL);
-  tor_assert(var_cell != NULL);
-  tor_assert(chan->write_var_cell != NULL);
+  tor_assert(chan);
+  tor_assert(!(chan->is_listener));
+  tor_assert(var_cell);
+  tor_assert(chan->u.cell_chan.write_var_cell);
+
   /* Assert that the state makes sense for a cell write */
   tor_assert(chan->state == CHANNEL_STATE_OPENING ||
              chan->state == CHANNEL_STATE_OPEN ||
@@ -1476,14 +1595,14 @@ channel_write_var_cell(channel_t *chan, var_cell_t *var_cell)
   /* Increment the timestamp unless it's padding */
   if (!(var_cell->command == CELL_PADDING ||
         var_cell->command == CELL_VPADDING)) {
-    chan->timestamp_last_added_nonpadding = approx_time();
+    chan->u.cell_chan.timestamp_last_added_nonpadding = approx_time();
   }
 
   /* Can we send it right out? If so, then try */
-  if (!(chan->outgoing_queue &&
-        (smartlist_len(chan->outgoing_queue) > 0)) &&
-      chan->state == CHANNEL_STATE_OPEN) {
-    if (chan->write_var_cell(chan, var_cell)) {
+  if (!(chan->u.cell_chan.outgoing_queue &&
+        (smartlist_len(chan->u.cell_chan.outgoing_queue) > 0)) &&
+       chan->state == CHANNEL_STATE_OPEN) {
+    if (chan->u.cell_chan.write_var_cell(chan, var_cell)) {
       sent = 1;
       /* Timestamp for transmission */
       channel_timestamp_xmit(chan);
@@ -1494,11 +1613,12 @@ channel_write_var_cell(channel_t *chan, var_cell_t *var_cell)
 
   if (!sent) {
     /* Not sent, queue it */
-    if (!(chan->outgoing_queue)) chan->outgoing_queue = smartlist_new();
+    if (!(chan->u.cell_chan.outgoing_queue))
+      chan->u.cell_chan.outgoing_queue = smartlist_new();
     q = tor_malloc(sizeof(*q));
     q->type = CELL_QUEUE_VAR;
     q->u.var.var_cell = var_cell;
-    smartlist_add(chan->outgoing_queue, q);
+    smartlist_add(chan->u.cell_chan.outgoing_queue, q);
     /* Try to process the queue? */
     if (chan->state == CHANNEL_STATE_OPEN) channel_flush_cells(chan);
   }
@@ -1528,6 +1648,20 @@ channel_change_state(channel_t *chan, channel_state_t to_state)
   tor_assert(channel_state_is_valid(from_state));
   tor_assert(channel_state_is_valid(to_state));
   tor_assert(channel_state_can_transition(chan->state, to_state));
+
+  if (chan->is_listener) {
+    tor_assert(from_state == CHANNEL_STATE_LISTENING ||
+               from_state == CHANNEL_STATE_CLOSING ||
+               from_state == CHANNEL_STATE_CLOSED ||
+               from_state == CHANNEL_STATE_ERROR);
+    tor_assert(to_state == CHANNEL_STATE_LISTENING ||
+               to_state == CHANNEL_STATE_CLOSING ||
+               to_state == CHANNEL_STATE_CLOSED ||
+               to_state == CHANNEL_STATE_ERROR);
+  } else {
+    tor_assert(from_state != CHANNEL_STATE_LISTENING);
+    tor_assert(to_state != CHANNEL_STATE_LISTENING);
+  }
 
   /* Check for no-op transitions */
   if (from_state == to_state) {
@@ -1595,7 +1729,8 @@ channel_change_state(channel_t *chan, channel_state_t to_state)
       if (listening_channels) smartlist_remove(listening_channels, chan);
     }
 
-    if (!tor_digest_is_zero(chan->identity_digest)) {
+    if (!(chan->is_listener) &&
+        !tor_digest_is_zero(chan->u.cell_chan.identity_digest)) {
       /* Now we need to handle the identity map */
       was_in_id_map = !(from_state == CHANNEL_STATE_LISTENING ||
                         from_state == CHANNEL_STATE_CLOSING ||
@@ -1615,21 +1750,27 @@ channel_change_state(channel_t *chan, channel_state_t to_state)
   /* Tell circuits if we opened and stuff */
   if (to_state == CHANNEL_STATE_OPEN) channel_do_open_actions(chan);
 
-  if (to_state == CHANNEL_STATE_OPEN) {
+  if (!(chan->is_listener) &&
+      to_state == CHANNEL_STATE_OPEN) {
     /* Check for queued cells to process */
-    if (chan->cell_queue && smartlist_len(chan->cell_queue) > 0)
+    if (chan->u.cell_chan.cell_queue &&
+        smartlist_len(chan->u.cell_chan.cell_queue) > 0)
       channel_process_cells(chan);
-    if (chan->outgoing_queue && smartlist_len(chan->outgoing_queue) > 0)
+    if (chan->u.cell_chan.outgoing_queue &&
+        smartlist_len(chan->u.cell_chan.outgoing_queue) > 0)
       channel_flush_cells(chan);
   } else if (to_state == CHANNEL_STATE_CLOSED ||
              to_state == CHANNEL_STATE_ERROR) {
     /* Assert that all queues are empty */
-    tor_assert(!(chan->cell_queue) ||
-                smartlist_len(chan->cell_queue) == 0);
-    tor_assert(!(chan->outgoing_queue) ||
-                smartlist_len(chan->outgoing_queue) == 0);
-    tor_assert(!(chan->incoming_list) ||
-                smartlist_len(chan->incoming_list) == 0);
+    if (chan->is_listener) {
+      tor_assert(!(chan->u.listener.incoming_list) ||
+                  smartlist_len(chan->u.listener.incoming_list) == 0);
+    } else {
+      tor_assert(!(chan->u.cell_chan.cell_queue) ||
+                  smartlist_len(chan->u.cell_chan.cell_queue) == 0);
+      tor_assert(!(chan->u.cell_chan.outgoing_queue) ||
+                  smartlist_len(chan->u.cell_chan.outgoing_queue) == 0);
+    }
   }
 }
 
@@ -1656,6 +1797,8 @@ channel_flush_some_cells(channel_t *chan, ssize_t num_cells)
   int num_cells_from_circs;
 
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
+
   if (num_cells < 0) unlimited = 1;
   if (!unlimited && num_cells <= flushed) goto done;
 
@@ -1666,7 +1809,7 @@ channel_flush_some_cells(channel_t *chan, ssize_t num_cells)
         (unlimited ? -1 : num_cells - flushed));
     if (!unlimited && num_cells <= flushed) goto done;
 
-    if (chan->active_circuits) {
+    if (chan->u.cell_chan.active_circuits) {
       /* Try to get more cells from any active circuits */
       num_cells_from_circs =
         channel_flush_from_first_active_circuit(chan,
@@ -1705,9 +1848,10 @@ channel_flush_some_cells_from_outgoing_queue(channel_t *chan,
   cell_queue_entry_t *q = NULL;
 
   tor_assert(chan);
-  tor_assert(chan->write_cell);
-  tor_assert(chan->write_packed_cell);
-  tor_assert(chan->write_var_cell);
+  tor_assert(!(chan->is_listener));
+  tor_assert(chan->u.cell_chan.write_cell);
+  tor_assert(chan->u.cell_chan.write_packed_cell);
+  tor_assert(chan->u.cell_chan.write_var_cell);
 
   if (num_cells < 0) unlimited = 1;
   if (!unlimited && num_cells <= flushed) return 0;
@@ -1715,15 +1859,15 @@ channel_flush_some_cells_from_outgoing_queue(channel_t *chan,
   /* If we aren't in CHANNEL_STATE_OPEN, nothing goes through */
   if (chan->state == CHANNEL_STATE_OPEN) {
     while ((unlimited || num_cells > flushed) &&
-           (chan->outgoing_queue &&
-            (smartlist_len(chan->outgoing_queue) > 0))) {
+           (chan->u.cell_chan.outgoing_queue &&
+            (smartlist_len(chan->u.cell_chan.outgoing_queue) > 0))) {
       /*
        * Ewww, smartlist_del_keeporder() is O(n) in list length; maybe a
        * a linked list would make more sense for the queue.
        */
 
       /* Get the head of the queue */
-      q = smartlist_get(chan->outgoing_queue, 0);
+      q = smartlist_get(chan->u.cell_chan.outgoing_queue, 0);
       /* That shouldn't happen; bail out */
       if (q) {
         /*
@@ -1733,7 +1877,8 @@ channel_flush_some_cells_from_outgoing_queue(channel_t *chan,
         switch (q->type) {
           case CELL_QUEUE_FIXED:
             if (q->u.fixed.cell) {
-              if (chan->write_cell(chan, q->u.fixed.cell)) {
+              if (chan->u.cell_chan.write_cell(chan,
+                    q->u.fixed.cell)) {
                 tor_free(q);
                 ++flushed;
                 channel_timestamp_xmit(chan);
@@ -1751,7 +1896,8 @@ channel_flush_some_cells_from_outgoing_queue(channel_t *chan,
             break;
          case CELL_QUEUE_PACKED:
             if (q->u.packed.packed_cell) {
-              if (chan->write_packed_cell(chan, q->u.packed.packed_cell)) {
+              if (chan->u.cell_chan.write_packed_cell(chan,
+                    q->u.packed.packed_cell)) {
                 tor_free(q);
                 ++flushed;
                 channel_timestamp_xmit(chan);
@@ -1769,7 +1915,8 @@ channel_flush_some_cells_from_outgoing_queue(channel_t *chan,
             break;
          case CELL_QUEUE_VAR:
             if (q->u.var.var_cell) {
-              if (chan->write_var_cell(chan, q->u.var.var_cell)) {
+              if (chan->u.cell_chan.write_var_cell(chan,
+                    q->u.var.var_cell)) {
                 tor_free(q);
                 ++flushed;
                 channel_timestamp_xmit(chan);
@@ -1803,14 +1950,15 @@ channel_flush_some_cells_from_outgoing_queue(channel_t *chan,
       }
 
       /* if q got NULLed out, we used it and should remove the queue entry */
-      if (!q) smartlist_del_keeporder(chan->outgoing_queue, 0);
+      if (!q) smartlist_del_keeporder(chan->u.cell_chan.outgoing_queue, 0);
       /* No cell removed from list, so we can't go on any further */
       else break;
     }
   }
 
   /* Did we drain the queue? */
-  if (!(chan->outgoing_queue) || smartlist_len(chan->outgoing_queue) == 0) {
+  if (!(chan->u.cell_chan.outgoing_queue) ||
+      smartlist_len(chan->u.cell_chan.outgoing_queue) == 0) {
     /* Timestamp it */
     channel_timestamp_drained(chan);
   }
@@ -1848,12 +1996,14 @@ int
 channel_more_to_flush(channel_t *chan)
 {
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
   /* Check if we have any queued */
-  if (chan->cell_queue && smartlist_len(chan->cell_queue) > 0) return 1;
+  if (chan->u.cell_chan.cell_queue &&
+      smartlist_len(chan->u.cell_chan.cell_queue) > 0) return 1;
 
   /* Check if any circuits would like to queue some */
-  if (chan->active_circuits) return 1;
+  if (chan->u.cell_chan.active_circuits) return 1;
 
   /* Else no */
   return 0;
@@ -1872,9 +2022,11 @@ void
 channel_notify_flushed(channel_t *chan)
 {
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
-  if (chan->dirreq_id != 0)
-    geoip_change_dirreq_state(chan->dirreq_id, DIRREQ_TUNNELED,
+  if (chan->u.cell_chan.dirreq_id != 0)
+    geoip_change_dirreq_state(chan->u.cell_chan.dirreq_id,
+                              DIRREQ_TUNNELED,
                               DIRREQ_CHANNEL_BUFFER_FLUSHED);
 }
 
@@ -1891,34 +2043,40 @@ void
 channel_process_incoming(channel_t *listener)
 {
   tor_assert(listener);
+  tor_assert(listener->is_listener);
   /*
    * CHANNEL_STATE_CLOSING permitted because we drain the queue while
    * closing a listener.
    */
   tor_assert(listener->state == CHANNEL_STATE_LISTENING ||
              listener->state == CHANNEL_STATE_CLOSING);
-  tor_assert(listener->listener);
+  tor_assert(listener->u.listener.listener);
 
   log_debug(LD_CHANNEL,
             "Processing queue of incoming connections for listening "
-            "channel %p",
-            listener);
+            "channel %p (global ID %lu)",
+            listener, listener->global_identifier);
 
-  if (!(listener->incoming_list)) return;
+  if (!(listener->u.listener.incoming_list)) return;
 
-  SMARTLIST_FOREACH_BEGIN(listener->incoming_list, channel_t *, chan) {
+  SMARTLIST_FOREACH_BEGIN(listener->u.listener.incoming_list,
+                          channel_t *, chan) {
+    tor_assert(chan);
+    tor_assert(!(chan->is_listener));
+
     log_debug(LD_CHANNEL,
-              "Handling incoming connection %p for listener %p",
-              chan, listener);
+              "Handling incoming connection %p (%lu) for listener %p (%lu)",
+              chan, chan->global_identifier,
+              listener, listener->global_identifier);
     /* Make sure this is set correctly */
     channel_mark_incoming(chan);
-    listener->listener(listener, chan);
-    SMARTLIST_DEL_CURRENT(listener->incoming_list, chan);
+    listener->u.listener.listener(listener, chan);
+    SMARTLIST_DEL_CURRENT(listener->u.listener.incoming_list, chan);
   } SMARTLIST_FOREACH_END(chan);
 
-  tor_assert(smartlist_len(listener->incoming_list) == 0);
-  smartlist_free(listener->incoming_list);
-  listener->incoming_list = NULL;
+  tor_assert(smartlist_len(listener->u.listener.incoming_list) == 0);
+  smartlist_free(listener->u.listener.incoming_list);
+  listener->u.listener.incoming_list = NULL;
 }
 
 /**
@@ -1944,14 +2102,15 @@ channel_do_open_actions(channel_t *chan)
   time_t now = time(NULL);
 
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
   started_here = channel_is_outgoing(chan);
 
   if (started_here) {
     circuit_build_times_network_is_live(&circ_times);
-    rep_hist_note_connect_succeeded(chan->identity_digest, now);
-    if (entry_guard_register_connect_status(chan->identity_digest,
-                                            1, 0, now) < 0) {
+    rep_hist_note_connect_succeeded(chan->u.cell_chan.identity_digest, now);
+    if (entry_guard_register_connect_status(
+          chan->u.cell_chan.identity_digest, 1, 0, now) < 0) {
       /* Close any circuits pending on this channel. We leave it in state
        * 'open' though, because it didn't actually *fail* -- we just
        * chose not to use it. */
@@ -1961,10 +2120,10 @@ channel_do_open_actions(channel_t *chan)
       circuit_n_chan_done(chan, 0);
       not_using = 1;
     }
-    router_set_status(chan->identity_digest, 1);
+    router_set_status(chan->u.cell_chan.identity_digest, 1);
   } else {
     /* only report it to the geoip module if it's not a known router */
-    if (!router_get_by_id_digest(chan->identity_digest)) {
+    if (!router_get_by_id_digest(chan->u.cell_chan.identity_digest)) {
       if (channel_get_addr_if_possible(chan, &remote_addr)) {
         geoip_note_client_seen(GEOIP_CLIENT_CONNECT, &remote_addr,
                                now);
@@ -1993,8 +2152,10 @@ channel_queue_incoming(channel_t *listener, channel_t *incoming)
   int need_to_queue = 0;
 
   tor_assert(listener);
+  tor_assert(listener->is_listener);
   tor_assert(listener->state == CHANNEL_STATE_LISTENING);
   tor_assert(incoming);
+  tor_assert(!(incoming->is_listener));
   /*
    * Other states are permitted because subclass might process activity
    * on a channel at any time while it's queued, but a listener returning
@@ -2007,28 +2168,29 @@ channel_queue_incoming(channel_t *listener, channel_t *incoming)
             incoming, listener);
 
   /* Do we need to queue it, or can we just call the listener right away? */
-  if (!(listener->listener)) need_to_queue = 1;
-  if (listener->incoming_list &&
-      (smartlist_len(listener->incoming_list) > 0)) need_to_queue = 1;
+  if (!(listener->u.listener.listener)) need_to_queue = 1;
+  if (listener->u.listener.incoming_list &&
+      (smartlist_len(listener->u.listener.incoming_list) > 0))
+    need_to_queue = 1;
 
   /* If we need to queue and have no queue, create one */
-  if (need_to_queue && !(listener->incoming_list)) {
-    listener->incoming_list = smartlist_new();
+  if (need_to_queue && !(listener->u.listener.incoming_list)) {
+    listener->u.listener.incoming_list = smartlist_new();
   }
 
   /* If we don't need to queue, process it right away */
   if (!need_to_queue) {
-    tor_assert(listener->listener);
-    listener->listener(listener, incoming);
+    tor_assert(listener->u.listener.listener);
+    listener->u.listener.listener(listener, incoming);
   }
   /*
    * Otherwise, we need to queue; queue and then process the queue if
    * we can.
    */
   else {
-    tor_assert(listener->incoming_list);
-    smartlist_add(listener->incoming_list, incoming);
-    if (listener->listener) channel_process_incoming(listener);
+    tor_assert(listener->u.listener.incoming_list);
+    smartlist_add(listener->u.listener.incoming_list, incoming);
+    if (listener->u.listener.listener) channel_process_incoming(listener);
   }
 }
 
@@ -2045,6 +2207,7 @@ void
 channel_process_cells(channel_t *chan)
 {
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
   tor_assert(chan->state == CHANNEL_STATE_CLOSING ||
              chan->state == CHANNEL_STATE_MAINT ||
              chan->state == CHANNEL_STATE_OPEN);
@@ -2054,35 +2217,40 @@ channel_process_cells(channel_t *chan)
             chan);
 
   /* Nothing we can do if we have no registered cell handlers */
-  if (!(chan->cell_handler || chan->var_cell_handler)) return;
+  if (!(chan->u.cell_chan.cell_handler ||
+        chan->u.cell_chan.var_cell_handler)) return;
   /* Nothing we can do if we have no cells */
-  if (!(chan->cell_queue)) return;
+  if (!(chan->u.cell_chan.cell_queue)) return;
 
   /*
    * Process cells until we're done or find one we have no current handler
    * for.
    */
-  SMARTLIST_FOREACH_BEGIN(chan->cell_queue, cell_queue_entry_t *, q) {
+  SMARTLIST_FOREACH_BEGIN(chan->u.cell_chan.cell_queue,
+                          cell_queue_entry_t *, q) {
     tor_assert(q);
     tor_assert(q->type == CELL_QUEUE_FIXED ||
                q->type == CELL_QUEUE_VAR);
-    if (q->type == CELL_QUEUE_FIXED && chan->cell_handler) {
+
+    if (q->type == CELL_QUEUE_FIXED &&
+        chan->u.cell_chan.cell_handler) {
       /* Handle a fixed-length cell */
       tor_assert(q->u.fixed.cell);
       log_debug(LD_CHANNEL,
                 "Processing incoming cell_t %p for channel %p",
                 q->u.fixed.cell, chan);
-      chan->cell_handler(chan, q->u.fixed.cell);
-      SMARTLIST_DEL_CURRENT(chan->cell_queue, q);
+      chan->u.cell_chan.cell_handler(chan, q->u.fixed.cell);
+      SMARTLIST_DEL_CURRENT(chan->u.cell_chan.cell_queue, q);
       tor_free(q);
-    } else if (q->type == CELL_QUEUE_VAR && chan->var_cell_handler) {
+    } else if (q->type == CELL_QUEUE_VAR &&
+               chan->u.cell_chan.var_cell_handler) {
       /* Handle a variable-length cell */
       tor_assert(q->u.var.var_cell);
       log_debug(LD_CHANNEL,
                 "Processing incoming var_cell_t %p for channel %p",
                 q->u.var.var_cell, chan);
-      chan->var_cell_handler(chan, q->u.var.var_cell);
-      SMARTLIST_DEL_CURRENT(chan->cell_queue, q);
+      chan->u.cell_chan.var_cell_handler(chan, q->u.var.var_cell);
+      SMARTLIST_DEL_CURRENT(chan->u.cell_chan.cell_queue, q);
       tor_free(q);
     } else {
       /* Can't handle this one */
@@ -2091,9 +2259,9 @@ channel_process_cells(channel_t *chan)
   } SMARTLIST_FOREACH_END(q);
 
   /* If the list is empty, free it */
-  if (smartlist_len(chan->cell_queue) == 0 ) {
-    smartlist_free(chan->cell_queue);
-    chan->cell_queue = NULL;
+  if (smartlist_len(chan->u.cell_chan.cell_queue) == 0 ) {
+    smartlist_free(chan->u.cell_chan.cell_queue);
+    chan->u.cell_chan.cell_queue = NULL;
   }
 }
 
@@ -2114,17 +2282,19 @@ channel_queue_cell(channel_t *chan, cell_t *cell)
   cell_queue_entry_t *q;
 
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
   tor_assert(cell);
   tor_assert(chan->state == CHANNEL_STATE_OPEN);
 
   /* Do we need to queue it, or can we just call the handler right away? */
-  if (!(chan->cell_handler)) need_to_queue = 1;
-  if (chan->cell_queue &&
-      (smartlist_len(chan->cell_queue) > 0)) need_to_queue = 1;
+  if (!(chan->u.cell_chan.cell_handler)) need_to_queue = 1;
+  if (chan->u.cell_chan.cell_queue &&
+      (smartlist_len(chan->u.cell_chan.cell_queue) > 0))
+    need_to_queue = 1;
 
   /* If we need to queue and have no queue, create one */
-  if (need_to_queue && !(chan->cell_queue)) {
-    chan->cell_queue = smartlist_new();
+  if (need_to_queue && !(chan->u.cell_chan.cell_queue)) {
+    chan->u.cell_chan.cell_queue = smartlist_new();
   }
 
   /* Timestamp for receiving */
@@ -2132,22 +2302,23 @@ channel_queue_cell(channel_t *chan, cell_t *cell)
 
   /* If we don't need to queue we can just call cell_handler */
   if (!need_to_queue) {
-    tor_assert(chan->cell_handler);
+    tor_assert(chan->u.cell_chan.cell_handler);
     log_debug(LD_CHANNEL,
               "Directly handling incoming cell_t %p for channel %p",
               cell, chan);
-    chan->cell_handler(chan, cell);
+    chan->u.cell_chan.cell_handler(chan, cell);
   } else {
     /* Otherwise queue it and then process the queue if possible. */
-    tor_assert(chan->cell_queue);
+    tor_assert(chan->u.cell_chan.cell_queue);
     q = tor_malloc(sizeof(*q));
     q->type = CELL_QUEUE_FIXED;
     q->u.fixed.cell = cell;
     log_debug(LD_CHANNEL,
               "Queueing incoming cell_t %p for channel %p",
               cell, chan);
-    smartlist_add(chan->cell_queue, q);
-    if (chan->cell_handler || chan->var_cell_handler) {
+    smartlist_add(chan->u.cell_chan.cell_queue, q);
+    if (chan->u.cell_chan.cell_handler ||
+        chan->u.cell_chan.var_cell_handler) {
       channel_process_cells(chan);
     }
   }
@@ -2170,37 +2341,43 @@ channel_queue_var_cell(channel_t *chan, var_cell_t *var_cell)
   cell_queue_entry_t *q;
 
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
   tor_assert(var_cell);
   tor_assert(chan->state == CHANNEL_STATE_OPEN);
 
   /* Do we need to queue it, or can we just call the handler right away? */
-  if (!(chan->var_cell_handler)) need_to_queue = 1;
-  if (chan->cell_queue &&
-      (smartlist_len(chan->cell_queue) > 0)) need_to_queue = 1;
+  if (!(chan->u.cell_chan.var_cell_handler)) need_to_queue = 1;
+  if (chan->u.cell_chan.cell_queue &&
+      (smartlist_len(chan->u.cell_chan.cell_queue) > 0))
+    need_to_queue = 1;
 
   /* If we need to queue and have no queue, create one */
-  if (need_to_queue && !(chan->cell_queue)) {
-    chan->cell_queue = smartlist_new();
+  if (need_to_queue && !(chan->u.cell_chan.cell_queue)) {
+    chan->u.cell_chan.cell_queue = smartlist_new();
   }
+
+  /* Timestamp for receiving */
+  channel_timestamp_recv(chan);
 
   /* If we don't need to queue we can just call cell_handler */
   if (!need_to_queue) {
-    tor_assert(chan->cell_handler);
+    tor_assert(chan->u.cell_chan.var_cell_handler);
     log_debug(LD_CHANNEL,
               "Directly handling incoming var_cell_t %p for channel %p",
               var_cell, chan);
-    chan->var_cell_handler(chan, var_cell);
+    chan->u.cell_chan.var_cell_handler(chan, var_cell);
   } else {
     /* Otherwise queue it and then process the queue if possible. */
-    tor_assert(chan->cell_queue);
+    tor_assert(chan->u.cell_chan.cell_queue);
     q = tor_malloc(sizeof(*q));
     q->type = CELL_QUEUE_VAR;
     q->u.var.var_cell = var_cell;
     log_debug(LD_CHANNEL,
               "Queueing incoming var_cell_t %p for channel %p",
               var_cell, chan);
-    smartlist_add(chan->cell_queue, q);
-    if (chan->cell_handler || chan->var_cell_handler) {
+    smartlist_add(chan->u.cell_chan.cell_queue, q);
+    if (chan->u.cell_chan.cell_handler ||
+        chan->u.cell_chan.var_cell_handler) {
       channel_process_cells(chan);
     }
   }
@@ -2225,6 +2402,7 @@ channel_send_destroy(circid_t circ_id, channel_t *chan, int reason)
   cell_t cell;
 
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
   memset(&cell, 0, sizeof(cell_t));
   cell.circ_id = circ_id;
@@ -2446,6 +2624,8 @@ channel_is_better(time_t now, channel_t *a, channel_t *b,
 
   tor_assert(a);
   tor_assert(b);
+  tor_assert(!(a->is_listener));
+  tor_assert(!(b->is_listener));
 
   /* Check if one is canonical and the other isn't first */
   a_is_canonical = channel_is_canonical(a);
@@ -2461,8 +2641,8 @@ channel_is_better(time_t now, channel_t *a, channel_t *b,
    * one that has no circuits is in its grace period.
    */
 
-  a_has_circs = (a->n_circuits > 0);
-  b_has_circs = (b->n_circuits > 0);
+  a_has_circs = (a->u.cell_chan.n_circuits > 0);
+  b_has_circs = (b->u.cell_chan.n_circuits > 0);
   a_grace = (forgive_new_connections &&
              (now < channel_when_created(a) + NEW_CHAN_GRACE_PERIOD));
   b_grace = (forgive_new_connections &&
@@ -2521,7 +2701,10 @@ channel_get_for_extend(const char *digest,
    * iteration.
    */
   for (; chan; chan = channel_next_with_digest(chan)) {
-    tor_assert(tor_memeq(chan->identity_digest, digest, DIGEST_LEN));
+    tor_assert(!(chan->is_listener));
+    tor_assert(tor_memeq(chan->u.cell_chan.identity_digest,
+                         digest, DIGEST_LEN));
+
     if (chan->state == CHANNEL_STATE_CLOSING ||
         chan->state == CHANNEL_STATE_CLOSED ||
         chan->state == CHANNEL_STATE_ERROR ||
@@ -2615,10 +2798,11 @@ const char *
 channel_get_actual_remote_descr(channel_t *chan)
 {
   tor_assert(chan);
-  tor_assert(chan->get_remote_descr);
+  tor_assert(!(chan->is_listener));
+  tor_assert(chan->u.cell_chan.get_remote_descr);
 
   /* Param 1 indicates the actual description */
-  return chan->get_remote_descr(chan, 1);
+  return chan->u.cell_chan.get_remote_descr(chan, 1);
 }
 
 /**
@@ -2636,10 +2820,11 @@ const char *
 channel_get_canonical_remote_descr(channel_t *chan)
 {
   tor_assert(chan);
-  tor_assert(chan->get_remote_descr);
+  tor_assert(!(chan->is_listener));
+  tor_assert(chan->u.cell_chan.get_remote_descr);
 
   /* Param 0 indicates the canonicalized description */
-  return chan->get_remote_descr(chan, 0);
+  return chan->u.cell_chan.get_remote_descr(chan, 0);
 }
 
 /**
@@ -2657,9 +2842,11 @@ int
 channel_get_addr_if_possible(channel_t *chan, tor_addr_t *addr_out)
 {
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
   tor_assert(addr_out);
 
-  if (chan->get_remote_addr) return chan->get_remote_addr(chan, addr_out);
+  if (chan->u.cell_chan.get_remote_addr)
+    return chan->u.cell_chan.get_remote_addr(chan, addr_out);
   /* Else no support, method not implemented */
   else return 0;
 }
@@ -2680,13 +2867,15 @@ channel_has_queued_writes(channel_t *chan)
   int has_writes = 0;
 
   tor_assert(chan);
-  tor_assert(chan->has_queued_writes);
+  tor_assert(!(chan->is_listener));
+  tor_assert(chan->u.cell_chan.has_queued_writes);
 
-  if (chan->outgoing_queue && smartlist_len(chan->outgoing_queue) > 0) {
+  if (chan->u.cell_chan.outgoing_queue &&
+      smartlist_len(chan->u.cell_chan.outgoing_queue) > 0) {
     has_writes = 1;
   } else {
     /* Check with the lower layer */
-    has_writes = chan->has_queued_writes(chan);
+    has_writes = chan->u.cell_chan.has_queued_writes(chan);
   }
 
   return has_writes;
@@ -2706,8 +2895,9 @@ int
 channel_is_bad_for_new_circs(channel_t *chan)
 {
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
-  return chan->is_bad_for_new_circs;
+  return chan->u.cell_chan.is_bad_for_new_circs;
 }
 
 /**
@@ -2722,8 +2912,9 @@ void
 channel_mark_bad_for_new_circs(channel_t *chan)
 {
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
-  chan->is_bad_for_new_circs = 1;
+  chan->u.cell_chan.is_bad_for_new_circs = 1;
 }
 
 /**
@@ -2741,8 +2932,9 @@ int
 channel_is_client(channel_t *chan)
 {
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
-  return chan->is_client;
+  return chan->u.cell_chan.is_client;
 }
 
 /**
@@ -2757,8 +2949,9 @@ void
 channel_mark_client(channel_t *chan)
 {
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
-  chan->is_client = 1;
+  chan->u.cell_chan.is_client = 1;
 }
 
 /**
@@ -2775,9 +2968,10 @@ int
 channel_is_canonical(channel_t *chan)
 {
   tor_assert(chan);
-  tor_assert(chan->is_canonical);
+  tor_assert(!(chan->is_listener));
+  tor_assert(chan->u.cell_chan.is_canonical);
 
-  return chan->is_canonical(chan, 0);
+  return chan->u.cell_chan.is_canonical(chan, 0);
 }
 
 /**
@@ -2795,9 +2989,10 @@ int
 channel_is_canonical_is_reliable(channel_t *chan)
 {
   tor_assert(chan);
-  tor_assert(chan->is_canonical);
+  tor_assert(!(chan->is_listener));
+  tor_assert(chan->u.cell_chan.is_canonical);
 
-  return chan->is_canonical(chan, 1);
+  return chan->u.cell_chan.is_canonical(chan, 1);
 }
 
 /**
@@ -2814,8 +3009,9 @@ int
 channel_is_incoming(channel_t *chan)
 {
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
-  return chan->is_incoming;
+  return chan->u.cell_chan.is_incoming;
 }
 
 /**
@@ -2831,8 +3027,9 @@ void
 channel_mark_incoming(channel_t *chan)
 {
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
-  chan->is_incoming = 1;
+  chan->u.cell_chan.is_incoming = 1;
 }
 
 /**
@@ -2852,8 +3049,9 @@ int
 channel_is_local(channel_t *chan)
 {
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
-  return chan->is_local;
+  return chan->u.cell_chan.is_local;
 }
 
 /**
@@ -2870,8 +3068,9 @@ void
 channel_mark_local(channel_t *chan)
 {
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
-  chan->is_local = 1;
+  chan->u.cell_chan.is_local = 1;
 }
 
 /**
@@ -2889,8 +3088,9 @@ int
 channel_is_outgoing(channel_t *chan)
 {
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
-  return !(chan->is_incoming);
+  return !(chan->u.cell_chan.is_incoming);
 }
 
 /**
@@ -2906,8 +3106,9 @@ void
 channel_mark_outgoing(channel_t *chan)
 {
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
-  chan->is_incoming = 0;
+  chan->u.cell_chan.is_incoming = 0;
 }
 
 /*********************
@@ -2971,8 +3172,9 @@ channel_timestamp_client(channel_t *chan)
   time_t now = time(NULL);
 
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
-  chan->timestamp_client = now;
+  chan->u.cell_chan.timestamp_client = now;
 }
 
 /**
@@ -2990,10 +3192,11 @@ channel_timestamp_drained(channel_t *chan)
   time_t now = time(NULL);
 
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
   chan->timestamp_active = now;
-  chan->timestamp_drained = now;
-  chan->timestamp_xmit = now;
+  chan->u.cell_chan.timestamp_drained = now;
+  chan->u.cell_chan.timestamp_xmit = now;
 }
 
 /**
@@ -3011,9 +3214,10 @@ channel_timestamp_recv(channel_t *chan)
   time_t now = time(NULL);
 
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
   chan->timestamp_active = now;
-  chan->timestamp_recv = now;
+  chan->u.cell_chan.timestamp_recv = now;
 }
 
 /**
@@ -3030,9 +3234,10 @@ channel_timestamp_xmit(channel_t *chan)
   time_t now = time(NULL);
 
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
   chan->timestamp_active = now;
-  chan->timestamp_xmit = now;
+  chan->u.cell_chan.timestamp_xmit = now;
 }
 
 /***************************************************************
@@ -3080,8 +3285,9 @@ time_t
 channel_when_last_client(channel_t *chan)
 {
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
-  return chan->timestamp_client;
+  return chan->u.cell_chan.timestamp_client;
 }
 
 /**
@@ -3095,8 +3301,9 @@ time_t
 channel_when_last_drained(channel_t *chan)
 {
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
-  return chan->timestamp_drained;
+  return chan->u.cell_chan.timestamp_drained;
 }
 
 /**
@@ -3110,8 +3317,9 @@ time_t
 channel_when_last_recv(channel_t *chan)
 {
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
-  return chan->timestamp_recv;
+  return chan->u.cell_chan.timestamp_recv;
 }
 
 /**
@@ -3125,8 +3333,9 @@ time_t
 channel_when_last_xmit(channel_t *chan)
 {
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
-  return chan->timestamp_xmit;
+  return chan->u.cell_chan.timestamp_xmit;
 }
 
 /**
@@ -3144,10 +3353,11 @@ int
 channel_matches_extend_info(channel_t *chan, extend_info_t *extend_info)
 {
   tor_assert(chan);
-  tor_assert(chan->matches_extend_info);
+  tor_assert(!(chan->is_listener));
+  tor_assert(chan->u.cell_chan.matches_extend_info);
   tor_assert(extend_info);
 
-  return chan->matches_extend_info(chan, extend_info);
+  return chan->u.cell_chan.matches_extend_info(chan, extend_info);
 }
 
 /**
@@ -3166,10 +3376,11 @@ channel_matches_target_addr_for_extend(channel_t *chan,
                                        const tor_addr_t *target)
 {
   tor_assert(chan);
-  tor_assert(chan->matches_target);
+  tor_assert(!(chan->is_listener));
+  tor_assert(chan->u.cell_chan.matches_target);
   tor_assert(target);
 
-  return chan->matches_target(chan, target);
+  return chan->u.cell_chan.matches_target(chan, target);
 }
 
 /**
@@ -3189,6 +3400,7 @@ channel_set_circid_type(channel_t *chan, crypto_pk_t *identity_rcvd)
   crypto_pk_t *our_identity;
 
   tor_assert(chan);
+  tor_assert(!(chan->is_listener));
 
   started_here = channel_is_outgoing(chan);
   our_identity = started_here ?
@@ -3196,12 +3408,12 @@ channel_set_circid_type(channel_t *chan, crypto_pk_t *identity_rcvd)
 
   if (identity_rcvd) {
     if (crypto_pk_cmp_keys(our_identity, identity_rcvd) < 0) {
-      chan->circ_id_type = CIRC_ID_TYPE_LOWER;
+      chan->u.cell_chan.circ_id_type = CIRC_ID_TYPE_LOWER;
     } else {
-      chan->circ_id_type = CIRC_ID_TYPE_HIGHER;
+      chan->u.cell_chan.circ_id_type = CIRC_ID_TYPE_HIGHER;
     }
   } else {
-    chan->circ_id_type = CIRC_ID_TYPE_NEITHER;
+    chan->u.cell_chan.circ_id_type = CIRC_ID_TYPE_NEITHER;
   }
 }
 
