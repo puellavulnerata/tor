@@ -10,6 +10,7 @@
 #define _TOR_CHANNEL_H
 
 #include "or.h"
+#include "circuitmux.h"
 
 /*
  * Channel struct; see thw channel_t typedef in or.h.  A channel is an
@@ -137,29 +138,8 @@ struct channel_s {
       /* List of queued outgoing cells */
       smartlist_t *outgoing_queue;
 
-      /* Circuit stuff for use by relay.c */
-
-      /*
-       * Double-linked ring of circuits with queued cells waiting for room to
-       * free up on this connection's outbuf.  Every time we pull cells from
-       * a circuit, we advance this pointer to the next circuit in the ring.
-       */
-      struct circuit_t *active_circuits;
-      /*
-       * Priority queue of cell_ewma_t for circuits with queued cells waiting
-       * for room to free up on this connection's outbuf.  Kept in heap order
-       * according to EWMA.
-       *
-       * This is redundant with active_circuits; if we ever decide only to use
-       * the cell_ewma algorithm for choosing circuits, we can remove
-       * active_circuits.
-       */
-      smartlist_t *active_circuit_pqueue;
-      /*
-       * The tick on which the cell_ewma_ts in active_circuit_pqueue last had
-       * their ewma values rescaled.
-       */
-      unsigned active_circuit_pqueue_last_recalibrated;
+      /* Circuit mux for circuits sending on this channel */
+      circuitmux_t *cmux;
 
       /* Circuit ID generation stuff for use by circuitbuild.c */
 
@@ -174,8 +154,8 @@ struct channel_s {
        */
       circid_t next_circ_id;
 
-      /* How many circuits use this connection as p_chan or n_chan? */
-      int n_circuits;
+      /* For how many circuits are we n_chan?  What about p_chan? */
+      unsigned int num_n_circuits, num_p_circuits;
 
       /*
        * True iff this channel shouldn't get any new circs attached to it,
@@ -399,6 +379,7 @@ void channel_mark_client(channel_t *chan);
 int channel_matches_extend_info(channel_t *chan, extend_info_t *extend_info);
 int channel_matches_target_addr_for_extend(channel_t *chan,
                                            const tor_addr_t *target);
+unsigned int channel_num_circuits(channel_t *chan);
 void channel_set_circid_type(channel_t *chan, crypto_pk_t *identity_rcvd);
 void channel_timestamp_client(channel_t *chan);
 

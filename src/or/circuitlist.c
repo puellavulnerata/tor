@@ -129,17 +129,28 @@ circuit_set_circid_chan_helper(circuit_t *circ, int direction,
     _last_circid_chan_ent = NULL;
   }
 
-  if (old_chan) { /* we may need to remove it from the conn-circid map */
+  if (old_chan) {
+    /* we may need to remove it from the conn-circid map */
     tor_assert(!(old_chan->is_listener));
     search.circ_id = old_id;
     search.chan = old_chan;
     found = HT_REMOVE(chan_circid_map, &chan_circid_map, &search);
     if (found) {
       tor_free(found);
-      --old_chan->u.cell_chan.n_circuits;
+      if (direction == CELL_DIRECTION_OUT) {
+        /* One fewer circuits use old_chan as n_chan */
+        --(old_chan->u.cell_chan.num_n_circuits);
+      } else {
+        /* One fewer circuits use old_chan as p_chan */
+        --(old_chan->u.cell_chan.num_p_circuits);
+      }
     }
-    if (was_active && old_chan != chan)
-      make_circuit_inactive_on_chan(circ, old_chan);
+
+    /* If we're changing channels, detach the circuit */
+    if (old_chan != chan) {
+      tor_assert(old_chan->u.cell_chan.cmux);
+      circuitmux_detach_circuit(old_chan->u.cell_chan.cmux, circ);
+    }
   }
 
   /* Change the values only after we have possibly made the circuit inactive
@@ -163,10 +174,26 @@ circuit_set_circid_chan_helper(circuit_t *circ, int direction,
     found->circuit = circ;
     HT_INSERT(chan_circid_map, &chan_circid_map, found);
   }
-  if (make_active && old_chan != chan)
-    make_circuit_active_on_chan(circ,chan);
 
-  ++chan->u.cell_chan.n_circuits;
+  /* Attach to the circuitmux if we're changing channels */
+  if (old_chan != chan) {
+    tor_assert(chan->u.cell_chan.cmux);
+    circuitmux_attach_circuit(chan->u.cell_chan.cmux, circ, direction);
+  }
+
+  /*
+   * This is a no-op if we have no cells, but if we do it marks us active to
+   * the circuitmux
+   */
+  if (make_active && old_chan != chan)
+    update_circuit_on_cmux(circ, direction);
+
+  /* Adjust circuit counts on new channel */
+  if (direction == CELL_DIRECTION_OUT) {
+    ++chan->u.cell_chan.num_n_circuits;
+  } else {
+    ++chan->u.cell_chan.num_p_circuits;
+  }
 }
 
 /** Set the p_conn field of a circuit <b>circ</b>, along
@@ -998,7 +1025,7 @@ circuit_unlink_all_from_channel(channel_t *chan, int reason)
 {
   circuit_t *circ;
 
-  channel_unlink_all_active_circs(chan);
+  channel_unlink_all_circuits(chan);
 
   for (circ = global_circuitlist; circ; circ = circ->next) {
     int mark = 0;
