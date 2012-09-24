@@ -158,7 +158,7 @@ chanid_circid_entry_hash(chanid_circid_muxinfo_t *a)
             ((unsigned int)(a->chan_id & 0xffffffff)));
 }
 
-/* Declare the struct chanid_circid_muxinfo_map_s type */
+/* Declare the struct chanid_circid_muxinfo_map type */
 HT_HEAD(chanid_circid_muxinfo_map, chanid_circid_muxinfo_t);
 
 /* Emit a bunch of hash table stuff */
