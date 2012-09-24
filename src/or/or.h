@@ -1018,7 +1018,7 @@ typedef struct channel_tls_s channel_tls_t;
 
 /* circuitmux_t typedef; struct circuitmux_s is in circuitmux.h */
 
-typedef struct circuit_s circuitmux_t;
+typedef struct circuitmux_s circuitmux_t;
 
 /** Parsed onion routing cell.  All communication between nodes
  * is via cells. */
