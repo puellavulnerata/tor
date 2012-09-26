@@ -272,7 +272,7 @@ channel_tls_handle_incoming(or_connection_t *orconn)
   channel_mark_incoming(chan);
 
   chan->u.cell_chan.cmux = circuitmux_alloc();
-  /* TODO set cmux policy 
+  /* TODO set cmux policy
   chan->u.cell_chan.active_circuit_pqueue_last_recalibrated =
     cell_ewma_get_tick();
    */

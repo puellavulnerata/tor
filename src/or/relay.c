@@ -2395,7 +2395,7 @@ channel_flush_from_first_active_circuit(channel_t *chan, int max)
     if (!circ) break;
     assert_cmux_ok_paranoid(chan);
 
-#if 0 
+#if 0
     /* This will go in circuitmux_get_first_active_circuit() */
     /* See if we're doing the ewma circuit selection algorithm. */
     if (ewma_enabled) {
