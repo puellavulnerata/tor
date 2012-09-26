@@ -64,7 +64,7 @@ typedef struct circuit_muxinfo_s circuit_muxinfo_t;
  *   TODO
  *
  * General status inquiries?
- *     
+ *
  */
 
 struct circuitmux_s {
@@ -301,7 +301,7 @@ circuitmux_attach_circuit(circuitmux_t *cmux, circuit_t *circ,
     log_debug(LD_CIRC,
              "Attaching circuit %u on channel " U64_FORMAT " to cmux %p",
              circ_id, U64_PRINTF_ARG(channel_id), cmux);
-    
+
     /* Assert that the circuit doesn't already have a mux */
     tor_assert(circ->mux == NULL);
 
