@@ -293,7 +293,6 @@ circuitmux_detach_all_circuits(circuitmux_t *cmux)
              * free it
              */
             tor_assert(cmux->policy);
-            tor_assert(cmux->policy_data);
             tor_assert(cmux->policy->free_circ_data);
             /* Call free_circ_data() */
             cmux->policy->free_circ_data(cmux,
@@ -803,8 +802,10 @@ circuitmux_attach_circuit(circuitmux_t *cmux, circuit_t *circ,
     hashent->muxinfo.cell_count = cell_count;
     hashent->muxinfo.direction = direction;
     /* Allocate policy specific circuit data if we need it */
-    if (cmux->policy && cmux->policy_data &&
-        cmux->policy->alloc_circ_data) {
+    if (cmux->policy && cmux->policy->alloc_circ_data) {
+      /* Assert that we have the means to free policy-specific data */
+      tor_assert(cmux->policy->free_circ_data);
+      /* Allocate it */
       hashent->muxinfo.policy_data =
         cmux->policy->alloc_circ_data(cmux,
                                       cmux->policy_data,
@@ -890,7 +891,6 @@ circuitmux_detach_circuit(circuitmux_t *cmux, circuit_t *circ)
     if (hashent->muxinfo.policy_data) {
       /* If we have policy data, assert that we have the means to free it */
       tor_assert(cmux->policy);
-      tor_assert(cmux->policy_data);
       tor_assert(cmux->policy->free_circ_data);
       /* Call free_circ_data() */
       cmux->policy->free_circ_data(cmux,
@@ -989,16 +989,14 @@ circuitmux_make_circuit_active(circuitmux_t *cmux, circuit_t *circ,
 
   /* Policy-specific notification */
   if (cmux->policy &&
-      cmux->policy->notify_circ_active &&
-      cmux->policy_data) {
+      cmux->policy->notify_circ_active) {
     /* Okay, we need to check the circuit for policy data now */
     hashent = circuitmux_find_map_entry(cmux, circ);
     /* We should have found something */
     tor_assert(hashent);
-    /* Check for policy data for the circuit and notify */
-    if (hashent->muxinfo.policy_data)
-      cmux->policy->notify_circ_active(cmux, cmux->policy_data,
-                                       circ, hashent->muxinfo.policy_data);
+    /* Notify */
+    cmux->policy->notify_circ_active(cmux, cmux->policy_data,
+                                     circ, hashent->muxinfo.policy_data);
   }
 }
 
@@ -1098,16 +1096,14 @@ circuitmux_make_circuit_inactive(circuitmux_t *cmux, circuit_t *circ,
 
   /* Policy-specific notification */
   if (cmux->policy &&
-      cmux->policy->notify_circ_inactive &&
-      cmux->policy_data) {
+      cmux->policy->notify_circ_inactive) {
     /* Okay, we need to check the circuit for policy data now */
     hashent = circuitmux_find_map_entry(cmux, circ);
     /* We should have found something */
     tor_assert(hashent);
-    /* Check for policy data for the circuit and notify */
-    if (hashent->muxinfo.policy_data)
-      cmux->policy->notify_circ_inactive(cmux, cmux->policy_data,
-                                         circ, hashent->muxinfo.policy_data);
+    /* Notify */
+    cmux->policy->notify_circ_inactive(cmux, cmux->policy_data,
+                                       circ, hashent->muxinfo.policy_data);
   }
 }
 
@@ -1145,11 +1141,8 @@ circuitmux_set_num_cells(circuitmux_t *cmux, circuit_t *circ,
   cmux->n_cells += n_cells;
 
   /* Do we need to notify a cmux policy? */
-  if (cmux->policy && cmux->policy_data &&
-      cmux->policy->notify_set_n_cells) {
-    /* Yeah; assert that we have circuit policy data */
-    tor_assert(hashent->muxinfo.policy_data);
-    /* ... and call notify_set_n_cells */
+  if (cmux->policy && cmux->policy->notify_set_n_cells) {
+    /* Call notify_set_n_cells */
     cmux->policy->notify_set_n_cells(cmux,
                                      cmux->policy_data,
                                      circ,
