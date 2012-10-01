@@ -1280,6 +1280,12 @@ circuitmux_set_num_cells(circuitmux_t *cmux, circuit_t *circ,
     ++(cmux->n_active_circuits);
     hashent->muxinfo.cell_count = n_cells;
     circuitmux_make_circuit_active(cmux, circ, hashent->muxinfo.direction);
+  } else {
+    /*
+     * Update the entry cell count like this so we can put a
+     * circuitmux_assert_okay_paranoid inside make_circuit_(in)active() too.
+     */
+    hashent->muxinfo.cell_count = n_cells;
   }
 
   circuitmux_assert_okay_paranoid(cmux);
