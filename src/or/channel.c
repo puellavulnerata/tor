@@ -2534,6 +2534,12 @@ channel_free_all(void)
                 "Cleaning up finished channel %p (ID %lu) in state %s (%d)",
                 tmp, tmp->global_identifier,
                 channel_state_to_string(tmp->state), tmp->state);
+
+      if (!(tmp->is_listener)) {
+        /* Detach circuits early so they can find the channel */
+        circuitmux_detach_all_circuits(tmp->u.cell_chan.cmux);
+      }
+
       channel_unregister(tmp);
       channel_free(tmp);
     } SMARTLIST_FOREACH_END(curr);
@@ -2580,6 +2586,10 @@ channel_free_all(void)
                 "Cleaning up active channel %p (ID %lu) in state %s (%d)",
                 tmp, tmp->global_identifier,
                 channel_state_to_string(tmp->state), tmp->state);
+      if (!(tmp->is_listener)) {
+        /* Detach circuits early so they can find the channel */
+        circuitmux_detach_all_circuits(tmp->u.cell_chan.cmux);
+      }
       /*
        * We have to unregister first so we don't put it in finished_channels
        * and allocate that again on close.
@@ -2605,6 +2615,12 @@ channel_free_all(void)
                 "Cleaning up leftover channel %p (ID %lu) in state %s (%d)",
                 tmp, tmp->global_identifier,
                 channel_state_to_string(tmp->state), tmp->state);
+
+      if (!(tmp->is_listener)) {
+        /* Detach circuits early so they can find the channel */
+        circuitmux_detach_all_circuits(tmp->u.cell_chan.cmux);
+      }
+
       channel_unregister(tmp);
       if (!(tmp->state == CHANNEL_STATE_CLOSING ||
             tmp->state == CHANNEL_STATE_CLOSED ||
