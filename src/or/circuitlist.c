@@ -100,7 +100,7 @@ circuit_set_circid_chan_helper(circuit_t *circ, int direction,
   chan_circid_circuit_map_t *found;
   channel_t *old_chan, **chan_ptr;
   circid_t old_id, *circid_ptr;
-  int was_active, make_active;
+  int was_active, make_active, attached = 0;
 
   if (direction == CELL_DIRECTION_OUT) {
     chan_ptr = &circ->n_chan;
@@ -143,8 +143,13 @@ circuit_set_circid_chan_helper(circuit_t *circ, int direction,
       }
     }
 
-    /* If we're changing channels, detach the circuit */
-    if (old_chan != chan) {
+    /*
+     * If we're changing channels or ID and had an old channel and a non
+     * zero old ID (i.e., we should have been attached), detach the circuit.
+     * ID changes require this because circuitmux hashes on (channel_id,
+     * circuit_id).
+     */
+    if (id != 0 && (old_chan != chan || old_id != id)) {
       tor_assert(old_chan->cmux);
       circuitmux_detach_circuit(old_chan->cmux, circ);
     }
@@ -172,17 +177,21 @@ circuit_set_circid_chan_helper(circuit_t *circ, int direction,
     HT_INSERT(chan_circid_map, &chan_circid_map, found);
   }
 
-  /* Attach to the circuitmux if we're changing channels */
-  if (old_chan != chan) {
+  /*
+   * Attach to the circuitmux if we're changing channels or IDs and
+   * have a new channel and ID to use.
+   */
+  if (chan && id != 0 && (old_chan != chan || old_id != id)) {
     tor_assert(chan->cmux);
     circuitmux_attach_circuit(chan->cmux, circ, direction);
+    attached = 1;
   }
 
   /*
    * This is a no-op if we have no cells, but if we do it marks us active to
    * the circuitmux
    */
-  if (make_active && old_chan != chan)
+  if (make_active && attached)
     update_circuit_on_cmux(circ, direction);
 
   /* Adjust circuit counts on new channel */
