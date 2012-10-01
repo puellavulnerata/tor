@@ -813,6 +813,8 @@ circuitmux_attach_circuit(circuitmux_t *cmux, circuit_t *circ,
   }
   /* Assert that we did get a channel */
   tor_assert(chan);
+  /* Assert that the circuit ID is sensible */
+  tor_assert(circ_id != 0);
 
   /* Get the channel ID */
   channel_id = chan->global_identifier;
@@ -900,14 +902,20 @@ circuitmux_attach_circuit(circuitmux_t *cmux, circuit_t *circ,
     if (direction == CELL_DIRECTION_OUT) circ->n_mux = cmux;
     else TO_OR_CIRCUIT(circ)->p_mux = cmux;
 
+    /* Make sure the next/prev pointers are NULL */
+    if (direction == CELL_DIRECTION_OUT) {
+      circ->next_active_on_n_chan = NULL;
+      circ->prev_active_on_n_chan = NULL;
+    } else {
+      TO_OR_CIRCUIT(circ)->next_active_on_p_chan = NULL;
+      TO_OR_CIRCUIT(circ)->prev_active_on_p_chan = NULL;
+    }
+
     /* Update counters */
     ++(cmux->n_circuits);
     if (cell_count > 0) {
       ++(cmux->n_active_circuits);
       circuitmux_make_circuit_active(cmux, circ, direction);
-    } else {
-      /* Do this just to make sure the next/prev pointers are NULL */
-      circuitmux_make_circuit_inactive(cmux, circ, direction);
     }
     cmux->n_cells += cell_count;
   }
