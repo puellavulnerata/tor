@@ -1083,7 +1083,7 @@ circuitmux_make_circuit_active(circuitmux_t *cmux, circuit_t *circ,
   if (cmux->active_circuits_head) {
     /* The list had an old head; update its prev pointer */
     next_prev =
-      circuitmux_next_active_circ_p(cmux, cmux->active_circuits_head);
+      circuitmux_prev_active_circ_p(cmux, cmux->active_circuits_head);
     tor_assert(next_prev);
     *next_prev = circ;
   } else {
