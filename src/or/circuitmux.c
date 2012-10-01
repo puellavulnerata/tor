@@ -1049,7 +1049,7 @@ circuitmux_make_circuit_active(circuitmux_t *cmux, circuit_t *circ,
   /* If we're already active, log a warning and finish */
   if (already_active) {
     log_warn(LD_CIRC,
-             "Circuit %d on channel " U64_FORMAT " was already ictive",
+             "Circuit %d on channel " U64_FORMAT " was already active",
              circ_id, U64_PRINTF_ARG(chan->global_identifier));
     return;
   }
