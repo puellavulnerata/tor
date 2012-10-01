@@ -339,6 +339,7 @@ circuitmux_detach_all_circuits(circuitmux_t *cmux)
   circuit_t *circ = NULL;
 
   tor_assert(cmux);
+  circuitmux_assert_okay_paranoid(cmux);
 
   i = HT_START(chanid_circid_muxinfo_map, cmux->chanid_circid_map);
   while (i) {
@@ -809,6 +810,7 @@ circuitmux_attach_circuit(circuitmux_t *cmux, circuit_t *circ,
   tor_assert(circ);
   tor_assert(direction == CELL_DIRECTION_IN ||
              direction == CELL_DIRECTION_OUT);
+  circuitmux_assert_okay_paranoid(cmux);
 
   /*
    * Figure out which channel we're using, and get the circuit's current
@@ -934,6 +936,8 @@ circuitmux_attach_circuit(circuitmux_t *cmux, circuit_t *circ,
     }
     cmux->n_cells += cell_count;
   }
+
+  circuitmux_assert_okay_paranoid(cmux);
 }
 
 /**
@@ -955,6 +959,7 @@ circuitmux_detach_circuit(circuitmux_t *cmux, circuit_t *circ)
   tor_assert(cmux->chanid_circid_map);
   tor_assert(circ);
   tor_assert(circ->n_chan);
+  circuitmux_assert_okay_paranoid(cmux);
 
   /* See if we have it for n_chan/n_circ_id */
   search.chan_id = circ->n_chan->global_identifier;
@@ -1010,6 +1015,8 @@ circuitmux_detach_circuit(circuitmux_t *cmux, circuit_t *circ)
     /* Free the hash entry */
     tor_free(hashent);
   }
+
+  circuitmux_assert_okay_paranoid(cmux);
 }
 
 /**
@@ -1339,6 +1346,7 @@ circuitmux_notify_xmit_cells(circuitmux_t *cmux, circuit_t *circ,
 
   tor_assert(cmux);
   tor_assert(circ);
+  circuitmux_assert_okay_paranoid(cmux);
 
   if (n_cells == 0) return;
 
@@ -1389,6 +1397,8 @@ circuitmux_notify_xmit_cells(circuitmux_t *cmux, circuit_t *circ,
     --(cmux->n_active_circuits);
     circuitmux_make_circuit_inactive(cmux, circ, hashent->muxinfo.direction);
   }
+
+  circuitmux_assert_okay_paranoid(cmux);
 }
 
 /*
