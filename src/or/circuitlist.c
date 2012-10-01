@@ -130,6 +130,17 @@ circuit_set_circid_chan_helper(circuit_t *circ, int direction,
   }
 
   if (old_chan) {
+    /*
+     * If we're changing channels or ID and had an old channel and a non
+     * zero old ID (i.e., we should have been attached), detach the circuit.
+     * ID changes require this because circuitmux hashes on (channel_id,
+     * circuit_id).
+     */
+    if (id != 0 && (old_chan != chan || old_id != id)) {
+      tor_assert(old_chan->u.cell_chan.cmux);
+      circuitmux_detach_circuit(old_chan->u.cell_chan.cmux, circ);
+    }
+
     /* we may need to remove it from the conn-circid map */
     tor_assert(!(old_chan->is_listener));
     search.circ_id = old_id;
@@ -144,17 +155,6 @@ circuit_set_circid_chan_helper(circuit_t *circ, int direction,
         /* One fewer circuits use old_chan as p_chan */
         --(old_chan->u.cell_chan.num_p_circuits);
       }
-    }
-
-    /*
-     * If we're changing channels or ID and had an old channel and a non
-     * zero old ID (i.e., we should have been attached), detach the circuit.
-     * ID changes require this because circuitmux hashes on (channel_id,
-     * circuit_id).
-     */
-    if (id != 0 && (old_chan != chan || old_id != id)) {
-      tor_assert(old_chan->u.cell_chan.cmux);
-      circuitmux_detach_circuit(old_chan->u.cell_chan.cmux, circ);
     }
   }
 
