@@ -305,8 +305,8 @@ circuitmux_alloc(void)
 {
   circuitmux_t *rv = NULL;
 
-  rv = tor_malloc(sizeof(*rv));
-  rv->chanid_circid_map = tor_malloc(sizeof(*( rv->chanid_circid_map)));
+  rv = tor_malloc_zero(sizeof(*rv));
+  rv->chanid_circid_map = tor_malloc_zero(sizeof(*( rv->chanid_circid_map)));
   HT_INIT(chanid_circid_muxinfo_map, rv->chanid_circid_map);
 
   return rv;
