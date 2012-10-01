@@ -130,8 +130,6 @@ struct chanid_circid_muxinfo_t {
  * Internal-use #defines
  */
 
-#define CMUX_PARANOIA
-
 #ifdef CMUX_PARANOIA
 #define circuitmux_assert_okay_paranoid(cmux) \
   circuitmux_assert_okay(cmux)
