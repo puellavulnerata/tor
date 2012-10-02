@@ -2479,6 +2479,20 @@ channel_dumpstats(int severity)
 }
 
 /**
+ * Set the cmux policy on all active channels
+ */
+
+void
+channel_set_cmux_policy_everywhere(circuitmux_policy_t *pol)
+{
+  SMARTLIST_FOREACH_BEGIN(active_channels, channel_t *, curr) {
+    if (!(curr->is_listener) && curr->u.cell_chan.cmux) {
+      circuitmux_set_policy(curr->u.cell_chan.cmux, pol);
+    }
+  } SMARTLIST_FOREACH_END(curr);
+}
+
+/**
  * Channel cleanup
  *
  * This gets called periodically from run_scheduled_events() in main.c;
