@@ -2486,6 +2486,8 @@ channel_dumpstats(int severity)
 void
 channel_set_cmux_policy_everywhere(circuitmux_policy_t *pol)
 {
+  if (!active_channels) return;
+
   SMARTLIST_FOREACH_BEGIN(active_channels, channel_t *, curr) {
     if (!(curr->is_listener) && curr->u.cell_chan.cmux) {
       circuitmux_set_policy(curr->u.cell_chan.cmux, pol);
