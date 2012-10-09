@@ -143,7 +143,7 @@ channel_listener_state_is_valid(channel_listener_state_t state)
 
   switch (state) {
     case CHANNEL_LISTENER_STATE_CLOSED:
-    case CHANNEL_LISTENER_STATE_LISTENING:  
+    case CHANNEL_LISTENER_STATE_LISTENING:
     case CHANNEL_LISTENER_STATE_CLOSING:
     case CHANNEL_LISTENER_STATE_ERROR:
       is_valid = 1;
@@ -3567,8 +3567,8 @@ channel_timestamp_created(channel_t *chan)
 /**
  * Update the created timestamp for a channel listener
  *
- * This updates the channel listener's created timestamp and should only be called
- * from channel_init_listener().
+ * This updates the channel listener's created timestamp and should only be
+ * called from channel_init_listener().
  */
 
 void
