@@ -946,8 +946,7 @@ directory_initiate_command_rend(const char *address, const tor_addr_t *_addr,
   conn->base_.state = DIR_CONN_STATE_CONNECTING;
 
   /* decide whether we can learn our IP address from this conn */
-  /* XXXX This is a bad name for this field now. */
-  conn->dirconn_direct = !anonymized_connection;
+  conn->anonymized = anonymized_connection;
 
   /* copy rendezvous data, if any */
   if (rend_query)
@@ -1005,7 +1004,7 @@ directory_initiate_command_rend(const char *address, const tor_addr_t *_addr,
                               conn->base_.address, conn->base_.port,
                               digest,
                               SESSION_GROUP_DIRCONN, iso_flags,
-                              use_begindir, conn->dirconn_direct);
+                              use_begindir, !(conn->anonymized));
     if (!linked_conn) {
       log_warn(LD_NET,"Making tunnel to dirserver failed.");
       connection_mark_for_close(TO_CONN(conn));
@@ -1614,7 +1613,7 @@ connection_dir_client_reached_eof(dir_connection_t *conn)
             conn->base_.purpose);
 
   /* now check if it's got any hints for us about our IP address. */
-  if (conn->dirconn_direct) {
+  if (!(conn->anonymized)) {
     char *guess = http_get_header(headers, X_ADDRESS_HEADER);
     if (guess) {
       router_new_address_suggestion(guess, conn);
@@ -2370,10 +2369,20 @@ write_http_response_header_impl(dir_connection_t *conn, ssize_t length,
     tor_snprintf(cp, sizeof(tmp)-(cp-tmp), "Content-Type: %s\r\n", type);
     cp += strlen(cp);
   }
-  if (!is_local_addr(&conn->base_.addr)) {
-    /* Don't report the source address for a nearby/private connection.
+  if (!(conn->anonymized) && !is_local_addr(&conn->base_.addr)) {
+    /*
+     * If anonymized is true, this dir_connection_t was linked
+     * from an exit connection, is anonymized and we have no source
+     * address to report.  In this case, the addr field will be all
+     * zeroes and if we call is_local_addr() on it, we'll get an
+     * obnoxious "Bug: tor_addr_is_internal() called with a non-IP
+     * address of type 0" warning in the logs, so the order of the
+     * tests above is significant.
+     *
+     * Don't report the source address for a nearby/private connection.
      * Otherwise we tend to mis-report in cases where incoming ports are
-     * being forwarded to a Tor server running behind the firewall. */
+     * being forwarded to a Tor server running behind the firewall.
+     */
     tor_snprintf(cp, sizeof(tmp)-(cp-tmp),
                  X_ADDRESS_HEADER "%s\r\n", conn->base_.address);
     cp += strlen(cp);

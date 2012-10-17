@@ -1534,7 +1534,18 @@ typedef struct dir_connection_t {
   * fingerprints.
   **/
   char *requested_resource;
-  unsigned int dirconn_direct:1; /**< Is this dirconn direct, or via Tor? */
+  /**
+   * For an outgoing connection to a directory server, this indicates if
+   * this is tunneled through Tor (set to 1) or direct TCP connection (set
+   * to 0).  This is set during directory_initiate_command() right after
+   * the dir_connection_t is created.
+   *
+   * For an incoming connection on a directory server, this indicates if
+   * this is an anonymous request tunneled through Tor or a directly
+   * accepted TCP connection.  In this case, it is set in
+   * connection_exit_connect_dir().
+   */
+  unsigned int anonymized:1;
 
   /* Used only for server sides of some dir connections, to implement
    * "spooling" of directory material to the outbuf.  Otherwise, we'd have

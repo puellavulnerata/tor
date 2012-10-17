@@ -1,0 +1,4 @@
+ o Minor bugfixes:
+   - Keep track of whether dir_connection_t is anonymous for server-side as
+     well as client side connections, so we can avoid calling is_local_addr()
+     on a zeroed-out address.  Fixes bug 7112/second half of 7086.

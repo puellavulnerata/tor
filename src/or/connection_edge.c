@@ -3363,6 +3363,9 @@ connection_exit_connect_dir(edge_connection_t *exitconn)
   dirconn->base_.purpose = DIR_PURPOSE_SERVER;
   dirconn->base_.state = DIR_CONN_STATE_SERVER_COMMAND_WAIT;
 
+  /* Mark this as anonymous */
+  dirconn->anonymized = 1;
+
   /* Note that the new dir conn belongs to the same tunneled request as
    * the edge conn, so that we can measure download times. */
   dirconn->dirreq_id = exitconn->dirreq_id;
