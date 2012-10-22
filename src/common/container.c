@@ -571,31 +571,105 @@ smartlist_bsearch_idx(const smartlist_t *sl, const void *key,
                       int (*compare)(const void *key, const void **member),
                       int *found_out)
 {
-  int hi = smartlist_len(sl) - 1, lo = 0, cmp, mid;
+  int hi, lo, cmp, mid, len;
+
+  tor_assert(sl);
+  tor_assert(compare);
+  tor_assert(found_out);
+
+  len = smartlist_len(sl);
+
+  /* Check for the trivial case of a zero-length list */
+  if (len == 0) {
+    *found_out = 0;
+    /* We already know smartlist_len(sl) is 0 in this case */
+    return 0;
+  }
+
+  /* Okay, we have a real search to do */
+  tor_assert(len > 0);
+  lo = 0;
+  hi = len - 1;
+
+  /*
+   * These invariants are always true:
+   *
+   * For all i such that 0 <= i < lo, sl[i] < key
+   * For all i such that hi < i <= len, sl[i] > key
+   */
 
   while (lo <= hi) {
     mid = (lo + hi) / 2;
     cmp = compare(key, (const void**) &(sl->list[mid]));
-    if (cmp>0) { /* key > sl[mid] */
-      lo = mid+1;
-    } else if (cmp<0) { /* key < sl[mid] */
-      hi = mid-1;
-    } else { /* key == sl[mid] */
+    if (cmp == 0) {
+      /* sl[mid] == key; we found it */
       *found_out = 1;
       return mid;
-    }
-  }
-  /* lo > hi. */
-  {
-    tor_assert(lo >= 0);
-    if (lo < smartlist_len(sl)) {
-      cmp = compare(key, (const void**) &(sl->list[lo]));
+    } else if (cmp > 0) {
+      /*
+       * key > sl[mid] and an index i such that sl[i] == key must
+       * have i > mid if it exists.
+       */
+
+      /* Check for end-of-list case */
+      if (mid < len) {
+        /* Normal case, move lo to the element immediately after sl[mid] */
+        lo = mid + 1;
+      } else {
+        /* These should always be true in this case */
+        tor_assert(mid == hi);
+        tor_assert(mid == len);
+        /*
+         * We were at the end of the list and concluded that every element e
+         * compares e < key.
+         */
+        *found_out = 0;
+        return len;
+      }
+    } else {
+      /* This should always be true in this case */
       tor_assert(cmp < 0);
-    } else if (smartlist_len(sl)) {
-      cmp = compare(key, (const void**) &(sl->list[smartlist_len(sl)-1]));
-      tor_assert(cmp > 0);
+
+      /*
+       * key < sl[mid] and an index i such that sl[i] == key must
+       * have i < mid if it exists.
+       */
+
+      if (mid > 0) {
+        /* Normal case, move hi to the element immediately before sl[mid] */
+        hi = mid - 1;
+      } else {
+        /* These should always be true in this case */
+        tor_assert(mid == lo);
+        tor_assert(mid == 0);
+        /*
+         * We were at the beginning of the list and concluded that every
+         * element e compares e > key.
+         */
+        *found_out = 0;
+        return 0;
+      }
     }
   }
+
+  /*
+   * lo > hi; we have no element matching key but we have elements falling
+   * on both sides of it.  The lo index points to the first element > key.
+   */
+  tor_assert(lo == hi + 1); /* All other cases should have been handled */
+  tor_assert(lo >= 0);
+  tor_assert(lo <= len);
+  tor_assert(hi >= 0);
+  tor_assert(hi <= len);
+
+  if (lo < len) {
+    cmp = compare(key, (const void **) &(sl->list[lo]));
+    tor_assert(cmp < 0);
+  } else {
+    cmp = compare(key, (const void **) &(sl->list[len-1]));
+    tor_assert(cmp > 0);
+  }
+
   *found_out = 0;
   return lo;
 }
