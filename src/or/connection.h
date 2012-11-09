@@ -66,7 +66,7 @@ void connection_mark_for_close_internal_(connection_t *conn,
     if (tmp_conn_->type == CONN_TYPE_OR) {                                \
       log_warn(LD_CHANNEL,                                                \
                "Something tried to close (and flush) an or_connection_t"  \
-               "without going through channels at %s:%d",                 \
+               " without going through channels at %s:%d",                \
                file, line);                                               \
       connection_or_close_for_error(TO_OR_CONN(tmp_conn_), 1);            \
     } else {                                                              \
