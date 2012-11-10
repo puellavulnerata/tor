@@ -43,7 +43,13 @@ void connection_mark_for_close_internal_(connection_t *conn,
 
 /**
  * Mark 'c' for close, but try to hold it open until all the data is written.
- * Use the _internal versions of connection_mark_for_close.
+ * Use the _internal versions of connection_mark_for_close; this should be
+ * called when you either are sure that if this is an or_connection_t the
+ * controlling channel has been notified (e.g. with
+ * connection_or_notify_error()), or you actually are the
+ * connection_or_close_for_error() or connection_or_close_normally function.
+ * For all other cases, use connection_mark_and_flush() instead, which
+ * checks for or_connection_t properly, instead.  See below.
  */
 #define connection_mark_and_flush_internal_(c,line,file)                  \
   do {                                                                    \
@@ -64,7 +70,7 @@ void connection_mark_for_close_internal_(connection_t *conn,
   do {                                                                    \
     connection_t *tmp_conn_ = (c);                                        \
     if (tmp_conn_->type == CONN_TYPE_OR) {                                \
-      log_warn(LD_CHANNEL,                                                \
+      log_warn(LD_CHANNEL | LD_BUG,                                       \
                "Something tried to close (and flush) an or_connection_t"  \
                " without going through channels at %s:%d",                \
                file, line);                                               \
