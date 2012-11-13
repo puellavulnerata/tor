@@ -2003,6 +2003,26 @@ update_circuit_on_cmux_(circuit_t *circ, cell_direction_t direction,
   if (! circuitmux_is_circuit_attached(cmux, circ)) {
     log_warn(LD_BUG, "called on non-attachd circuit from %s:%d",
              file, lineno);
+    if (circ->magic == OR_CIRCUIT_MAGIC) {
+      or_circ = TO_OR_CIRCUIT(circ);
+      log_debug(LD_BUG,
+                "Affected circuit has n_circ_id %d and p_circ_id %d at %p",
+                circ->n_circ_id, or_circ->p_circ_id, circ);
+      if (or_circ->rend_splice) {
+        log_debug(LD_BUG,
+                  "Spliced rendezvous has n_circ_id %d and "
+                  "p_circ_id %d at %p",
+                  TO_CIRCUIT(or_circ->rend_splice)->n_circ_id,
+                  or_circ->rend_splice->p_circ_id,
+                  TO_CIRCUIT(or_circ->rend_splice));
+      } else {
+        log_debug(LD_BUG, "There is no spliced rendezvous");
+      }
+    } else {
+      log_debug(LD_BUG,
+                "Affected circuit ID %d at %p is not an orcirc",
+                circ->n_circ_id, circ);
+    }
     return;
   }
   tor_assert(circuitmux_attached_circuit_direction(cmux, circ) == direction);
