@@ -430,20 +430,20 @@ rend_mid_rendezvous(or_circuit_t *circ, const uint8_t *request,
       if (circuitmux_is_circuit_attached(rend_circ->p_chan->cmux,
                                          TO_CIRCUIT(rend_circ))) {
         log_debug(LD_REND | LD_CHANNEL,
-                  "Rendezvous circuit #1 is attached to its p_chan's "
+                  "Rendezvous circuit #2 is attached to its p_chan's "
                   "cmux");
       } else {
         log_debug(LD_REND | LD_CHANNEL,
-                  "Rendezvous circuit #1 is NOT attached to its p_chan's "
+                  "Rendezvous circuit #2 is NOT attached to its p_chan's "
                   "cmux");
       }
     } else {
       log_debug(LD_REND | LD_CHANNEL,
-                "Rendezvous circuit #1 has a p_chan with no cmux");
+                "Rendezvous circuit #2 has a p_chan with no cmux");
     }
   } else {
     log_debug(LD_REND | LD_CHANNEL,
-              "Rendezvous circuit #1 (p_circ_id %d, n_circ_id %d) "
+              "Rendezvous circuit #2 (p_circ_id %d, n_circ_id %d) "
               "has no p_chan",
               rend_circ->p_circ_id,
               TO_CIRCUIT(rend_circ)->n_circ_id);
