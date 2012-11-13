@@ -8,7 +8,9 @@
  **/
 
 #include "or.h"
+#include "channel.h"
 #include "circuitlist.h"
+#include "circuitmux.h"
 #include "circuituse.h"
 #include "config.h"
 #include "relay.h"
@@ -323,6 +325,129 @@ rend_mid_rendezvous(or_circuit_t *circ, const uint8_t *request,
   log_info(LD_REND,
            "Completing rendezvous: circuit %d joins circuit %d (cookie %s)",
            circ->p_circ_id, rend_circ->p_circ_id, hexid);
+
+  /* XXXX debugging instrumentation for ticket 7212 */
+  if (TO_CIRCUIT(circ)->n_chan) {
+    log_debug(LD_REND | LD_CHANNEL,
+              "Rendezvous circuit #1 (p_circ_id %d, n_circ_id %d) "
+              "has n_chan " U64_FORMAT " at %p",
+              circ->p_circ_id,
+              TO_CIRCUIT(circ)->n_circ_id,
+              U64_PRINTF_ARG(TO_CIRCUIT(circ)->n_chan->global_identifier),
+              TO_CIRCUIT(circ)->n_chan);
+    if (TO_CIRCUIT(circ)->n_chan->cmux) {
+      if (circuitmux_is_circuit_attached(TO_CIRCUIT(circ)->n_chan->cmux,
+                                         TO_CIRCUIT(circ))) {
+        log_debug(LD_REND | LD_CHANNEL,
+                  "Rendezvous circuit #1 is attached to its n_chan's "
+                  "cmux");
+      } else {
+        log_debug(LD_REND | LD_CHANNEL,
+                  "Rendezvous circuit #1 is NOT attached to its n_chan's "
+                  "cmux");
+      }
+    } else {
+      log_debug(LD_REND | LD_CHANNEL,
+                "Rendezvous circuit #1 has an n_chan with no cmux");
+    }
+  } else {
+    log_debug(LD_REND | LD_CHANNEL,
+              "Rendezvous circuit #1 (p_circ_id %d, n_circ_id %d) "
+              "has no n_chan",
+              circ->p_circ_id,
+              TO_CIRCUIT(circ)->n_circ_id);
+  }
+  if (circ->p_chan) {
+    log_debug(LD_REND | LD_CHANNEL,
+              "Rendezvous circuit #1 (p_circ_id %d, n_circ_id %d) "
+              "has p_chan " U64_FORMAT " at %p",
+              circ->p_circ_id,
+              TO_CIRCUIT(circ)->n_circ_id,
+              U64_PRINTF_ARG(circ->p_chan->global_identifier),
+              circ->p_chan);
+    if (circ->p_chan->cmux) {
+      if (circuitmux_is_circuit_attached(circ->p_chan->cmux,
+                                         TO_CIRCUIT(circ))) {
+        log_debug(LD_REND | LD_CHANNEL,
+                  "Rendezvous circuit #1 is attached to its p_chan's "
+                  "cmux");
+      } else {
+        log_debug(LD_REND | LD_CHANNEL,
+                  "Rendezvous circuit #1 is NOT attached to its p_chan's "
+                  "cmux");
+      }
+    } else {
+      log_debug(LD_REND | LD_CHANNEL,
+                "Rendezvous circuit #1 has a p_chan with no cmux");
+    }
+  } else {
+    log_debug(LD_REND | LD_CHANNEL,
+              "Rendezvous circuit #1 (p_circ_id %d, n_circ_id %d) "
+              "has no p_chan",
+              circ->p_circ_id,
+              TO_CIRCUIT(circ)->n_circ_id);
+  }
+  if (TO_CIRCUIT(rend_circ)->n_chan) {
+    log_debug(LD_REND | LD_CHANNEL,
+              "Rendezvous circuit #2 (p_circ_id %d, n_circ_id %d) "
+              "has n_chan " U64_FORMAT " at %p",
+              rend_circ->p_circ_id,
+              TO_CIRCUIT(rend_circ)->n_circ_id,
+              U64_PRINTF_ARG(TO_CIRCUIT(rend_circ)->
+                               n_chan->global_identifier),
+              TO_CIRCUIT(rend_circ)->n_chan);
+    if (TO_CIRCUIT(rend_circ)->n_chan->cmux) {
+      if (circuitmux_is_circuit_attached(TO_CIRCUIT(rend_circ)->n_chan->cmux,
+                                         TO_CIRCUIT(rend_circ))) {
+        log_debug(LD_REND | LD_CHANNEL,
+                  "Rendezvous circuit #2 is attached to its n_chan's "
+                  "cmux");
+      } else {
+        log_debug(LD_REND | LD_CHANNEL,
+                  "Rendezvous circuit #2 is NOT attached to its n_chan's "
+                  "cmux");
+      }
+    } else {
+      log_debug(LD_REND | LD_CHANNEL,
+                "Rendezvous circuit #2 has an n_chan with no cmux");
+    }
+  } else {
+    log_debug(LD_REND | LD_CHANNEL,
+              "Rendezvous circuit #2 (p_circ_id %d, n_circ_id %d) "
+              "has no n_chan",
+              rend_circ->p_circ_id,
+              TO_CIRCUIT(rend_circ)->n_circ_id);
+  }
+  if (rend_circ->p_chan) {
+    log_debug(LD_REND | LD_CHANNEL,
+              "Rendezvous circuit #2 (p_circ_id %d, n_circ_id %d) "
+              "has p_chan " U64_FORMAT " at %p",
+              rend_circ->p_circ_id,
+              TO_CIRCUIT(rend_circ)->n_circ_id,
+              U64_PRINTF_ARG(rend_circ->p_chan->global_identifier),
+              rend_circ->p_chan);
+    if (rend_circ->p_chan->cmux) {
+      if (circuitmux_is_circuit_attached(rend_circ->p_chan->cmux,
+                                         TO_CIRCUIT(rend_circ))) {
+        log_debug(LD_REND | LD_CHANNEL,
+                  "Rendezvous circuit #1 is attached to its p_chan's "
+                  "cmux");
+      } else {
+        log_debug(LD_REND | LD_CHANNEL,
+                  "Rendezvous circuit #1 is NOT attached to its p_chan's "
+                  "cmux");
+      }
+    } else {
+      log_debug(LD_REND | LD_CHANNEL,
+                "Rendezvous circuit #1 has a p_chan with no cmux");
+    }
+  } else {
+    log_debug(LD_REND | LD_CHANNEL,
+              "Rendezvous circuit #1 (p_circ_id %d, n_circ_id %d) "
+              "has no p_chan",
+              rend_circ->p_circ_id,
+              TO_CIRCUIT(rend_circ)->n_circ_id);
+  }
 
   circuit_change_purpose(TO_CIRCUIT(circ), CIRCUIT_PURPOSE_REND_ESTABLISHED);
   circuit_change_purpose(TO_CIRCUIT(rend_circ),
