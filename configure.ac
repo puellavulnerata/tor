@@ -111,6 +111,15 @@ if test "$enable_threads" = "yes"; then
   AC_DEFINE(ENABLE_THREADS, 1, [Defined if we will try to use multithreading])
 fi
 
+if test "$enable_threaded_relaycrypt" = "yes"; then
+  if test "$enable_threads" = "yes"; then
+    AC_DEFINE(ENABLE_THREADED_RELAYCRYPT, 1,
+              [Defined if we will try to use threaded relaycrypt])
+  else
+    AC_MSG_ERROR(--enable-threaded-relaycrypt requires --enable-threads)
+  fi
+fi
+
 case $host in
    *-*-solaris* )
      AC_DEFINE(_REENTRANT, 1, [Define on some platforms to activate x_r() functions in time.h])
@@ -150,6 +159,16 @@ fi])
 
 AC_ARG_ENABLE(bufferevents,
      AS_HELP_STRING(--enable-bufferevents, use Libevent's buffered IO.))
+
+# Use threaded relaycrypt code, and disable this option by default
+AC_ARG_ENABLE(threaded-relaycrypt,
+     AS_HELP_STRING(--enable-threaded-relaycrypt, use threaded relaycrypt code.)
+     [case "${enableval}" in
+        yes)
+          threaded-relaycrypt=true ;;
+        no)  threaded-relaycrypt=false ;;
+        * ) AC_MSG_ERROR(bad value for --enable-threaded-relaycrypt) ;;
+      esac], [threaded-relaycrypt=false])
 
 dnl check for the correct "ar" when cross-compiling
 AN_MAKEVAR([AR], [AC_PROG_AR])

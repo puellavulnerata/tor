@@ -51,6 +51,7 @@ LIBTOR_OBJECTS = \
   policies.obj \
   reasons.obj \
   relay.obj \
+  relaycrypt.obj \
   rendclient.obj \
   rendcommon.obj \
   rendmid.obj \
