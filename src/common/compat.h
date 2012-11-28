@@ -615,6 +615,17 @@ void spawn_exit(void) ATTR_NORETURN;
 #undef TOR_IS_MULTITHREADED
 #endif
 
+#if defined(ENABLE_THREADED_RELAYCRYPT)
+#  if defined(TOR_IS_MULTITHREADED)
+#    define TOR_USES_THREADED_RELAYCRYPT 1
+#  else
+#    undef TOR_USES_THREADED_RELAYCRYPT
+#    error ENABLE_THREADED_RELAYCRYPT defined without TOR_IS_MULTITHREADED
+#  endif
+#else
+#  undef TOR_USES_THREADED_RELAYCRYPT
+#endif
+
 int compute_num_cpus(void);
 
 /* Because we use threads instead of processes on most platforms (Windows,
