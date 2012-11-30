@@ -145,7 +145,7 @@ struct relaycrypt_thread_s {
     RELAYCRYPT_WORKER_IDLE,
     RELAYCRYPT_WORKER_WORKING,
     RELAYCRYPT_WORKER_DEAD
-  };
+  } state;
   /*
    * Flag to indicate the worker should be told to exit next time it asks
    * for more work; this is initially 0 and may be set to 1 once by the main
