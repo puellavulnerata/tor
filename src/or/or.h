@@ -1027,6 +1027,26 @@ typedef struct cell_t {
   uint8_t command; /**< Type of the cell: one of CELL_PADDING, CELL_CREATE,
                     * CELL_DESTROY, etc */
   uint8_t payload[CELL_PAYLOAD_SIZE]; /**< Cell body. */
+
+#ifdef TOR_USES_THREADED_RELAYCRYPT
+  /*
+   * If we're doing threaded relaycrypt, we need to keep track of the return
+   * values from relay_crypt() here instead of just returning them from that
+   * function, and we need a timestamp of when this cell was queued to be
+   * crypted to decide which job to dispatch.
+   */
+  char recognized;
+  /*
+   * Should be safe to pass a pointer here, since if the circuit goes
+   * away we'll just throw away crypted cells anyway.  If not, it'll be
+   * easy to change this to an integer to count hops.
+   */
+  struct crypt_path_t *layer_hint;
+  /*
+   * TODO timestamp - how precise?  Should we just count cells queued and
+   * use the sequence numbers to avoid a syscall instead?
+   */
+#endif
 } cell_t;
 
 /** Parsed variable-length onion routing cell. */
@@ -2658,6 +2678,17 @@ typedef struct {
   time_t expiry_time;
 } cpath_build_state_t;
 
+#ifdef TOR_USES_THREADED_RELAYCRYPT
+
+/*
+ * A relaycrypt job (a (circuit, direction) tuple and cell queues); the
+ * struct is defined in relaycrypt.c.
+ */
+
+typedef struct relaycrypt_job_s relaycrypt_job_t;
+
+#endif
+
 #define ORIGIN_CIRCUIT_MAGIC 0x35315243u
 #define OR_CIRCUIT_MAGIC 0x98ABC04Fu
 
@@ -2708,6 +2739,11 @@ typedef struct circuit_t {
 
   /** Queue of cells waiting to be transmitted on n_chan */
   cell_queue_t n_chan_cells;
+
+#ifdef TOR_USES_THREADED_RELAYCRYPT
+  /** Relaycrypt job for outgoing cells on this circuit, if one exists */
+  relaycrypt_job_t *rc_job;
+#endif
 
   /**
    * The hop to which we want to extend this circuit.  Should be NULL if
