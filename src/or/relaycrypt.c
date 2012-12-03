@@ -177,6 +177,21 @@ struct relaycrypt_thread_s {
 
 static void relaycrypt_worker_main(relaycrypt_thread_t *thr);
 
+/**
+ * Get a relaycrypt_job_t for this thread to work on, or block until one is
+ * available.  This returns NULL to signal that this worker should exit.
+ */
+
+static relaycrypt_job_t * relaycrypt_worker_get_job(relaycrypt_thread_t *thr);
+
+/**
+ * Release a relaycrypt job and become idle from a worker thread
+ */
+
+static void
+relaycrypt_worker_release_job(relaycrypt_thread_t *thr,
+                              relaycrypt_job_t *job);
+
 /* TODO */
 
 #endif
