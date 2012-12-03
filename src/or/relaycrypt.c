@@ -168,6 +168,20 @@ struct relaycrypt_thread_s {
 
 /*
  * Static relaycrypt function declarations and descriptive comments
+ *
+ * Main thread functions:
+ */
+
+/**
+ * Join all workers in the RELAYCRYPT_WORKER_DEAD state or with the
+ * exit_flag set, and when they have exited remove them from the
+ * worker list.
+ */
+
+static void relaycrypt_join_workers(void);
+
+/*
+ * Worker thread functions:
  */
 
 /**
@@ -219,6 +233,25 @@ relaycrypt_init(void)
    * We do not create any threads here - that happens in
    * relaycrypt_set_num_workers() later on.
    */
+}
+
+/**
+ * Call this to shut down all active workers, join them and then free
+ * all relaycrypt data.
+ */
+
+void
+relaycrypt_free_all(void)
+{
+  if (rc_dispatch) {
+    /* First, tell all active workers to shut down */
+    relaycrypt_set_num_workers(0);
+    /* Wait for them to exit and join them */
+    relaycrypt_join_workers();
+    /* TODO free job/worker lists */
+    tor_free(rc_dispatch);
+    rc_dispatch = NULL;
+  }
 }
 
 /*
