@@ -27,7 +27,7 @@ typedef struct relaycrypt_thread_s relaycrypt_thread_t;
  * the relaycrypt workers.  It adds (circuit_t, direction) to the
  * work queue if it is not already present, and will either queue it
  * or wake up a worker if one is idle.  The main thread will
- * receive the crypted cell back in TODO.
+ * receive the crypted cell back in relaycrypt_handle_output().
  */
 
 void relaycrypt_queue_cell(circuit_t *circ, cell_direction_t dir,
