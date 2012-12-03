@@ -69,6 +69,10 @@ struct relaycrypt_job_s {
    */
   circuit_t *circ;
   /*
+   * Direction on circ this job crypts
+   */
+  cell_direction_t dir;
+  /*
    * State of this job object:
    *
    * RELAYCRYPT_JOB_IDLE:
