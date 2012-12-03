@@ -225,7 +225,8 @@ relaycrypt_init(void)
  */
 
 static void
-relaycrypt_worker_main(relaycrypt_thread_t *thr) {
+relaycrypt_worker_main(relaycrypt_thread_t *thr)
+{
   relaycrypt_job_t *job = NULL;
 
   tor_assert(rc_dispatch);
