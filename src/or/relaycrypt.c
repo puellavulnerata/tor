@@ -202,6 +202,12 @@ static relaycrypt_dispatcher_t *rc_dispatch = NULL;
  * Function implementations (main thread functions)
  */
 
+/**
+ * Call this at startup to initialize relaycrypt; note that this does not
+ * start any worker threads, so you should use relaycrypt_set_num_workers()
+ * after this.
+ */
+
 void
 relaycrypt_init(void)
 {
