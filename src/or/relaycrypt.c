@@ -192,7 +192,28 @@ static void
 relaycrypt_worker_release_job(relaycrypt_thread_t *thr,
                               relaycrypt_job_t *job);
 
-/* TODO */
+/*
+ * Global variables
+ */
+
+static relaycrypt_dispatcher_t *rc_dispatch = NULL;
+
+/*
+ * Function implementations
+ */
+
+void
+relaycrypt_init(void)
+{
+  tor_assert(!rc_dispatch);
+
+  rc_dispatch = tor_malloc_zero(sizeof(*rc_dispatch));
+
+  /*
+   * We do not create any threads here - that happens in
+   * relaycrypt_set_num_workers() later on.
+   */
+}
 
 #endif
 
