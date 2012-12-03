@@ -43,6 +43,9 @@
 #include "policies.h"
 #include "transports.h"
 #include "relay.h"
+#ifdef TOR_USES_THREADED_RELAYCRYPT
+# include "relaycrypt.h"
+#endif
 #include "rendclient.h"
 #include "rendcommon.h"
 #include "rendservice.h"
@@ -2306,6 +2309,10 @@ tor_init(int argc, char *argv[])
   /* Have the log set up with our application name. */
   tor_snprintf(buf, sizeof(buf), "Tor %s", get_version());
   log_set_application_name(buf);
+#ifdef TOR_USES_THREADED_RELAYCRYPT
+  /* Initialize relaycrypt dispatcher if we're using it */
+  relaycrypt_init();
+#endif
   /* Initialize the history structures. */
   rep_hist_init();
   /* Initialize the service cache. */
@@ -2490,6 +2497,9 @@ tor_free_all(int postfork)
   memarea_clear_freelist();
   nodelist_free_all();
   microdesc_free_all();
+#ifdef TOR_USES_THREADED_RELAYCRYPT
+  relaycrypt_free_all();
+#endif
   if (!postfork) {
     config_free_all();
     or_state_free_all();
