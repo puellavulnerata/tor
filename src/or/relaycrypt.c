@@ -199,7 +199,7 @@ relaycrypt_worker_release_job(relaycrypt_thread_t *thr,
 static relaycrypt_dispatcher_t *rc_dispatch = NULL;
 
 /*
- * Function implementations
+ * Function implementations (main thread functions)
  */
 
 void
@@ -213,6 +213,30 @@ relaycrypt_init(void)
    * We do not create any threads here - that happens in
    * relaycrypt_set_num_workers() later on.
    */
+}
+
+/*
+ * Function implementations (worker thread functions)
+ */
+
+/**
+ * Main loop for relaycrypt worker threads; takes the thread structure
+ * as an argument and returns when the thread exits.
+ */
+
+static void
+relaycrypt_worker_main(relaycrypt_thread_t *thr) {
+  relaycrypt_job_t *job = NULL;
+
+  tor_assert(rc_dispatch);
+  tor_assert(thr);
+
+  while ((job = relaycrypt_worker_get_job(thr))) {
+    /* Done with this job, return it to the dispatcher */
+    relaycrypt_worker_release_job(thr, job);
+  }
+
+  /* If relaycrypt_worker_get_job(), time to exit */
 }
 
 #endif
