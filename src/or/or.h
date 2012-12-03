@@ -1043,9 +1043,11 @@ typedef struct cell_t {
    */
   struct crypt_path_t *layer_hint;
   /*
-   * TODO timestamp - how precise?  Should we just count cells queued and
-   * use the sequence numbers to avoid a syscall instead?
+   * Sequence number: set this to the number of cells queued to the
+   * relaycrypt_dispatcher_t in the lifetime of this process, so the
+   * dispatcher can find the job with the longest-waiting cell.
    */
+  uint64_t seq;
 #endif
 } cell_t;
 
