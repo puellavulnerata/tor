@@ -2814,7 +2814,9 @@ typedef struct circuit_t {
 
 #ifdef TOR_USES_THREADED_RELAYCRYPT
   /** Relaycrypt job for outgoing cells on this circuit, if one exists */
-  relaycrypt_job_t *rc_job;
+  relaycrypt_job_t *rc_job_outgoing;
+  /** Relaycrypt job for incoming cells on this circuit, if one exists */
+  relaycrypt_job_t *rc_job_incoming;
 #endif
 
   /**
