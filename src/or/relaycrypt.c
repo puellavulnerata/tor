@@ -173,12 +173,12 @@ struct relaycrypt_thread_s {
  */
 
 /**
- * Join all workers in the RELAYCRYPT_WORKER_DEAD state or with the
- * exit_flag set, and when they have exited remove them from the
- * worker list.
+ * Join all workers in the RELAYCRYPT_WORKER_DEAD state or, if the block
+ * flag is true, also with the exit_flag set, and when they have exited
+ * remove them from the worker list.
  */
 
-static void relaycrypt_join_workers(void);
+static void relaycrypt_join_workers(int block);
 
 /*
  * Worker thread functions:
@@ -247,7 +247,7 @@ relaycrypt_free_all(void)
     /* First, tell all active workers to shut down */
     relaycrypt_set_num_workers(0);
     /* Wait for them to exit and join them */
-    relaycrypt_join_workers();
+    relaycrypt_join_workers(1);
     /* TODO free job/worker lists */
     tor_free(rc_dispatch);
     rc_dispatch = NULL;
