@@ -2813,6 +2813,99 @@ tor_threads_init(void)
 }
 #endif
 
+#ifdef TOR_IS_MULTITHREADED
+
+/**
+ * Allocate a new tor_thread_t, create a thread and start it at func with
+ * argument data.
+ */
+
+tor_thread_t *
+tor_thread_start(void * (*func)(void *), void *data)
+{
+#if defined(USE_PTHREADS)
+  int result;
+#endif
+
+  tor_thread_t *thr;
+
+  tor_assert(func);
+  thr = tor_malloc_zero(sizeof(*thr));
+  thr->thread_func = func;
+  thr->thread_func_arg = data;
+
+#if defined(USE_PTHREADS)
+  result = pthread_create(&(thr->pth), NULL,
+                          tor_thread_pthread_main, (void *)thr);
+  tor_assert(result == 0);
+#elif defined(USE_WIN32_THREADS)
+  /* TODO Implement me! */
+# error  Compiling with threads but we have not implemented Win32 yet
+#else
+# error Compiling with threads but no thread API available
+#endif
+
+  return thr;
+}
+
+/**
+ * Join a tor_thread_t, and then free it when it exits; returns the
+ * void * returned from the thread entry point tor_thread_start() was
+ * called with.
+ */
+
+void *
+tor_thread_join(tor_thread_t *thr)
+{
+  int status;
+  void *result;
+
+  tor_assert(thr);
+
+#if defined(USE_PTHREADS)
+  status = pthread_join(thr->pth, NULL);
+  tor_assert(status == 0);
+#elif defined(USE_WIN32_THREADS)
+  /* TODO Implement me! */
+# error  Compiling with threads but we have not implemented Win32 yet
+#else
+# error Compiling with threads but no thread API available
+#endif
+
+  result = thr->thread_func_ret;
+  tor_free(thr);
+
+  return result;
+}
+
+#ifdef USE_PTHREADS
+
+/**
+ * Entry point for tor_thread_t with pthreads
+ */
+
+void *
+tor_thread_pthread_main(void *thr_v)
+{
+  tor_thread_t *thr;
+  void *result;
+
+  tor_assert(thr_v);
+
+  thr = (tor_thread_t *)thr_v;
+  tor_assert(thr->thread_func);
+
+  result = thr->thread_func(thr->thread_func_arg);
+
+  thr->thread_func_ret = result;
+
+  return NULL;
+}
+
+#endif
+
+#endif
+
 #if defined(HAVE_MLOCKALL) && HAVE_DECL_MLOCKALL && defined(RLIMIT_MEMLOCK)
 /** Attempt to raise the current and max rlimit to infinity for our process.
  * This only needs to be done once and can probably only be done when we have

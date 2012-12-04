@@ -658,6 +658,27 @@ void tor_mutex_free(tor_mutex_t *m);
 void tor_mutex_uninit(tor_mutex_t *m);
 unsigned long tor_get_thread_id(void);
 void tor_threads_init(void);
+
+typedef struct tor_thread_s {
+  void * (*thread_func)(void *);
+  void *thread_func_arg;
+  void *thread_func_ret;
+
+#if defined(USE_WIN32_THREADS)
+  /* TODO implement me! */
+# error Compiling with threads but we have not implemented Win32 yet
+#elif defined(USE_PTHREADS)
+  pthread_t pth;
+#else
+# error Compiling with threads but no thread API available
+#endif
+} tor_thread_t;
+
+tor_thread_t * tor_thread_start(void * (*func)(void *), void *data);
+void * tor_thread_join(tor_thread_t *thr);
+#ifdef USE_PTHREADS
+void * tor_thread_pthread_main(void *thr_v);
+#endif
 #else
 #define tor_mutex_new() ((tor_mutex_t*)tor_malloc(sizeof(int)))
 #define tor_mutex_init(m) STMT_NIL
