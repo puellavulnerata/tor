@@ -4189,6 +4189,10 @@ typedef struct {
 
   /** How long (seconds) do we keep a guard before picking a new one? */
   int GuardLifetime;
+
+  /* Parallel relaycrypt parameters */
+  int RelaycryptMaxJobCells;
+  int RelaycryptThreads;
 } or_options_t;
 
 /** Persistent state for an onion router, as saved to disk. */
