@@ -15,6 +15,23 @@
 /* #error Threaded relaycrypt is not finished yet; turn it off. */
 
 /*
+ * Several of these structures have mutexes; observe these rules to avoid
+ * deadlock:
+ *
+ * 1.) Never hold the mutexes for two relaycrypt_job_t or relaycrypt_thread_t
+ *     structures simultaneously.
+ *
+ * 2.) If you hold more than one mutex for different types of structure at
+ *     once, acquire them in this order:
+ *
+ *     [relaycrypt_dispatcher_t], relaycrypt_thread_t, relaycrypt_job_t
+ *
+ *     where [relaycrypt_dispatcher_t] could be jobs_lock, jobs_lock
+ *     then threads_lock, or threads_lock, but not threads_lock then
+ *     jobs_lock.
+ */
+
+/*
  * This is the master data structure tracking threaded relaycrypt status;
  * only one should exist per Tor process, and it gets created in
  * relaycrypt_init() and freed in relaycrypt_free_all().  It has two
@@ -24,6 +41,10 @@
  */
 
 struct relaycrypt_dispatcher_s {
+  /*
+   * Lock this for access to the threads list
+   */
+  tor_mutex_t *threads_lock;
   /*
    * How many worker threads do we want to have?  Use this in
    * relaycrypt_set_num_workers() to figure out how many to start
@@ -35,6 +56,11 @@ struct relaycrypt_dispatcher_s {
    * are always added and removed in the main thread.
    */
   smartlist_t *threads;
+
+  /*
+   * Lock this for access to the jobs list
+   */
+  tor_mutex_t *jobs_lock;
   /*
    * List of relaycrypt_job_t instances; jobs are added and may have their
    * status changed by the main thread if it tries to queue a cell to a
@@ -47,10 +73,6 @@ struct relaycrypt_dispatcher_s {
    * lock this one first so we know we can't deadlock.
    */
   smartlist_t *jobs;
-  /*
-   * TODO need jobs_lock mutex - check if we have a portable tor_mutex_t
-   * or equivalent or need to implement one.
-   */
 };
 
 /*
@@ -58,7 +80,9 @@ struct relaycrypt_dispatcher_s {
  */
 
 struct relaycrypt_job_s {
-  /* TODO mutex for state changes and queue access */
+  /* Mutex for state changes and queue access */
+  tor_mutex_t *job_lock;
+
   /*
    * Circuit this job is for *outgoing* cells on, or NULL if the circuit
    * has been closed and this job should go away.  This should be constant
@@ -121,7 +145,11 @@ struct relaycrypt_job_s {
  */
 
 struct relaycrypt_thread_s {
-  /* TODO lock for worker state access/changes */
+  /*
+   * Lock this for worker state access
+   */
+  tor_mutex_t *thread_lock;
+
   /*
    * State of this worker:
    *
