@@ -3917,6 +3917,8 @@ typedef struct {
 
   char *TLSECGroup; /**< One of "P256", "P224", or nil for auto */
 
+  int RelaycryptMaxJobCells;
+  int RelaycryptThreads;
 } or_options_t;
 
 /** Persistent state for an onion router, as saved to disk. */
