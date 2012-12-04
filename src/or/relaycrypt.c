@@ -189,9 +189,9 @@ struct relaycrypt_thread_s {
    */
   relaycrypt_job_t *working_on;
   /*
-   * TODO thread object - check if we have a portable tor_thread_t or need to
-   * write one.
+   * The thread for this worker
    */
+  tor_thread_t *thread;
 };
 
 /*
