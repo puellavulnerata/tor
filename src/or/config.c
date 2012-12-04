@@ -36,6 +36,9 @@
 #include "nodelist.h"
 #include "policies.h"
 #include "relay.h"
+#ifdef TOR_USES_THREADED_RELAYCRYPT
+#include "relaycrypt.h"
+#endif
 #include "rendclient.h"
 #include "rendservice.h"
 #include "rephist.h"
@@ -334,6 +337,8 @@ static config_var_t option_vars_[] = {
   V(ReachableAddresses,          LINELIST, NULL),
   V(ReachableDirAddresses,       LINELIST, NULL),
   V(ReachableORAddresses,        LINELIST, NULL),
+  V(RelaycryptMaxJobCells,       UINT,     "512"),
+  V(RelaycryptThreads,           UINT,     "0"),
   V(RecommendedVersions,         LINELIST, NULL),
   V(RecommendedClientVersions,   LINELIST, NULL),
   V(RecommendedServerVersions,   LINELIST, NULL),
@@ -1007,6 +1012,29 @@ options_act_reversible(const or_options_t *old_options, char **msg)
       goto done;
     }
   }
+
+#ifdef TOR_USES_THREADED_RELAYCRYPT
+  if (options->RelaycryptThreads >= 0) {
+    relaycrypt_set_num_workers(options->RelaycryptThreads);
+  } else {
+    *msg = tor_strdup("Negative value for RelaycryptThreads makes no "
+                      "sense.");
+    goto rollback;
+  }
+  if (options->RelaycryptMaxJobCells > 0) {
+    relaycrypt_set_cells_per_dispatch(options->RelaycryptMaxJobCells);
+  } else {
+    *msg = tor_strdup("Non-positive value for RelaycryptMaxJobCells makes "
+                      "no sense.");
+    goto rollback;
+  }
+#else
+  if (options->RelaycryptThreads > 0) {
+    *msg = tor_strdup("Threaded relaycrypt (RelaycryptThreads) not "
+                      "supported on this OS/with this build.");
+    goto rollback;
+  }
+#endif
 
   /* Ensure data directory is private; create if possible. */
   if (check_private_dir(options->DataDirectory,
