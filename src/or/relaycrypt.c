@@ -9,6 +9,7 @@
 
 #include "or.h"
 #include "relaycrypt.h"
+#include "tor_queue.h"
 
 #ifdef TOR_USES_THREADED_RELAYCRYPT
 
@@ -48,14 +49,16 @@ struct relaycrypt_dispatcher_s {
   /*
    * How many worker threads do we want to have?  Use this in
    * relaycrypt_set_num_workers() to figure out how many to start
-   * or stop.
+   * or stop.  This should be the number of entries in the worker
+   * list which are not in the RELAY_WORKER_DEAD state and do
+   * not have exit_flag set.
    */
-  int num_workers_wanted;
+  int num_workers;
   /*
    * List of relaycrypt_thread_t instances; no lock needed since these
    * are always added and removed in the main thread.
    */
-  smartlist_t *threads;
+  LIST_HEAD(relaycrypt_thread_list_s, relaycrypt_thread_s) threads;
 
   /*
    * Lock this for access to the jobs list
@@ -192,6 +195,12 @@ struct relaycrypt_thread_s {
    * The thread for this worker
    */
   tor_thread_t *thread;
+
+  /*
+   * LIST_ENTRY() keeps pointer to next and prev worker in the dispatcher
+   * thread list.
+   */
+  LIST_ENTRY(relaycrypt_thread_s) list_entry;
 };
 
 /*
@@ -199,6 +208,33 @@ struct relaycrypt_thread_s {
  *
  * Main thread functions:
  */
+
+/**
+ * Kill a worker or schedule it to exit if possible, and return 1 if we
+ * did so or 0 otherwise; this is used as a helper function for
+ * relaycrypt_set_num_workers().  Call this while holding worker->
+ * thread_lock.
+ */
+
+static int relaycrypt_slay_worker(relaycrypt_thread_t *worker);
+
+/**
+ * Create a new worker thread and add it to the dispatcher list; this is
+ * a helper function for relaycrypt_set_num_workers(), and you should call
+ * it while holding rc_dispatch->threads_lock.
+ */
+
+static int relaycrypt_spawn_worker(void);
+
+/**
+ * Check if a worker is eligible to be killed at a given pass of
+ * relaycrypt_set_num_workers(); call this while holding worker->
+ * thread_lock.
+ */
+
+static int
+relaycrypt_worker_eligible_for_death(relaycrypt_thread_t *worker,
+                                     int pass);
 
 /**
  * Join all workers in the RELAYCRYPT_WORKER_DEAD state or, if the block
@@ -259,8 +295,10 @@ relaycrypt_init(void)
 
   /*
    * We do not create any threads here - that happens in
-   * relaycrypt_set_num_workers() later on.
+   * relaycrypt_set_num_workers() later on.  Just initialize
+   * an empty list for now.
    */
+  LIST_INIT(&(rc_dispatch->threads));
 }
 
 /**
@@ -280,6 +318,202 @@ relaycrypt_free_all(void)
     tor_free(rc_dispatch);
     rc_dispatch = NULL;
   }
+}
+
+/**
+ * Get the number of worker threads
+ */
+
+int
+relaycrypt_get_num_workers(void)
+{
+  int rv;
+
+  if (rc_dispatch) {
+    tor_assert(rc_dispatch->threads_lock);
+    /* Acquire the lock */
+    tor_mutex_acquire(rc_dispatch->threads_lock);
+    rv = rc_dispatch->num_workers;
+    /* Release */
+    tor_mutex_release(rc_dispatch->threads_lock);
+
+    return rv;
+  } else {
+    /* If we're not inited, there are plainly zero workers */
+    return 0;
+  }
+}
+
+/**
+ * Check if a worker is eligible to be killed on a particular pass of
+ * relaycrypt_set_num_workers(); see comments in that function for
+ * definitions of the passes.
+ */
+
+static int
+relaycrypt_worker_eligible_for_death(relaycrypt_thread_t *worker,
+                                     int pass)
+{
+  int result;
+
+  tor_assert(worker);
+
+  switch (pass) {
+    case 0:
+      /*
+       * On the first pass, we only kill workers that are in
+       * RELAYCRYPT_WORKER_IDLE and do not already have their
+       * exit flag set.
+       */
+      result = ((worker->state == RELAYCRYPT_WORKER_IDLE) &&
+                !(worker->exit_flag));
+      break;
+    case 1:
+      /*
+       * Like pass 0, but RELAYCRYPT_WORKER_STARTING is also
+       * eligible.
+       */
+      result = (((worker->state == RELAYCRYPT_WORKER_IDLE) ||
+                 (worker->state == RELAYCRYPT_WORKER_STARTING)) &&
+                !(worker->exit_flag));
+      break;
+    case 2:
+      /*
+       * In pass 2, we resort to delayed exits from RELAYCRYPT_WORKER_WORKING
+       */
+      result = (((worker->state == RELAYCRYPT_WORKER_IDLE) ||
+                 (worker->state == RELAYCRYPT_WORKER_STARTING) ||
+                 (worker->state == RELAYCRYPT_WORKER_WORKING)) &&
+                !(worker->exit_flag));
+      break;
+    default:
+      /* This shouldn't happen, just say it's not eligible */
+      result = 0;
+      break;
+  }
+
+  return result;
+}
+
+/**
+ * Set the number of worker threads; this may start more workers or tell some
+ * to shut down as needed; if it shuts workers down it does not wait for them
+ * to exit before returning, but no more jobs will be dispatched to them.
+ */
+ 
+void
+relaycrypt_set_num_workers(int threads)
+{
+  const int max_pass = 3;
+  int workers_slain, pass, workers_started;
+  relaycrypt_thread_t *curr;
+
+  tor_assert(rc_dispatch);
+  tor_assert(threads >= 0);
+  tor_assert(rc_dispatch->threads_lock);
+
+  /* First, get the lock */
+  tor_mutex_acquire(rc_dispatch->threads_lock);
+
+  /* Now spawn or kill workers as needed */
+  if (threads > rc_dispatch->num_workers) {
+    /* We need to spawn some new worker threads */
+    workers_started = 0;
+    while (workers_started < threads - rc_dispatch->num_workers) {
+      if (relaycrypt_spawn_worker()) {
+        ++workers_started;
+      } else {
+        /* If for some reason we can't start one, don't try any more */
+        break;
+      }
+    }
+    /* Adjust the worker count */
+    rc_dispatch->num_workers += workers_started;
+  } else if (threads < rc_dispatch->num_workers) {
+    /*
+     * We need to tell some worker threads to die; this is the more complex
+     * case because we should kill idle workers first so they can go away
+     * immediately, and only after the workers in RELAYCRYPT_WORKER_IDLE
+     * or RELAYCRYPT_WORKER_STARTING should we set exit_flag on the worker.
+     * 
+     * Count how many we've told to die so far in workers_slain, and how
+     * many passes we've made in pass:
+     *
+     * First pass:
+     *
+     *   Only kill workers in RELAYCRYPT_WORKER_IDLE with no exit flag set.
+     *
+     * Second pass:
+     *
+     *   Now RELAYCRYPT_WORKER_STARTING with no exit flag already set is
+     *   eligible as well.
+     *
+     * Third pass:
+     *
+     *   Workers in RELAYCRYPT_WORKER_WORKING become eligible as well; these
+     *   will be delayed exits when they finish their job or notice
+     *   exit_flag.
+     *
+     * We use the helper function relaycrypt_worker_eligible_for_death() with
+     * the worker and our pass number; only call this on a worker for which the
+     * lock is held.
+     */
+
+    workers_slain = pass = 0;
+    curr = NULL;
+
+    while ((workers_slain < rc_dispatch->num_workers - threads) &&
+           (pass < max_pass)) {
+      if (!curr) {
+        /* We're just starting this pass, so put it at the head of the list */
+        curr = LIST_FIRST(&(rc_dispatch->threads));
+      }
+
+      /*
+       * It's safe to check this without locking curr, since this function is
+       * the only thing that changes exit_flag, and it holds threads_lock for
+       * the dispatcher, so there can't be another instance active in this
+       * loop.
+       */
+      if (curr && !(curr->exit_flag)) {
+        /*
+         * We do need to have the worker lock for this bit, since it looks
+         * at the worker state and the worker thread itself might mess with
+         * that.
+         */
+        tor_assert(curr->thread_lock);
+        tor_mutex_acquire(curr->thread_lock);
+        /* Can we pack this one off to Hades on this pass? */
+        if (relaycrypt_worker_eligible_for_death(curr, pass)) {
+          /* Yes! */
+          if (relaycrypt_slay_worker(curr)) {
+            ++workers_slain;
+          }
+        }
+        /* No, we'll have to try on a future pass */
+        tor_mutex_release(curr->thread_lock);
+      }
+      /* else it's already on the way out, so we can't kill it */
+
+      /*
+       * Now advance curr, and if we hit the end of the list, also advance
+       * pass, and we'll start curr over at the head of the list on the next
+       * iteration if we aren't finished yet.
+       */
+      if (curr) curr = LIST_NEXT(curr, list_entry);
+
+      if (!curr) {
+        ++pass;
+      }
+    }
+
+    /* Adjust the worker count */
+    rc_dispatch->num_workers -= workers_slain;
+  }
+  /* else no change, so nothing to do */
+
+  /* Release the lock, and we're done */
+  tor_mutex_release(rc_dispatch->threads_lock);
 }
 
 /*
