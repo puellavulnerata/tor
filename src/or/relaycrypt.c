@@ -293,12 +293,18 @@ relaycrypt_init(void)
 
   rc_dispatch = tor_malloc_zero(sizeof(*rc_dispatch));
 
+  /* We'll need threads_lock */
+  rc_dispatch->threads_lock = tor_mutex_new();
   /*
    * We do not create any threads here - that happens in
    * relaycrypt_set_num_workers() later on.  Just initialize
    * an empty list for now.
    */
+  rc_dispatch->num_workers = 0;
   LIST_INIT(&(rc_dispatch->threads));
+
+  /* We'll need jobs_lock too, but ... TODO implement job list */
+  rc_dispatch->jobs_lock = tor_mutex_new();
 }
 
 /**
@@ -315,6 +321,9 @@ relaycrypt_free_all(void)
     /* Wait for them to exit and join them */
     relaycrypt_join_workers(1);
     /* TODO free job/worker lists */
+    /* Free the locks */
+    tor_mutex_free(rc_dispatch->threads_lock);
+    tor_mutex_free(rc_dispatch->jobs_lock);
     tor_free(rc_dispatch);
     rc_dispatch = NULL;
   }
