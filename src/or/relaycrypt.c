@@ -400,7 +400,7 @@ relaycrypt_worker_eligible_for_death(relaycrypt_thread_t *worker,
  * to shut down as needed; if it shuts workers down it does not wait for them
  * to exit before returning, but no more jobs will be dispatched to them.
  */
- 
+
 void
 relaycrypt_set_num_workers(int threads)
 {
@@ -435,7 +435,7 @@ relaycrypt_set_num_workers(int threads)
      * case because we should kill idle workers first so they can go away
      * immediately, and only after the workers in RELAYCRYPT_WORKER_IDLE
      * or RELAYCRYPT_WORKER_STARTING should we set exit_flag on the worker.
-     * 
+     *
      * Count how many we've told to die so far in workers_slain, and how
      * many passes we've made in pass:
      *
