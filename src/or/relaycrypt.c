@@ -429,6 +429,88 @@ relaycrypt_worker_eligible_for_death(relaycrypt_thread_t *worker,
 }
 
 /**
+ * Kill a worker or schedule it to exit if possible, and return 1 if we
+ * did so or 0 otherwise; this is used as a helper function for
+ * relaycrypt_set_num_workers().  Call this while holding worker->
+ * thread_lock.
+ */
+
+static int
+relaycrypt_slay_worker(relaycrypt_thread_t *worker)
+{
+  int rv = 0;
+
+  tor_assert(worker);
+
+  /*
+   * We already hold the lock, so we just have to check the state of
+   * the worker, and adjust the state and/or exit_flag and possibly
+   * signal the condition variable.  Then when we release the lock,
+   * nature takes its course.
+   */
+  switch (worker->state) {
+    case RELAYCRYPT_WORKER_STARTING:
+      /* We'll need a wire coat hanger for this... or maybe just exit_flag */
+      if (!(worker->exit_flag)) {
+        worker->exit_flag = 1;
+        /*
+         * When it tries to get its first job, it'll see this instead and go
+         * directly to RELAYCRYPT_WORKER_DEAD.
+         */
+        rv = 1;
+      }
+      /* else someone already got here */
+      break;
+    case RELAYCRYPT_WORKER_IDLE:
+      /*
+       * Yay, we get to wake it up and murder it while it's still stumbling
+       * around cursing and trying to find coffee!
+       *
+       * Set exit_flag and signal; when it wakes up and sees it's still
+       * in RELAYCRYPT_WORKER_IDLE and has exit flag, off it goes.
+       */
+      if (!(worker->exit_flag)) {
+        worker->exit_flag = 1;
+        rv = 1;
+      }
+      /*
+       * Else we must have gotten to it before it re-acquired the lock
+       * after waking up.  Fortunately, executions are idempotent.
+       */
+      tor_cond_signal_one(worker->thread_cond);
+      break;
+    case RELAYCRYPT_WORKER_WORKING:
+      /*
+       * It's working, so we set exit_flag to subtly suggest that coffins
+       * are cheaper than retirement homes.  It'll get the bad news when it
+       * finishes and requests a new job, and then go to
+       * RELAYCRYPT_WORKER_DEAD and exit.
+       */
+      if (!(worker->exit_flag)) {
+        worker->exit_flag = 1;
+        rv = 1;
+      }
+      /* or else it has to die twice? */
+      break;
+    case RELAYCRYPT_WORKER_DEAD:
+      /*
+       * This worker is no more; it has ceased to be.  It's gone to meet its
+       * top stack frame.  It's run down the curtain and joined the free
+       * memory pool.  This is an ex-thread!
+       *
+       * Yeah, this is a no-op case.
+       */
+      break;
+    default:
+      /* Bogus state */
+      tor_assert(0);
+      break;
+  }
+
+  return rv;
+}
+
+/**
  * Create a new worker thread and add it to the dispatcher list; this is
  * a helper function for relaycrypt_set_num_workers(), and you should call
  * it while holding rc_dispatch->threads_lock.
