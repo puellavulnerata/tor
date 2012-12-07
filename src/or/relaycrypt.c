@@ -152,6 +152,15 @@ struct relaycrypt_thread_s {
    * Lock this for worker state access
    */
   tor_mutex_t *thread_lock;
+  /*
+   * Condition variable to wake up this worker; when the worker blocks
+   * in relaycrypt_worker_get_job(), it will wait on this while holding
+   * thread_lock.  To wake it up (if you are either queueing a job and
+   * find this idle thread to start it right away, or you are
+   * relaycrypt_slay_worker() and have just set exit_flag, signal this
+   * and then release the lock to let the worker thread run.
+   */
+  tor_cond_t *thread_cond;
 
   /*
    * State of this worker:
@@ -163,7 +172,16 @@ struct relaycrypt_thread_s {
    *
    * RELAYCRYPT_WORKER_IDLE:
    *
-   *   The worker is waiting to be dispatched; the job field should be NULL
+   *   The worker is waiting to be dispatched; the job field should be NULL.
+   *   The worker thread should enter this state right before it waits on
+   *   thread_cond, which releases and re-acquires thread_lock, so if from
+   *   some other thread you see state == RELAYCRYPT_WORKER_IDLE *while
+   *   holding thread_lock*, it is safe to infer that the worker is currently
+   *   waiting on the condition variable, or the condition variable has been
+   *   signalled already and the worker is waiting to re-acquire the lock.
+   *   If only the main thread or the worker thread ever hold thread_lock and
+   *   only the main thread ever signals thread_cond, then only the former
+   *   case is possible.
    *
    * RELAYCRYPT_WORKER_WORKING:
    *
@@ -424,6 +442,7 @@ relaycrypt_spawn_worker(void)
 
   worker = tor_malloc_zero(sizeof(*worker));
   worker->thread_lock = tor_mutex_new();
+  worker->thread_cond = tor_cond_new();
   /*
    * Acquire the lock so that once we start the thread, it can't look
    * at its own state until we're done inserting it into the list.
