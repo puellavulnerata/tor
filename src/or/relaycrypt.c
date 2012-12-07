@@ -249,8 +249,14 @@ static void relaycrypt_join_workers(int block);
  */
 
 /**
+ * Entry point to satisfy thread func prototype and call worker_main
+ */
+
+static void * relaycrypt_worker_entry_point(void *arg);
+
+/**
  * Main loop for relaycrypt worker threads; takes the thread structure
- * as an argument and returns when the thread exits.
+ * as an argument and returns NULL when the thread exits.
  */
 
 static void relaycrypt_worker_main(relaycrypt_thread_t *thr);
@@ -405,6 +411,54 @@ relaycrypt_worker_eligible_for_death(relaycrypt_thread_t *worker,
 }
 
 /**
+ * Create a new worker thread and add it to the dispatcher list; this is
+ * a helper function for relaycrypt_set_num_workers(), and you should call
+ * it while holding rc_dispatch->threads_lock.
+ */
+
+static int
+relaycrypt_spawn_worker(void)
+{
+  relaycrypt_thread_t *worker;
+  int rv = 0;
+
+  worker = tor_malloc_zero(sizeof(*worker));
+  worker->thread_lock = tor_mutex_new();
+  /*
+   * Acquire the lock so that once we start the thread, it can't look
+   * at its own state until we're done inserting it into the list.
+   */
+  tor_mutex_acquire(worker->thread_lock);
+  /*
+   * Set the initial state; the worker will go to RELAYCRYPT_WORKER_IDLE
+   * later.
+   */
+  worker->state = RELAYCRYPT_WORKER_STARTING;
+  /* Start up the thread */
+  worker->thread = tor_thread_start(relaycrypt_worker_entry_point, worker);
+  /* Success? */
+  if (worker->thread) {
+    rv = 1;
+    /* Insert it */
+    LIST_INSERT_HEAD(&(rc_dispatch->threads), worker, list_entry);
+  }
+  /* We're done now, release the lock and let the worker get started */
+  tor_mutex_release(worker->thread_lock);
+
+  /* If we failed, log a warning and free */
+  if (rv == 0) {
+    log_warn(LD_GENERAL,
+             "Threaded relaycrypt failed to spawn a worker (had %d already)",
+             rc_dispatch->num_workers);
+    tor_mutex_free(worker->thread_lock);
+    tor_free(worker);
+  }
+
+  /* Return the status code */
+  return rv;
+}
+
+/**
  * Set the number of worker threads; this may start more workers or tell some
  * to shut down as needed; if it shuts workers down it does not wait for them
  * to exit before returning, but no more jobs will be dispatched to them.
@@ -528,6 +582,21 @@ relaycrypt_set_num_workers(int threads)
 /*
  * Function implementations (worker thread functions)
  */
+
+/**
+ * Entry point to satisfy thread func prototype and call worker_main
+ */
+
+static void *
+relaycrypt_worker_entry_point(void *arg)
+{
+  relaycrypt_thread_t *thr = (relaycrypt_thread_t *)arg;
+
+  tor_assert(thr);
+  relaycrypt_worker_main(thr);
+
+  return NULL;
+}
 
 /**
  * Main loop for relaycrypt worker threads; takes the thread structure
