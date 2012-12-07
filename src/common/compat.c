@@ -2718,16 +2718,24 @@ tor_mutex_free(tor_mutex_t *m)
   tor_mutex_uninit(m);
   tor_free(m);
 }
-#endif
 
 /* Conditions. */
-#ifdef USE_PTHREADS
-#if 0
-/** Cross-platform condition implementation. */
-struct tor_cond_t {
+#if defined(USE_PTHREADS)
+
+/**
+ * Condition implementation for pthreads; on Win32 we'll have to make them
+ * out of semaphores or critical sections, and on POSIX we can make semaphores
+ * out of condition variables if we need them.
+ */
+
+struct tor_cond_s {
   pthread_cond_t cond;
 };
-/** Return a newly allocated condition, with nobody waiting on it. */
+
+/**
+ * Return a newly allocated condition, with nobody waiting on it.
+ */
+
 tor_cond_t *
 tor_cond_new(void)
 {
@@ -2738,7 +2746,11 @@ tor_cond_new(void)
   }
   return cond;
 }
-/** Release all resources held by <b>cond</b>. */
+
+/**
+ * Release all resources held by <b>cond</b>.
+ */
+
 void
 tor_cond_free(tor_cond_t *cond)
 {
@@ -2750,28 +2762,43 @@ tor_cond_free(tor_cond_t *cond)
   }
   tor_free(cond);
 }
-/** Wait until one of the tor_cond_signal functions is called on <b>cond</b>.
+
+/**
+ * Wait until one of the tor_cond_signal functions is called on <b>cond</b>.
  * All waiters on the condition must wait holding the same <b>mutex</b>.
- * Returns 0 on success, negative on failure. */
+ * Returns 0 on success, negative on failure.
+ */
+
 int
 tor_cond_wait(tor_cond_t *cond, tor_mutex_t *mutex)
 {
   return pthread_cond_wait(&cond->cond, &mutex->mutex) ? -1 : 0;
 }
-/** Wake up one of the waiters on <b>cond</b>. */
+
+/**
+ * Wake up one of the waiters on <b>cond</b>.
+ */
+
 void
 tor_cond_signal_one(tor_cond_t *cond)
 {
   pthread_cond_signal(&cond->cond);
 }
-/** Wake up all of the waiters on <b>cond</b>. */
+
+/**
+ * Wake up all of the waiters on <b>cond</b>.
+ */
+
 void
 tor_cond_signal_all(tor_cond_t *cond)
 {
   pthread_cond_broadcast(&cond->cond);
 }
-#endif
-/** Set up common structures for use by threading. */
+
+/**
+ * Set up common structures for use by threading (POSIX version).
+ */
+
 void
 tor_threads_init(void)
 {
@@ -2782,10 +2809,19 @@ tor_threads_init(void)
     set_main_thread();
   }
 }
+
 #elif defined(USE_WIN32_THREADS)
+
+/*
+ * TODO build proper condition variables out of Win32 semaphores, or use the
+ * critical section version once I'm sure it works.
+ */
+
+# error  Compiling with threads but we have not implemented Win32 conditions
+
 #if 0
 static DWORD cond_event_tls_index;
-struct tor_cond_t {
+struct tor_cond_s {
   CRITICAL_SECTION mutex;
   smartlist_t *events;
 };
@@ -2867,6 +2903,11 @@ tor_cond_signal_all(tor_cond_t *cond)
   LeaveCriticalSection(&cond->mutex);
 }
 #endif
+
+/**
+ * Win32 version of tor_threads_init()
+ */
+
 void
 tor_threads_init(void)
 {
@@ -2875,9 +2916,10 @@ tor_threads_init(void)
 #endif
   set_main_thread();
 }
-#endif
 
-#ifdef TOR_IS_MULTITHREADED
+#else
+# error Compiling with threads but no condition variable API available
+#endif
 
 /**
  * Allocate a new tor_thread_t, create a thread and start it at func with
