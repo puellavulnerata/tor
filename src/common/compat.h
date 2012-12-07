@@ -679,14 +679,12 @@ void set_main_thread(void);
 int in_main_thread(void);
 
 #ifdef TOR_IS_MULTITHREADED
-#if 0
-typedef struct tor_cond_t tor_cond_t;
+typedef struct tor_cond_s tor_cond_t;
 tor_cond_t *tor_cond_new(void);
 void tor_cond_free(tor_cond_t *cond);
 int tor_cond_wait(tor_cond_t *cond, tor_mutex_t *mutex);
 void tor_cond_signal_one(tor_cond_t *cond);
 void tor_cond_signal_all(tor_cond_t *cond);
-#endif
 #endif
 
 /** Macros for MIN/MAX.  Never use these when the arguments could have
