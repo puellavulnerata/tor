@@ -481,6 +481,11 @@ relaycrypt_spawn_worker(void)
  * Set the number of worker threads; this may start more workers or tell some
  * to shut down as needed; if it shuts workers down it does not wait for them
  * to exit before returning, but no more jobs will be dispatched to them.
+ *
+ * TODO Important edge case!: make sure that when the number of threads goes
+ * to zero *and all the slain threads have actually exited*, we finish off
+ * any queued jobs from the main thread to complete the transition to non-
+ * threaded mode cleanly.
  */
 
 void
