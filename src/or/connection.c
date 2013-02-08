@@ -2876,9 +2876,10 @@ connection_read_to_buf(connection_t *conn, ssize_t *max_to_read,
   size_t slack_in_buf, more_to_read;
   size_t n_read = 0, n_written = 0;
 
-  if (at_most == -1) { /* we need to initialize it */
+  if (at_most < 0) { /* we need to initialize it */
     /* how many bytes are we allowed to read? */
     at_most = connection_bucket_read_limit(conn, approx_time());
+    *max_to_read = at_most;
   }
 
   slack_in_buf = buf_slack(conn->inbuf);
@@ -2989,7 +2990,7 @@ connection_read_to_buf(connection_t *conn, ssize_t *max_to_read,
 
   if (n_read > 0) {
      /* change *max_to_read */
-    *max_to_read = at_most - n_read;
+    *max_to_read -= n_read;
 
     /* Update edge_conn->n_read */
     if (conn->type == CONN_TYPE_AP) {
@@ -3004,9 +3005,10 @@ connection_read_to_buf(connection_t *conn, ssize_t *max_to_read,
 
   connection_buckets_decrement(conn, approx_time(), n_read, n_written);
 
-  if (more_to_read && result == at_most) {
+  if (more_to_read && result >= at_most &&
+      more_to_read > (size_t)(result - at_most)) {
     slack_in_buf = buf_slack(conn->inbuf);
-    at_most = more_to_read;
+    at_most = more_to_read - (result - at_most);
     goto again;
   }
 
