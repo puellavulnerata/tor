@@ -1,0 +1,3 @@
+  o Minor bugfixes:
+    - When reading in connection_read_to_buf(), do the right thing when there
+      excess bytes available.  Fixes bug 7729.
