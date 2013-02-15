@@ -885,7 +885,8 @@ vote_tweaks_for_v3ns(networkstatus_t *v, int voter, time_t now)
       tor_free(vrs);
       vrs = smartlist_get(v->routerstatus_list, 0);
       memset(vrs->status.descriptor_digest, (int)'Z', DIGEST_LEN);
-      test_assert(router_add_to_routerlist(generate_ri_from_rs(vrs), &msg,0,0)>=0);
+      test_assert(router_add_to_routerlist(
+                  generate_ri_from_rs(vrs), &msg,0,0) >= 0);
     }
   }
 
@@ -896,7 +897,7 @@ vote_tweaks_for_v3ns(networkstatus_t *v, int voter, time_t now)
 /**
  * Test a parsed vote_routerstatus_t for v3_networkstatus test
  */
-static void 
+static void
 test_vrs_for_v3ns(vote_routerstatus_t *vrs, int voter, time_t now)
 {
   routerstatus_t *rs;
