@@ -115,6 +115,9 @@ struct circuitmux_s {
    */
   struct circuit_t *active_circuits_head, *active_circuits_tail;
 
+  /** List of queued destroy cells */
+  cell_queue_t destroy_cell_queue;
+
   /*
    * Circuitmux policy; if this is non-NULL, it can override the built-
    * in round-robin active circuits behavior.  This is how EWMA works in
@@ -1743,3 +1746,17 @@ circuitmux_assert_okay_pass_three(circuitmux_t *cmux)
   }
 }
 
+/*DOCDOC */
+void
+circuitmux_append_destroy_cell(circuitmux_t *cmux, circid_t circ_id,
+                               uint8_t reason)
+{
+  cell_t cell;
+  memset(&cell, 0, sizeof(cell_t));
+  cell.circ_id = circ_id;
+  cell.command = CELL_DESTROY;
+  cell.payload[0] = (uint8_t) reason;
+
+  /* XXXXXX ???????? XXXXX ???? */
+  (void)cmux;
+}
