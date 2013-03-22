@@ -19,7 +19,12 @@ typedef fp_pair_map_entry_t *fp_pair_map_iter_t;
 
 fp_pair_map_t * fp_pair_map_new(void);
 void * fp_pair_map_set(fp_pair_map_t *map, const fp_pair_t *key, void *val);
+void * fp_pair_map_set_by_digests(fp_pair_map_t *map,
+                                  const char *first, const char *second,
+                                  void *val);
 void * fp_pair_map_get(const fp_pair_map_t *map, const fp_pair_t *key);
+void * fp_pair_map_get_by_digests(const fp_pair_map_t *map,
+                                  const char *first, const char *second);
 void * fp_pair_map_remove(fp_pair_map_t *map, const fp_pair_t *key);
 void fp_pair_map_free(fp_pair_map_t *map, void (*free_val)(void*));
 int fp_pair_map_isempty(const fp_pair_map_t *map);

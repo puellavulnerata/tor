@@ -99,6 +99,42 @@ fp_pair_map_set(fp_pair_map_t *map, const fp_pair_t *key, void *val)
     return oldval;
 }
 
+/** Set the current value for the key (first, second) to val; returns
+ * the previous value for key if one was set, or NULL if one was not.
+ */
+
+void *
+fp_pair_map_set_by_digests(fp_pair_map_t *map,
+                           const char *first, const char *second,
+                           void *val)
+{
+    fp_pair_map_entry_t *resolve;
+    fp_pair_map_entry_t search;
+    void *oldval;
+
+    tor_assert(map);
+    tor_assert(first);
+    tor_assert(second);
+    tor_assert(val);
+
+    memcpy(search.key.first, first, DIGEST_LEN);
+    memcpy(search.key.second, second, DIGEST_LEN);
+    resolve = HT_FIND(fp_pair_map_impl, &(map->head), &search);
+    if (resolve) {
+      oldval = resolve->val;
+      resolve->val = val;
+    } else {
+      resolve = tor_malloc_zero(sizeof(fp_pair_map_entry_t));
+      memcpy(resolve->key.first, first, DIGEST_LEN);
+      memcpy(resolve->key.second, second, DIGEST_LEN);
+      resolve->val = val;
+      HT_INSERT(fp_pair_map_impl, &(map->head), resolve);
+      oldval = NULL;
+    }
+
+    return oldval;
+}
+
 /** Return the current value associated with key, or NULL if no value is set.
  */
 
@@ -113,6 +149,30 @@ fp_pair_map_get(const fp_pair_map_t *map, const fp_pair_t *key)
   tor_assert(key);
 
   memcpy(&(search.key), key, sizeof(*key));
+  resolve = HT_FIND(fp_pair_map_impl, &(map->head), &search);
+  if (resolve) val = resolve->val;
+
+  return val;
+}
+
+/** Return the current value associated the key (first, second), or
+ * NULL if no value is set.
+ */
+
+void *
+fp_pair_map_get_by_digests(const fp_pair_map_t *map,
+                           const char *first, const char *second)
+{
+  fp_pair_map_entry_t *resolve;
+  fp_pair_map_entry_t search;
+  void *val = NULL;
+
+  tor_assert(map);
+  tor_assert(first);
+  tor_assert(second);
+
+  memcpy(search.key.first, first, DIGEST_LEN);
+  memcpy(search.key.second, second, DIGEST_LEN);
   resolve = HT_FIND(fp_pair_map_impl, &(map->head), &search);
   if (resolve) val = resolve->val;
 
