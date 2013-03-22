@@ -2672,7 +2672,7 @@ channel_send_destroy(circid_t circ_id, channel_t *chan, int reason)
         chan->state == CHANNEL_STATE_ERROR) &&
       chan->cmux) {
     channel_note_destroy_pending(chan, circ_id);
-    circuitmux_append_destroy_cell(chan->cmux, circ_id, reason);
+    circuitmux_append_destroy_cell(chan, chan->cmux, circ_id, reason);
     log_debug(LD_OR,
               "Sending destroy (circID %u) on channel %p "
               "(global ID " U64_FORMAT ")",
