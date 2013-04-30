@@ -1743,3 +1743,16 @@ circuitmux_assert_okay_pass_three(circuitmux_t *cmux)
   }
 }
 
+/**
+ * Return a circuitmux_policy_t pointer by policy name, for use parsing the
+ * config file.
+ */
+
+circuitmux_policy_t *
+circuitmux_get_policy_by_name(const char *polname)
+{
+  /* TODO implement some policies */
+
+  return NULL;
+}
+

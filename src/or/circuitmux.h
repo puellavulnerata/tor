@@ -132,5 +132,8 @@ void circuitmux_clear_num_cells(circuitmux_t *cmux, circuit_t *circ);
 void circuitmux_set_num_cells(circuitmux_t *cmux, circuit_t *circ,
                               unsigned int n_cells);
 
+/* Query named cmux algorithms */
+circuitmux_policy_t * circuitmux_get_policy_by_name(const char *polname);
+
 #endif /* TOR_CIRCUITMUX_H */
 

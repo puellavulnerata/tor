@@ -405,6 +405,7 @@ static config_var_t option_vars_[] = {
   V(UseEntryGuardsAsDirGuards,   BOOL,     "1"),
   V(UseMicrodescriptors,         AUTOBOOL, "auto"),
   V(UseNTorHandshake,            AUTOBOOL, "1"),
+  V(UseSchedAlgorithm,           STRING,   "default"),
   V(User,                        STRING,   NULL),
   V(UserspaceIOCPBuffers,        BOOL,     "0"),
   VAR("V1AuthoritativeDirectory",BOOL, V1AuthoritativeDir,   "0"),
@@ -1244,6 +1245,7 @@ options_act(const or_options_t *old_options)
   const int transition_affects_workers =
     old_options && options_transition_affects_workers(old_options, options);
   int old_ewma_enabled;
+  circuitmux_policy_t *cmux_policy = NULL;
 
   /* disable ptrace and later, other basic debugging techniques */
   {
@@ -1454,15 +1456,29 @@ options_act(const or_options_t *old_options)
     connection_bucket_init();
 #endif
 
-  old_ewma_enabled = cell_ewma_enabled();
-  /* Change the cell EWMA settings */
-  cell_ewma_set_scale_factor(options, networkstatus_get_latest_consensus());
-  /* If we just enabled ewma, set the cmux policy on all active channels */
-  if (cell_ewma_enabled() && !old_ewma_enabled) {
-    channel_set_cmux_policy_everywhere(&ewma_policy);
-  } else if (!cell_ewma_enabled() && old_ewma_enabled) {
-    /* Turn it off everywhere */
-    channel_set_cmux_policy_everywhere(NULL);
+  if (options->UseSchedAlgorithm == NULL ||
+      strcmp(options->UseSchedAlgorithm, "default") == 0) {
+    old_ewma_enabled = cell_ewma_enabled();
+    /* Change the cell EWMA settings */
+    cell_ewma_set_scale_factor(options, networkstatus_get_latest_consensus());
+    /* If we just enabled ewma, set the cmux policy on all active channels */
+    if (cell_ewma_enabled() && !old_ewma_enabled) {
+      channel_set_cmux_policy_everywhere(&ewma_policy);
+    } else if (!cell_ewma_enabled() && old_ewma_enabled) {
+      /* Turn it off everywhere */
+      channel_set_cmux_policy_everywhere(NULL);
+    }
+  } else {
+    cmux_policy = circuitmux_get_policy_by_name(options->UseSchedAlgorithm);
+    if (cmux_policy) {
+      channel_set_cmux_policy_everywhere(cmux_policy);
+    } else {
+      log_warn(LD_CONFIG,
+               "Unknown scheduling algorithm \"%s\"; "
+               "we'll revert to round-robin.",
+               options->UseSchedAlgorithm);
+      channel_set_cmux_policy_everywhere(NULL);
+    }
   }
 
   /* Update the BridgePassword's hashed version as needed.  We store this as a
