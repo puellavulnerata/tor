@@ -1751,6 +1751,8 @@ circuitmux_assert_okay_pass_three(circuitmux_t *cmux)
 circuitmux_policy_t *
 circuitmux_get_policy_by_name(const char *polname)
 {
+  tor_assert(polname);
+
   /* TODO implement some policies */
 
   return NULL;
