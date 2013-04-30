@@ -1469,15 +1469,23 @@ options_act(const or_options_t *old_options)
       channel_set_cmux_policy_everywhere(NULL);
     }
   } else {
-    cmux_policy = circuitmux_get_policy_by_name(options->UseSchedAlgorithm);
-    if (cmux_policy) {
-      channel_set_cmux_policy_everywhere(cmux_policy);
-    } else {
-      log_warn(LD_CONFIG,
-               "Unknown scheduling algorithm \"%s\"; "
-               "we'll revert to round-robin.",
-               options->UseSchedAlgorithm);
+    if (strcmp(options->UseSchedAlgorithm, "roundrobin") == 0) {
+      /*
+       * Special case to let you use the default roundrobin scheduler
+       * without the warning message below.
+       */
       channel_set_cmux_policy_everywhere(NULL);
+    } else {
+      cmux_policy = circuitmux_get_policy_by_name(options->UseSchedAlgorithm);
+      if (cmux_policy) {
+        channel_set_cmux_policy_everywhere(cmux_policy);
+      } else {
+        log_warn(LD_CONFIG,
+                 "Unknown scheduling algorithm \"%s\"; "
+                 "we'll revert to round-robin.",
+                 options->UseSchedAlgorithm);
+        channel_set_cmux_policy_everywhere(NULL);
+      }
     }
   }
 
