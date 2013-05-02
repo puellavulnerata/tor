@@ -19,6 +19,7 @@ LIBTOR_OBJECTS = \
   circuitlist.obj \
   circuitmux.obj \
   circuitmux_ewma.obj \
+  circuitmux_wait_time.obj \
   circuitstats.obj \
   circuituse.obj \
   command.obj \

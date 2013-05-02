@@ -30,6 +30,7 @@ src_or_libtor_a_SOURCES = \
 	src/or/circuitlist.c				\
 	src/or/circuitmux.c				\
 	src/or/circuitmux_ewma.c			\
+	src/or/circuitmux_wait_time.c			\
 	src/or/circuitstats.c				\
 	src/or/circuituse.c				\
 	src/or/command.c				\
@@ -110,6 +111,7 @@ ORHEADERS = \
 	src/or/circuitlist.h				\
 	src/or/circuitmux.h				\
 	src/or/circuitmux_ewma.h			\
+	src/or/circuitmux_wait_time.h			\
 	src/or/circuitstats.h				\
 	src/or/circuituse.h				\
 	src/or/command.h				\

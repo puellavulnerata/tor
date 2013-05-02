@@ -10,6 +10,7 @@
 #include "channel.h"
 #include "circuitlist.h"
 #include "circuitmux.h"
+#include "circuitmux_wait_time.h"
 
 /*
  * Private typedefs for circuitmux.c
@@ -1753,7 +1754,11 @@ circuitmux_get_policy_by_name(const char *polname)
 {
   tor_assert(polname);
 
-  /* TODO implement some policies */
+  if (strcmp(polname, "waittime") == 0) {
+    /* Use the wait-time policy */
+    return &wt_policy;
+  }
+  /* else unknown, return NULL */
 
   return NULL;
 }
