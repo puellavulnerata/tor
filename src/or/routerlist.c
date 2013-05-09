@@ -151,7 +151,6 @@ static void
 download_status_reset_by_sk_in_cl(cert_list_t *cl, const char *digest)
 {
   download_status_t *dlstatus = NULL;
-  download_status_t dlstatus_tmp;
 
   tor_assert(cl);
   tor_assert(digest);
@@ -165,8 +164,8 @@ download_status_reset_by_sk_in_cl(cert_list_t *cl, const char *digest)
   /* Got one? */
   if (!dlstatus) {
     /* Insert before we reset */
-    memset(&dlstatus_tmp, 0, sizeof(dlstatus_tmp));
-    dlstatus = dsmap_set(cl->dl_status_map, digest, &dlstatus_tmp);
+    dlstatus = tor_malloc_zero(sizeof(*dlstatus));
+    dlstatus = dsmap_set(cl->dl_status_map, digest, dlstatus);
   }
   tor_assert(dlstatus);
   /* Go ahead and reset it */
