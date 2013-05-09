@@ -663,11 +663,11 @@ authority_certs_fetch_missing(networkstatus_t *status, time_t now)
                                              sig->signing_key_digest);
         if (cert) {
           if (now < cert->expires)
-            download_status_reset_by_sk_in_cl(cl, cert->signing_key_digest);
+            download_status_reset_by_sk_in_cl(cl, sig->signing_key_digest);
           continue;
         }
         if (download_status_is_ready_by_sk_in_cl(
-              cl, cert->signing_key_digest,
+              cl, sig->signing_key_digest,
               now, MAX_CERT_DL_FAILURES) &&
             !fp_pair_map_get_by_digests(pending_cert,
                                         voter->identity_digest,
