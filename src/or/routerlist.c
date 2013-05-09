@@ -557,6 +557,8 @@ authority_cert_dl_failed(const char *id_digest,
 {
   cert_list_t *cl;
   download_status_t *dlstatus = NULL;
+  char id_digest_str[2*DIGEST_LEN+1];
+  char sk_digest_str[2*DIGEST_LEN+1];
 
   if (!trusted_dir_certs ||
       !(cl = digestmap_get(trusted_dir_certs, id_digest)))
@@ -579,12 +581,18 @@ authority_cert_dl_failed(const char *id_digest,
     if (dlstatus) {
       download_status_failed(dlstatus, status);
     } else {
+      /*
+       * Do this rather than hex_str(), since hex_str clobbers
+       * old results and we call twice in the param list.
+       */
+      base16_encode(id_digest_str, sizeof(id_digest_str),
+                    id_digest, DIGEST_LEN);
+      base16_encode(sk_digest_str, sizeof(sk_digest_str),
+                    signing_key_digest, DIGEST_LEN);
       log_warn(LD_DIR,
                "Got failure for cert fetch with (fp,sk) = (%s,%s), with "
                "status %d, but knew nothing about the download.",
-               hex_str(id_digest, DIGEST_LEN),
-               hex_str(signing_key_digest, DIGEST_LEN),
-               status);
+               id_digest_str, sk_digest_str, status);
     }
   }
 }
