@@ -165,7 +165,7 @@ download_status_reset_by_sk_in_cl(cert_list_t *cl, const char *digest)
   if (!dlstatus) {
     /* Insert before we reset */
     dlstatus = tor_malloc_zero(sizeof(*dlstatus));
-    dlstatus = dsmap_set(cl->dl_status_map, digest, dlstatus);
+    dsmap_set(cl->dl_status_map, digest, dlstatus);
   }
   tor_assert(dlstatus);
   /* Go ahead and reset it */
