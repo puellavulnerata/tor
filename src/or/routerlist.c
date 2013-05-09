@@ -200,8 +200,12 @@ download_status_is_ready_by_sk_in_cl(cert_list_t *cl,
   } else {
     /*
      * If we don't know anything about it, return 1, since we haven't
-     * tried this one before.
+     * tried this one before.  We need to create a new entry here,
+     * too.
      */
+    dlstatus = tor_malloc_zero(sizeof(*dlstatus));
+    download_status_reset(dlstatus);
+    dsmap_set(cl->dl_status_map, digest, dlstatus);
     rv = 1;
   }
 
