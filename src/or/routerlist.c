@@ -795,8 +795,9 @@ authority_certs_fetch_missing(networkstatus_t *status, time_t now)
 
   /* Do downloads by identity digest */
   if (smartlist_len(missing_id_digests) > 0) {
-
+    int need_plus = 0;
     smartlist_t *fps = smartlist_new();
+
     smartlist_add(fps, tor_strdup("fp/"));
 
     SMARTLIST_FOREACH_BEGIN(missing_id_digests, const char *, d) {
@@ -808,14 +809,19 @@ authority_certs_fetch_missing(networkstatus_t *status, time_t now)
       base16_encode(id_digest_str, sizeof(id_digest_str),
                     d, DIGEST_LEN);
 
-      /* No need for tor_asprintf() in this case */
-      fp = tor_strdup(id_digest_str);
+      if (need_plus) {
+        tor_asprintf(&fp, "+%s", id_digest_str);
+      } else {
+        /* No need for tor_asprintf() in this case; first one gets no '+' */
+        fp = tor_strdup(id_digest_str);
+        need_plus = 1;
+      }
 
       smartlist_add(fps, fp);
     } SMARTLIST_FOREACH_END(d);
 
     if (smartlist_len(fps) > 1) {
-      resource = smartlist_join_strings(fps, "+", 0, NULL);
+      resource = smartlist_join_strings(fps, "", 0, NULL);
       directory_get_from_dirserver(DIR_PURPOSE_FETCH_CERTIFICATE, 0,
                                    resource, PDS_RETRY_IF_NO_SERVERS);
       tor_free(resource);
@@ -828,6 +834,7 @@ authority_certs_fetch_missing(networkstatus_t *status, time_t now)
 
   /* Do downloads by identity digest/signing key pair */
   if (smartlist_len(missing_cert_digests) > 0) {
+    int need_plus = 0;
     smartlist_t *fp_pairs = smartlist_new();
 
     smartlist_add(fp_pairs, tor_strdup("fp-sk/"));
@@ -845,14 +852,20 @@ authority_certs_fetch_missing(networkstatus_t *status, time_t now)
                     d->second, DIGEST_LEN);
 
       /* Now tor_asprintf() */
-      tor_asprintf(&fp_pair, "%s-%s", id_digest_str, sk_digest_str);
+      if (need_plus) {
+        tor_asprintf(&fp_pair, "+%s-%s", id_digest_str, sk_digest_str);
+      } else {
+        /* First one in the list doesn't get a '+' */
+        tor_asprintf(&fp_pair, "%s-%s", id_digest_str, sk_digest_str);
+        need_plus = 1;
+      }
 
       /* Add it to the list of pairs to request */
       smartlist_add(fp_pairs, fp_pair);
     } SMARTLIST_FOREACH_END(d);
 
     if (smartlist_len(fp_pairs) > 1) {
-      resource = smartlist_join_strings(fp_pairs, "+", 0, NULL);
+      resource = smartlist_join_strings(fp_pairs, "", 0, NULL);
       directory_get_from_dirserver(DIR_PURPOSE_FETCH_CERTIFICATE, 0,
                                    resource, PDS_RETRY_IF_NO_SERVERS);
       tor_free(resource);
