@@ -637,6 +637,8 @@ authority_certs_fetch_missing(networkstatus_t *status, time_t now)
   cert_list_t *cl;
   const int cache = directory_caches_unknown_auth_certs(get_options());
   fp_pair_t *fp_tmp = NULL;
+  char id_digest_str[2*DIGEST_LEN+1];
+  char sk_digest_str[2*DIGEST_LEN+1];
 
   if (should_delay_dir_fetches(get_options()))
     return;
@@ -672,21 +674,28 @@ authority_certs_fetch_missing(networkstatus_t *status, time_t now)
             !fp_pair_map_get_by_digests(pending_cert,
                                         voter->identity_digest,
                                         sig->signing_key_digest)) {
+          /*
+           * Do this rather than hex_str(), since hex_str clobbers
+           * old results and we call twice in the param list.
+           */
+          base16_encode(id_digest_str, sizeof(id_digest_str),
+                        voter->identity_digest, DIGEST_LEN);
+          base16_encode(sk_digest_str, sizeof(sk_digest_str),
+                        sig->signing_key_digest, DIGEST_LEN);
+
           if (voter->nickname) {
             log_info(LD_DIR,
                      "We're missing a certificate from authority %s "
                      "(ID digest %s) with signing key %s: "
                      "launching request.",
-                     voter->nickname,
-                     hex_str(voter->identity_digest, DIGEST_LEN),
-                     hex_str(sig->signing_key_digest, DIGEST_LEN));
+                     voter->nickname, id_digest_str, sk_digest_str);
           } else {
             log_info(LD_DIR,
                      "We're missing a certificate from authority ID digest "
                      "%s with signing key %s: launching request.",
-                     hex_str(voter->identity_digest, DIGEST_LEN),
-                     hex_str(sig->signing_key_digest, DIGEST_LEN));
+                     id_digest_str, sk_digest_str);
           }
+
           /* Allocate a new fp_pair_t to append */
           fp_tmp = tor_malloc(sizeof(*fp_tmp));
           memcpy(fp_tmp->first, voter->identity_digest, sizeof(fp_tmp->first));
