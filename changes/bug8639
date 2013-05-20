@@ -1,0 +1,5 @@
+  o Normal bugfixes:
+     - When launching a resolve request on behalf of an AF_UNIX control
+       socket, set the address field of the new entry connection, used in
+       subsequent events, to "(Tor_internal)" rather than letting
+       tor_dup_addr() set it to "<unknown address type>".  Fixes bug 8639.
