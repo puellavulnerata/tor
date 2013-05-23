@@ -3743,8 +3743,16 @@ control_event_stream_status(entry_connection_t *conn, stream_status_event_t tp,
   }
 
   if (tp == STREAM_EVENT_NEW || tp == STREAM_EVENT_NEW_RESOLVE) {
-    tor_snprintf(addrport_buf,sizeof(addrport_buf), " SOURCE_ADDR=%s:%d",
-                 ENTRY_TO_CONN(conn)->address, ENTRY_TO_CONN(conn)->port);
+    if (ENTRY_TO_CONN(conn)->address) {
+      tor_snprintf(addrport_buf,sizeof(addrport_buf), " SOURCE_ADDR=%s:%d",
+                   ENTRY_TO_CONN(conn)->address, ENTRY_TO_CONN(conn)->port);
+    } else {
+      /*
+       * else leave it blank so control on AF_UNIX doesn't need to make
+       * something up.
+       */
+      addrport_buf[0] = '\0';
+    }
   } else {
     addrport_buf[0] = '\0';
   }
