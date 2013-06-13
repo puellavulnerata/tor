@@ -2361,6 +2361,8 @@ channel_flush_from_first_active_circuit(channel_t *chan, int max)
       cell = NULL;
       ++n_flushed;
       continue;
+      /* Update the cmux destroy counter */
+      circuitmux_notify_xmit_destroy(cmux);
     }
     /* If it returns NULL, no cells left to send */
     if (!circ) break;
