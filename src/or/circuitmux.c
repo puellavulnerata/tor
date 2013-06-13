@@ -132,7 +132,6 @@ struct circuitmux_s {
    */
   int64_t destroy_ctr;
 
-
   /*
    * Circuitmux policy; if this is non-NULL, it can override the built-
    * in round-robin active circuits behavior.  This is how EWMA works in
@@ -1863,3 +1862,4 @@ circuitmux_append_destroy_cell(channel_t *chan,
     channel_flush_from_first_active_circuit(chan, 1);
   }
 }
+
