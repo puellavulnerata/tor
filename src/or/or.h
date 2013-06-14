@@ -820,7 +820,8 @@ typedef enum {
  * midpoint before we give up and kill it.  This must be >= circwindow
  * to avoid killing innocent circuits.
  */
-#define ORCIRC_MAX_MIDDLE_CELLS CIRCWINDOW_START_MAX
+#define ORCIRC_MAX_MIDDLE_CELLS \
+  ((uint32_t)((double)(CIRCWINDOW_START_MAX)*(1.1f)))
 
 /* Cell commands.  These values are defined in tor-spec.txt. */
 #define CELL_PADDING 0
