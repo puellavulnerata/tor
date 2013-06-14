@@ -2544,29 +2544,32 @@ append_cell_to_circuit_queue(circuit_t *circ, channel_t *chan,
           /* Queueing this cell would put queue over the kill theshold */
           log_warn(LD_CIRC,
                    "Got a cell exceeding the hard cap of %u in the "
-                   "%s direction on middle circ ID %u on chan ID %lu; "
-                   "killing the circuit.",
+                   "%s direction on middle circ ID %u on chan ID "
+                   U64_FORMAT "; killing the circuit.",
                    hard_max_middle_cells,
                    (direction == CELL_DIRECTION_OUT) ? "n" : "p",
                    (direction == CELL_DIRECTION_OUT) ?
                      circ->n_circ_id : orcirc->p_circ_id,
-                   (direction == CELL_DIRECTION_OUT) ?
-                     circ->n_chan->global_identifier :
-                     orcirc->p_chan->global_identifier);
+                   U64_PRINTF_ARG(
+                     (direction == CELL_DIRECTION_OUT) ?
+                        circ->n_chan->global_identifier :
+                        orcirc->p_chan->global_identifier));
           circuit_mark_for_close(circ, END_CIRC_REASON_RESOURCELIMIT);
           return;
         } else if (queue->n + 1 == orcirc->max_middle_cells) {
           /* Only use ==, not >= for this test so we don't spam the log */
           log_warn(LD_CIRC,
                    "While trying to queue a cell, reached the soft cap of %u "
-                   "in the %s direction on middle circ ID %u on chan ID %lu.",
+                   "in the %s direction on middle circ ID %u "
+                   "on chan ID " U64_FORMAT ".",
                    orcirc->max_middle_cells,
                    (direction == CELL_DIRECTION_OUT) ? "n" : "p",
                    (direction == CELL_DIRECTION_OUT) ?
                      circ->n_circ_id : orcirc->p_circ_id,
-                   (direction == CELL_DIRECTION_OUT) ?
-                     circ->n_chan->global_identifier :
-                     orcirc->p_chan->global_identifier);
+                   U64_PRINTF_ARG(
+                     (direction == CELL_DIRECTION_OUT) ?
+                        circ->n_chan->global_identifier :
+                        orcirc->p_chan->global_identifier));
         }
       }
     }
