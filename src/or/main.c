@@ -52,6 +52,7 @@
 #include "router.h"
 #include "routerlist.h"
 #include "routerparse.h"
+#include "scheduler.h"
 #include "statefile.h"
 #include "status.h"
 #include "ext_orport.h"
@@ -2428,6 +2429,14 @@ tor_init(int argc, char *argv[])
   }
   stream_choice_seed_weak_rng();
 
+  /*
+   * Initialize the scheduler - this has to come after
+   * options_init_from_torrc() sets up libevent - why yes, that seems
+   * completely sensible to hide the libevent setup in the option parsing
+   * code!
+   */
+  scheduler_init();
+
   return 0;
 }
 
@@ -2525,6 +2534,7 @@ tor_free_all(int postfork)
   channel_tls_free_all();
   channel_free_all();
   connection_free_all();
+  scheduler_free_all();
   buf_shrink_freelists(1);
   memarea_clear_freelist();
   nodelist_free_all();
