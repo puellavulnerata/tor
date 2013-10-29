@@ -1405,6 +1405,19 @@ typedef struct or_handshake_state_t {
   /**@}*/
 } or_handshake_state_t;
 
+/*
+ * OR_CONN_HIGHWATER and OR_CONN_LOWWATER moved from connection_or.c so
+ * channeltls.c can see them too.
+ */
+
+/** When adding cells to an OR connection's outbuf, keep adding until the
+ * outbuf is at least this long, or we run out of cells. */
+#define OR_CONN_HIGHWATER (32*1024)
+
+/** Add cells to an OR connection's outbuf whenever the outbuf's data length
+ * drops below this size. */
+#define OR_CONN_LOWWATER (16*1024)
+
 /** Subtype of connection_t for an "OR connection" -- that is, one that speaks
  * cells over TLS. */
 typedef struct or_connection_t {
