@@ -1483,6 +1483,12 @@ typedef struct or_connection_t {
 
   struct or_connection_t *next_with_same_id; /**< Next connection with same
                                               * identity digest as this one. */
+
+  /*
+   * Count the number of bytes flushed out on this orconn, and the number of
+   * bytes TLS actually sent - used for overhead estimation for scheduling.
+   */
+  uint64_t bytes_xmitted, bytes_xmitted_by_tls;
 } or_connection_t;
 
 /** Subtype of connection_t for an "edge connection" -- that is, an entry (ap)
