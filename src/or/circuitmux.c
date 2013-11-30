@@ -1897,9 +1897,9 @@ circuitmux_append_destroy_cell(channel_t *chan,
 }
 
 /**
- * Compare cmuxes to see which is more preferred; return > 0 if
+ * Compare cmuxes to see which is more preferred; return < 0 if
  * cmux_1 has higher priority (i.e., cmux_1 < cmux_2 in the scheduler's
- * sort order), < 0 if cmux_2 has higher priority, or 0 if they are
+ * sort order), > 0 if cmux_2 has higher priority, or 0 if they are
  * equally preferred.
  *
  * If the cmuxes have different cmux policies or the policy does not
