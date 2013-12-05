@@ -8,6 +8,7 @@
 #include "channel.h"
 #include "circuitmux.h"
 #include "relay.h"
+#include "scheduler.h"
 #include "test.h"
 
 /* XXXX duplicated function from test_circuitlist.c */
@@ -36,6 +37,7 @@ test_cmux_destroy_cell_queue(void *arg)
   cell_queue_t *cq = NULL;
   packed_cell_t *pc = NULL;
 
+  scheduler_init();
   init_cell_pool();
   (void) arg;
 
