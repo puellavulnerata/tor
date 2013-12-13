@@ -45,7 +45,7 @@ chan_test_close(channel_t *ch)
 {
   test_assert(ch);
 
-done:
+ done:
   return;
 }
 
@@ -54,7 +54,7 @@ chan_test_num_bytes_queued(channel_t *ch)
 {
   test_assert(ch);
 
-done:
+ done:
   return 0;
 }
 
@@ -74,7 +74,7 @@ chan_test_write_cell(channel_t *ch, cell_t *cell)
   }
   /* else return 0, we didn't accept it */
 
-done:
+ done:
   return rv;
 }
 
@@ -95,7 +95,7 @@ chan_test_write_packed_cell(channel_t *ch,
   }
   /* else return 0, we didn't accept it */
 
-done:
+ done:
   return rv;
 }
 
@@ -115,7 +115,7 @@ chan_test_write_var_cell(channel_t *ch, var_cell_t *var_cell)
   }
   /* else return 0, we didn't accept it */
 
-done:
+ done:
   return rv;
 }
 
@@ -128,7 +128,7 @@ make_fake_cell(cell_t *c)
   c->command = CELL_RELAY;
   memset(c->payload, 0, CELL_PAYLOAD_SIZE);
 
-done:
+ done:
   return;
 }
 
@@ -142,7 +142,7 @@ make_fake_var_cell(var_cell_t *c)
   c->payload_len = CELL_PAYLOAD_SIZE / 2;
   memset(c->payload, 0, c->payload_len);
 
-done:
+ done:
   return;
 }
 
@@ -188,7 +188,7 @@ test_channel_write(void *arg)
   test_assert(ch);
   make_fake_cell(cell);
   make_fake_var_cell(var_cell);
-  
+
   /* Tell it to accept cells */
   test_chan_accept_cells = 1;
 
@@ -273,7 +273,7 @@ test_channel_write(void *arg)
 
   free_cell_pool();
 
-done:
+ done:
   tor_free(ch);
 
   return;
