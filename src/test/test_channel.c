@@ -223,7 +223,7 @@ test_channel_multi(void *arg)
   cell = tor_malloc_zero(sizeof(cell_t));
   make_fake_cell(cell);
   channel_write_cell(ch1, cell);
-  
+
   cell = tor_malloc_zero(sizeof(cell_t));
   make_fake_cell(cell);
   channel_write_cell(ch2, cell);
