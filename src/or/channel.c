@@ -2375,7 +2375,7 @@ channel_flush_some_cells_from_outgoing_queue(channel_t *chan,
                 ++(chan->n_cells_xmitted);
                 chan->n_bytes_xmitted += cell_size;
                 free_q = 1;
-                handed_off = 0;
+                handed_off = 1;
               }
               /* Else couldn't write it; leave it on the queue */
             } else {
