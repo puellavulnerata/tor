@@ -12,6 +12,7 @@
 #include "or.h"
 #include "channel.h"
 #include "circpathbias.h"
+#define CIRCUITBUILD_PRIVATE
 #include "circuitbuild.h"
 #include "circuitlist.h"
 #include "circuitstats.h"
@@ -80,7 +81,7 @@ channel_connect_for_circuit(const tor_addr_t *addr, uint16_t port,
  *
  * Return it, or 0 if can't get a unique circ_id.
  */
-static circid_t
+STATIC circid_t
 get_unique_circ_id_by_chan(channel_t *chan)
 {
   circid_t test_circ_id;
