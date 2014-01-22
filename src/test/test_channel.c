@@ -83,7 +83,6 @@ chan_test_channel_flush_from_first_active_circuit_mock(channel_t *chan,
   int result = 0, c = 0;
   packed_cell_t *cell = NULL;
 
-
   test_assert(chan != NULL);
   if (test_target_cmux != NULL &&
       test_target_cmux == chan->cmux) {
@@ -112,7 +111,7 @@ static unsigned int
 chan_test_circuitmux_num_cells_mock(circuitmux_t *cmux)
 {
   unsigned int result = 0;
-  
+
   test_assert(cmux != NULL);
   if (cmux != NULL) {
     if (cmux == test_target_cmux) {
@@ -502,7 +501,6 @@ test_channel_flushmux(void *arg)
 
   test_target_cmux = NULL;
   test_cmux_cells = 0;
-
 
  done:
   tor_free(ch);
