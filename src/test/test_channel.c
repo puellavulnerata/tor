@@ -469,7 +469,7 @@ test_channel_dumpstats(void *arg)
   test_eq(ch->state, CHANNEL_STATE_CLOSING);
   chan_test_finish_close(ch);
   test_eq(ch->state, CHANNEL_STATE_CLOSED);
-  
+
   /* Try again and hit the finished channel */
   channel_dumpstats(LOG_DEBUG);
   test_eq(dump_statistics_mock_matches, 2);
