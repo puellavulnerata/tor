@@ -2448,8 +2448,8 @@ set_streams_blocked_on_circ(circuit_t *circ, channel_t *chan,
  * queue of the first active circuit on <b>chan</b>, and write them to
  * <b>chan</b>-&gt;outbuf.  Return the number of cells written.  Advance
  * the active circuit pointer to the next active circuit in the ring. */
-int
-channel_flush_from_first_active_circuit(channel_t *chan, int max)
+MOCK_IMPL(int,
+channel_flush_from_first_active_circuit, (channel_t *chan, int max))
 {
   circuitmux_t *cmux = NULL;
   int n_flushed = 0;
