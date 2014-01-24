@@ -111,7 +111,7 @@ test_scheduler_initfree(void *arg)
 {
   test_eq(channels_pending, NULL);
   test_eq(run_sched_ev, NULL);
-  
+
   mock_event_init();
   MOCK(tor_libevent_get_base, tor_libevent_get_base_mock);
 
