@@ -373,8 +373,8 @@ scheduler_release_channel,(channel_t *chan))
 
 /** Run the scheduling algorithm if necessary */
 
-void
-scheduler_run(void)
+MOCK_IMPL(void,
+scheduler_run, (void))
 {
   log_debug(LD_SCHED, "We have a chance to run the scheduler");
   int n_cells, n_chans_before, n_chans_after;
