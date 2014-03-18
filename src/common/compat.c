@@ -227,12 +227,25 @@ tor_mmap_file(const char *filename)
 
   return res;
 }
-/** Release storage held for a memory mapping. */
-void
+/** Release storage held for a memory mapping; returns 0 on success,
+ * or -1 on failure (and logs a warning). */
+int
 tor_munmap_file(tor_mmap_t *handle)
 {
-  munmap((char*)handle->data, handle->mapping_size);
-  tor_free(handle);
+  int res;
+
+  tor_assert(handle != NULL);
+  res = munmap((char*)handle->data, handle->mapping_size);
+  if (res == 0) {
+    /* munmap() succeeded */
+    tor_free(handle);
+  } else {
+    log_warn(LD_FS, "Failed to munmap() in tor_munmap_file(): %s",
+             strerror(errno));
+    res = -1;
+  }
+
+  return res;
 }
 #elif defined(_WIN32)
 tor_mmap_t *
@@ -314,9 +327,12 @@ tor_mmap_file(const char *filename)
   tor_munmap_file(res);
   return NULL;
 }
-void
+
+/* Unmap the file, and return 0 for success or -1 for failure */
+int
 tor_munmap_file(tor_mmap_t *handle)
 {
+  tor_assert(handle != NULL);
   if (handle->data)
     /* This is an ugly cast, but without it, "data" in struct tor_mmap_t would
        have to be redefined as non-const. */
@@ -325,6 +341,14 @@ tor_munmap_file(tor_mmap_t *handle)
   if (handle->mmap_handle != NULL)
     CloseHandle(handle->mmap_handle);
   tor_free(handle);
+
+  /*
+   * FIXME: how do you tell if UnmapViewOfFile() failed on Windows?
+   *
+   * For now, pretend we always succeed so we can at least support the same
+   * tor_munmap_file() prototype with a return status as Unix.
+   */
+  return 0;
 }
 #else
 tor_mmap_t *
@@ -340,13 +364,24 @@ tor_mmap_file(const char *filename)
   handle->size = st.st_size;
   return handle;
 }
-void
+
+/** Unmap the file mapped with tor_mmap_file(), and return 0 for success
+ * or -1 for failure.
+ */
+
+int
 tor_munmap_file(tor_mmap_t *handle)
 {
-  char *d = (char*)handle->data;
+  char *d = NULL;
+
+  tor_assert(handle != NULL);
+  d = (char*)handle->data;
   tor_free(d);
   memwipe(handle, 0, sizeof(tor_mmap_t));
   tor_free(handle);
+
+  /* Can't fail in this mmap()/munmap()-free case */
+  return 0;
 }
 #endif
 
