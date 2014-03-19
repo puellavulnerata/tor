@@ -2140,7 +2140,8 @@ start_writing_to_stdio_file(const char *fname, int open_flags, int mode,
 static int
 finish_writing_to_file_impl(open_file_t *file_data, int abort_write)
 {
-  int r = 0;
+  int r = 0, res;
+
   tor_assert(file_data && file_data->filename);
   if (file_data->stdio_file) {
     if (fclose(file_data->stdio_file)) {
@@ -2157,7 +2158,13 @@ finish_writing_to_file_impl(open_file_t *file_data, int abort_write)
   if (file_data->rename_on_close) {
     tor_assert(file_data->tempname && file_data->filename);
     if (abort_write) {
-      unlink(file_data->tempname);
+      res = unlink(file_data->tempname);
+      if (res != 0) {
+        /* We couldn't unlink and we'll leave a mess behind */
+        log_warn(LD_FS, "Failed to unlink %s: %s",
+                 file_data->tempname, strerror(errno));
+        r = -1;
+      }
     } else {
       tor_assert(strcmp(file_data->filename, file_data->tempname));
       if (replace_file(file_data->tempname, file_data->filename)) {
