@@ -3540,11 +3540,14 @@ connection_handle_event_cb(struct bufferevent *bufev, short event, void *arg)
   }
   if (event & BEV_EVENT_ERROR) {
     int socket_error = evutil_socket_geterror(conn->s);
-    if (conn->type == CONN_TYPE_OR &&
-        conn->state == OR_CONN_STATE_CONNECTING) {
-      connection_or_connect_failed(TO_OR_CONN(conn),
-                                   errno_to_orconn_end_reason(socket_error),
-                                   tor_socket_strerror(socket_error));
+    if (conn->type == CONN_TYPE_OR) {
+      if (conn->state == OR_CONN_STATE_CONNECTING) {
+        connection_or_connect_failed(TO_OR_CONN(conn),
+                                     errno_to_orconn_end_reason(socket_error),
+                                     tor_socket_strerror(socket_error));
+      } else {
+        connection_or_close_for_error(TO_OR_CONN(conn), 0);
+      }
     } else if (CONN_IS_EDGE(conn)) {
       edge_connection_t *edge_conn = TO_EDGE_CONN(conn);
       if (!edge_conn->edge_has_sent_end)

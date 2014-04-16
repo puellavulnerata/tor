@@ -1,0 +1,6 @@
+  o Bugfixes:
+    - Change orconn test in connection_handle_event_cb() from conn->type ==
+      CONN_TYPE_OR && conn->state == OR_CONN_STATE_CONNECTING to two nested if
+      clauses so we don't incorrectly fall through to the generic case and
+      use connection_mark_for_close() on an orconn with conn->state !=
+      OR_CONN_STATE_CONNECTING.  Fixes bug #11307.
