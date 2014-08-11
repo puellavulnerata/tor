@@ -1679,6 +1679,9 @@ typedef struct entry_connection_t {
    * do we prefer IPv6? */
   unsigned int prefer_ipv6_virtaddr : 1;
 
+  /** Are we a socks SocksSocket listener? */
+  unsigned int is_socks_socket:1;
+
 } entry_connection_t;
 
 typedef enum {
@@ -3500,6 +3503,10 @@ typedef struct {
                                  * for control connections. */
 
   int ControlSocketsGroupWritable; /**< Boolean: Are control sockets g+rw? */
+  config_line_t *SocksSocket; /**< List of Unix Domain Sockets to listen on
+                                 * for SOCKS connections. */
+
+  int SocksSocketsGroupWritable; /**< Boolean: Are SOCKS sockets g+rw? */
   /** Ports to listen on for directory connections. */
   config_line_t *DirPort_lines;
   config_line_t *DNSPort_lines; /**< Ports to listen on for DNS requests. */
@@ -3520,6 +3527,7 @@ typedef struct {
    */
   unsigned int ORPort_set : 1;
   unsigned int SocksPort_set : 1;
+  unsigned int SocksSocket_set : 1;
   unsigned int TransPort_set : 1;
   unsigned int NATDPort_set : 1;
   unsigned int ControlPort_set : 1;
