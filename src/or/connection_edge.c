@@ -1219,7 +1219,8 @@ connection_ap_handshake_rewrite_and_attach(entry_connection_t *conn,
       {
         tor_addr_t addr;
         /* XXX Duplicate call to tor_addr_parse. */
-        if (tor_addr_parse(&addr, socks->address) >= 0 && !conn->is_socks_socket) {
+        if (tor_addr_parse(&addr, socks->address) >= 0 &&
+            !conn->is_socks_socket) {
           sa_family_t family = tor_addr_family(&addr);
           if ((family == AF_INET && ! conn->ipv4_traffic_ok) ||
               (family == AF_INET6 && ! conn->ipv4_traffic_ok)) {
