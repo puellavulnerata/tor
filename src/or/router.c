@@ -7,6 +7,7 @@
 #define ROUTER_PRIVATE
 
 #include "or.h"
+#include "channel.h"
 #include "circuitbuild.h"
 #include "circuitlist.h"
 #include "circuituse.h"
@@ -1152,6 +1153,8 @@ consider_testing_reachability(int test_or, int test_dir)
   int orport_reachable = check_whether_orport_reachable();
   tor_addr_t addr;
   const or_options_t *options = get_options();
+  origin_circuit_t *test_circ = NULL;
+
   if (!me)
     return;
 
@@ -1177,8 +1180,23 @@ consider_testing_reachability(int test_or, int test_dir)
     log_info(LD_CIRC, "Testing %s of my ORPort: %s:%d.",
              !orport_reachable ? "reachability" : "bandwidth",
              fmt_addr32(me->addr), me->or_port);
-    circuit_launch_by_extend_info(CIRCUIT_PURPOSE_TESTING, ei,
-                            CIRCLAUNCH_NEED_CAPACITY|CIRCLAUNCH_IS_INTERNAL);
+    test_circ = circuit_launch_by_extend_info(CIRCUIT_PURPOSE_TESTING, ei,
+        CIRCLAUNCH_NEED_CAPACITY|CIRCLAUNCH_IS_INTERNAL);
+    if (test_circ) {
+      if (TO_CIRCUIT(test_circ)->n_chan) {
+        log_debug(LD_CIRC,
+                  "Launched test circuit at %p with circ ID %d with channel "
+                  U64_FORMAT,
+                  test_circ, TO_CIRCUIT(test_circ)->n_circ_id,
+                  U64_PRINTF_ARG(TO_CIRCUIT(test_circ)->n_chan->
+                    global_identifier));
+      } else {
+        log_debug(LD_CIRC,
+                  "Launched test circuit at %p with circ ID %d with null "
+                  "channel",
+                  test_circ, TO_CIRCUIT(test_circ)->n_circ_id);
+      }
+    }
     extend_info_free(ei);
   }
 
