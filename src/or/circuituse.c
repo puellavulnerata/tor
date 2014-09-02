@@ -1241,24 +1241,47 @@ circuit_enough_testing_circs(void)
 static void
 circuit_testing_opened(origin_circuit_t *circ)
 {
+  log_debug(LD_CIRC,
+            "Opened testing circuit at %p with circ ID %d on chan "
+            U64_FORMAT,
+            circ, TO_CIRCUIT(circ)->n_circ_id,
+            U64_PRINTF_ARG(TO_CIRCUIT(circ)->n_chan->global_identifier));
+
   if (have_performed_bandwidth_test ||
       !check_whether_orport_reachable()) {
     /* either we've already done everything we want with testing circuits,
      * or this testing circuit became open due to a fluke, e.g. we picked
      * a last hop where we already had the connection open due to an
      * outgoing local circuit. */
+
+
+    log_debug(LD_CIRC,
+              "have_performed_bandwidth_test || "
+              "!check_whether_orport_reachable() case");
+
     circuit_mark_for_close(TO_CIRCUIT(circ), END_CIRC_AT_ORIGIN);
   } else if (circuit_enough_testing_circs()) {
+    log_debug(LD_CIRC,
+              "circuit_enough_testing_circs() case");
     router_perform_bandwidth_test(NUM_PARALLEL_TESTING_CIRCS, time(NULL));
     have_performed_bandwidth_test = 1;
-  } else
+  } else {
+    log_debug(LD_CIRC,
+              "consider_testing_reachability() case");
     consider_testing_reachability(1, 0);
+  }
 }
 
 /** A testing circuit has failed to build. Take whatever stats we want. */
 static void
 circuit_testing_failed(origin_circuit_t *circ, int at_last_hop)
 {
+  log_debug(LD_CIRC,
+            "Failed to open testing circuit at %p with circ ID %d on chan "
+            U64_FORMAT,
+            circ, TO_CIRCUIT(circ)->n_circ_id,
+            U64_PRINTF_ARG(TO_CIRCUIT(circ)->n_chan->global_identifier));
+
   if (server_mode(get_options()) && check_whether_orport_reachable())
     return;
 
