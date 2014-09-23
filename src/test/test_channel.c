@@ -889,29 +889,34 @@ test_channel_lifecycle(void *arg)
 
   /* Move ch1 to MAINT */
   channel_change_state(ch1, CHANNEL_STATE_MAINT);
-  tt_int_op(test_doesnt_want_writes_count, ==, init_doesnt_want_writes_count + 1);
+  tt_int_op(test_doesnt_want_writes_count, ==,
+            init_doesnt_want_writes_count + 1);
   tt_int_op(test_releases_count, ==, init_releases_count);
 
   /* Move ch2 to OPEN */
   channel_change_state(ch2, CHANNEL_STATE_OPEN);
-  tt_int_op(test_doesnt_want_writes_count, ==, init_doesnt_want_writes_count + 1);
+  tt_int_op(test_doesnt_want_writes_count, ==,
+            init_doesnt_want_writes_count + 1);
   tt_int_op(test_releases_count, ==, init_releases_count);
 
   /* Move ch1 back to OPEN */
   channel_change_state(ch1, CHANNEL_STATE_OPEN);
-  tt_int_op(test_doesnt_want_writes_count, ==, init_doesnt_want_writes_count + 1);
+  tt_int_op(test_doesnt_want_writes_count, ==,
+            init_doesnt_want_writes_count + 1);
   tt_int_op(test_releases_count, ==, init_releases_count);
 
   /* Mark ch2 for close */
   channel_mark_for_close(ch2);
   tt_int_op(ch2->state, ==, CHANNEL_STATE_CLOSING);
-  tt_int_op(test_doesnt_want_writes_count, ==, init_doesnt_want_writes_count + 1);
+  tt_int_op(test_doesnt_want_writes_count, ==,
+            init_doesnt_want_writes_count + 1);
   tt_int_op(test_releases_count, ==, init_releases_count + 1);
 
   /* Shut down channels */
   channel_free_all();
   ch1 = ch2 = NULL;
-  tt_int_op(test_doesnt_want_writes_count, ==, init_doesnt_want_writes_count + 1);
+  tt_int_op(test_doesnt_want_writes_count, ==,
+            init_doesnt_want_writes_count + 1);
   /* channel_free() calls scheduler_release_channel() */
   tt_int_op(test_releases_count, ==, init_releases_count + 4);
 
