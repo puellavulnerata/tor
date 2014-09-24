@@ -1345,7 +1345,6 @@ static struct testgroup_t testgroups[] = {
   { "policy/" , policy_tests },
   { "status/" , status_tests },
   { "routerset/" , routerset_tests },
-  { "router/", router_tests },
   { "channel/", channel_tests },
   { "channeltls/", channeltls_tests },
   { "relay/" , relay_tests },
