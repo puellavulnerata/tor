@@ -1547,6 +1547,8 @@ test_channel_write(void *arg)
     tor_malloc_zero(sizeof(var_cell_t) + CELL_PAYLOAD_SIZE);
   int old_count;
 
+  (void)arg;
+
 #ifdef ENABLE_MEMPOOLS
   init_cell_pool();
 #endif /* ENABLE_MEMPOOLS */
