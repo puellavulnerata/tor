@@ -58,6 +58,8 @@ test_relay_append_cell_to_circuit_queue(void *arg)
   cell_t *cell = NULL;
   int old_count, new_count;
 
+  (void)arg;
+
   /* We'll need the cell pool for append_cell_to_circuit_queue() to work */
 #ifdef ENABLE_MEMPOOLS
   init_cell_pool();
