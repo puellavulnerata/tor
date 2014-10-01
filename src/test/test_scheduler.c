@@ -722,6 +722,8 @@ test_scheduler_queue_heuristic(void *arg)
   time_t now = approx_time();
   uint64_t qh;
 
+  (void)arg;
+
   queue_heuristic = 0;
   queue_heuristic_timestamp = 0;
 
