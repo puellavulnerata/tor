@@ -458,6 +458,8 @@ scheduler_channel_has_waiting_cells_mock(channel_t *ch)
 static void
 scheduler_channel_doesnt_want_writes_mock(channel_t *ch)
 {
+  (void)ch;
+
   /* Increment counter */
   ++test_doesnt_want_writes_count;
 
