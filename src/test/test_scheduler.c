@@ -324,6 +324,8 @@ test_scheduler_channel_states(void *arg)
   channel_t *ch1 = NULL, *ch2 = NULL;
   int old_count;
 
+  (void)arg;
+
   /* Set up libevent and scheduler */
 
   mock_event_init();
