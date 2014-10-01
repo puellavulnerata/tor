@@ -450,6 +450,8 @@ scheduler_channel_has_waiting_cells_mock(channel_t *ch)
   /* Increment counter */
   ++test_has_waiting_cells_count;
 
+  (void)ch;
+
   return;
 }
 
