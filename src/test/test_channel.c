@@ -690,6 +690,8 @@ test_channel_flushmux(void *arg)
   int old_count, q_len_before, q_len_after;
   ssize_t result;
 
+  (void)arg;
+
 #ifdef ENABLE_MEMPOOLS
   init_cell_pool();
 #endif /* ENABLE_MEMPOOLS */
