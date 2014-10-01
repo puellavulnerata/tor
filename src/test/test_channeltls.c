@@ -102,6 +102,8 @@ test_channeltls_num_bytes_queued(void *arg)
   size_t len;
   int fake_outbuf = 0, n;
 
+  (void)arg;
+
   /* Set up a fake address to fake-connect to */
   test_addr.family = AF_INET;
   test_addr.addr.in_addr.s_addr = htonl(0x01020304);
