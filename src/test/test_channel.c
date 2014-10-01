@@ -77,6 +77,9 @@ static void
 channel_note_destroy_not_pending_mock(channel_t *ch,
                                       circid_t circid)
 {
+  (void)ch;
+  (void)circid;
+
   ++test_destroy_not_pending_calls;
 }
 
