@@ -510,6 +510,8 @@ test_scheduler_compare_channels(void *arg)
 static void
 test_scheduler_initfree(void *arg)
 {
+  (void)arg;
+
   tt_ptr_op(channels_pending, ==, NULL);
   tt_ptr_op(run_sched_ev, ==, NULL);
 
