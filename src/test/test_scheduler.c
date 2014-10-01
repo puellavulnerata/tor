@@ -540,6 +540,8 @@ test_scheduler_loop(void *arg)
 {
   channel_t *ch1 = NULL, *ch2 = NULL;
 
+  (void)arg;
+
   /* Set up libevent and scheduler */
 
   mock_event_init();
