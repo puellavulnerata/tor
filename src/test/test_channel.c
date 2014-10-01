@@ -1426,6 +1426,8 @@ test_channel_queue_size(void *arg)
   int n, old_count;
   uint64_t global_queue_estimate;
 
+  (void)arg;
+
   ch = new_fake_channel();
   tt_assert(ch);
 
