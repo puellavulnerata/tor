@@ -195,6 +195,8 @@ chan_test_dumpstats(channel_t *ch, int severity)
 {
   tt_assert(ch != NULL);
 
+  (void)severity;
+
   ++test_dumpstats_calls;
 
  done:
