@@ -611,6 +611,13 @@ scheduler_adjust_queue_size(channel_t *chan, char dir, uint64_t adj)
 {
   time_t now = approx_time();
 
+  log_debug(LD_SCHED,
+            "Queue size adjustment by %s" U64_FORMAT " for channel "
+            U64_FORMAT,
+            (dir >= 0) ? "+" : "-",
+            U64_PRINTF_ARG(adj),
+            U64_PRINTF_ARG(chan->global_identifier));
+
   /* Get the queue heuristic up to date */
   scheduler_update_queue_heuristic(now);
 
