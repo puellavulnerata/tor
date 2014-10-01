@@ -155,7 +155,6 @@ static cell_queue_entry_t *
 cell_queue_entry_new_fixed(cell_t *cell);
 static cell_queue_entry_t *
 cell_queue_entry_new_var(var_cell_t *var_cell);
-STATIC int chan_cell_queue_len(const chan_cell_queue_t *queue);
 static int is_destroy_cell(channel_t *chan,
                            const cell_queue_entry_t *q, circid_t *circid_out);
 
