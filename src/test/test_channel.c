@@ -102,6 +102,8 @@ chan_test_channel_dump_statistics_mock(channel_t *chan, int severity)
 {
   tt_assert(chan != NULL);
 
+  (void)severity;
+
   if (chan != NULL && chan == dump_statistics_mock_target) {
     ++dump_statistics_mock_matches;
   }
