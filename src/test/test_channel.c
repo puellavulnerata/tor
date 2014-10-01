@@ -1270,6 +1270,8 @@ test_channel_queue_impossible(void *arg)
   cell_queue_entry_t *q = NULL;
   uint64_t global_queue_estimate;
 
+  (void)arg;
+
   /* Cache the global queue size (see below) */
   global_queue_estimate = channel_get_global_queue_estimate();
 
