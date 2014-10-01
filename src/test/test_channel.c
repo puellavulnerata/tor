@@ -770,6 +770,8 @@ test_channel_incoming(void *arg)
   var_cell_t *var_cell = NULL;
   int old_count;
 
+  (void)arg;
+
   /* Mock these for duration of the test */
   MOCK(scheduler_channel_doesnt_want_writes,
        scheduler_channel_doesnt_want_writes_mock);
