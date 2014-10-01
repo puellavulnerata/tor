@@ -967,6 +967,8 @@ test_channel_lifecycle_2(void *arg)
 {
   channel_t *ch = NULL;
 
+  (void)arg;
+
   /* Mock these for the whole lifecycle test */
   MOCK(scheduler_channel_doesnt_want_writes,
        scheduler_channel_doesnt_want_writes_mock);
