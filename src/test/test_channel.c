@@ -447,10 +447,10 @@ get_mock_scheduler_has_waiting_cells_count(void)
 void
 scheduler_channel_has_waiting_cells_mock(channel_t *ch)
 {
+  (void)ch;
+
   /* Increment counter */
   ++test_has_waiting_cells_count;
-
-  (void)ch;
 
   return;
 }
