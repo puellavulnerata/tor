@@ -627,6 +627,8 @@ test_channel_flush(void *arg)
   var_cell_t *v_cell = NULL;
   int init_count;
 
+  (void)arg;
+
 #ifdef ENABLE_MEMPOOLS
   init_cell_pool();
 #endif /* ENABLE_MEMPOOLS */
