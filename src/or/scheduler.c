@@ -376,12 +376,13 @@ scheduler_release_channel,(channel_t *chan))
 MOCK_IMPL(void,
 scheduler_run, (void))
 {
-  log_debug(LD_SCHED, "We have a chance to run the scheduler");
   int n_cells, n_chans_before, n_chans_after;
   uint64_t q_len_before, q_heur_before, q_len_after, q_heur_after;
   ssize_t flushed, flushed_this_time;
   smartlist_t *to_readd = NULL;
   channel_t *chan = NULL;
+
+  log_debug(LD_SCHED, "We have a chance to run the scheduler");
 
   if (scheduler_get_queue_heuristic() < SCHED_Q_LOW_WATER) {
     n_chans_before = smartlist_len(channels_pending);
