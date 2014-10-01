@@ -446,6 +446,8 @@ test_scheduler_compare_channels(void *arg)
   circuitmux_t *cm1 = NULL, *cm2 = NULL;
   int result;
 
+  (void)arg;
+
   /* We can't actually see sizeof(circuitmux_t) from here */
   cm1 = tor_malloc_zero(sizeof(void *));
   cm2 = tor_malloc_zero(sizeof(void *));
