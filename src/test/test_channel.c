@@ -855,6 +855,8 @@ test_channel_lifecycle(void *arg)
   int old_count, init_doesnt_want_writes_count;
   int init_releases_count;
 
+  (void)arg;
+
   /* Mock these for the whole lifecycle test */
   MOCK(scheduler_channel_doesnt_want_writes,
        scheduler_channel_doesnt_want_writes_mock);
