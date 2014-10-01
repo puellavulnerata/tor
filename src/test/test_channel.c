@@ -1120,6 +1120,8 @@ test_channel_multi(void *arg)
   uint64_t global_queue_estimate;
   cell_t *cell = NULL;
 
+  (void)arg;
+
   /* Accept cells to lower layer */
   test_chan_accept_cells = 1;
   /* Use default overhead factor */
