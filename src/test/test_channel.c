@@ -483,6 +483,8 @@ get_mock_scheduler_release_channel_count(void)
 void
 scheduler_release_channel_mock(channel_t *ch)
 {
+  (void)ch;
+
   /* Increment counter */
   ++test_releases_count;
 
