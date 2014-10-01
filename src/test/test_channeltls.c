@@ -188,6 +188,8 @@ test_channeltls_overhead_estimate(void *arg)
   float r;
   channel_tls_t *tlschan = NULL;
 
+  (void)arg;
+
   /* Set up a fake address to fake-connect to */
   test_addr.family = AF_INET;
   test_addr.addr.in_addr.s_addr = htonl(0x01020304);
