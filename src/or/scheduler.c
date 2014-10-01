@@ -171,6 +171,9 @@ MOCK_IMPL(STATIC int,
 scheduler_compare_channels, (const void *c1_v, const void *c2_v))
 {
   channel_t *c1 = NULL, *c2 = NULL;
+  /* These are a workaround for -Wbad-function-cast throwing a fit */
+  const circuitmux_policy_t *p1, *p2;
+  uintptr_t p1_i, p2_i;
 
   tor_assert(c1_v);
   tor_assert(c2_v);
@@ -193,12 +196,12 @@ scheduler_compare_channels, (const void *c1_v, const void *c2_v))
        * different cmux policies anyway.  Just use this arbitrary but
        * definite choice.
        */
-      if ((intptr_t)(circuitmux_get_policy(c1->cmux)) <
-          (intptr_t)(circuitmux_get_policy(c2->cmux))) {
-        return -1;
-      } else {
-        return 1;
-      }
+      p1 = circuitmux_get_policy(c1->cmux);
+      p2 = circuitmux_get_policy(c2->cmux);
+      p1_i = (uintptr_t)p1;
+      p2_i = (uintptr_t)p2;
+
+      return (p1_i < p2_i) ? -1 : 1;
     }
   } else {
     /* c1 == c2, so always equal */
