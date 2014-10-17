@@ -1,0 +1,4 @@
+  o Hidden service bugfixes:
+    - Avoid redundant calls to rend_client_note_connection_attempt_ended()
+      when HS descriptor lookups fail.
+

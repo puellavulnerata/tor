@@ -562,6 +562,43 @@ directory_clean_last_hid_serv_requests(time_t now)
   }
 }
 
+/** Check if a hidden service appears anywhere in last_hid_serv_reqests
+ */
+static int
+is_hid_serv_in_last_hid_serv_requests(const char *onion_address)
+{
+  strmap_iter_t *iter;
+  strmap_t *last_hid_serv_requests = NULL;
+  const char *key;
+  void *val;
+  int found = 0;
+
+  last_hid_serv_requests = get_last_hid_serv_requests();
+
+  tor_assert(onion_address);
+  tor_assert(last_hid_serv_requests);
+  tor_assert(strlen(onion_address) == REND_SERVICE_ID_LEN_BASE32);
+
+  iter = strmap_iter_init(last_hid_serv_requests);
+  while (!strmap_iter_done(iter) && !found) {
+    strmap_iter_get(iter, &key, &val);
+
+    tor_assert(key);
+    tor_assert(strlen(key) == LAST_HID_SERV_REQUEST_KEY_LEN);
+
+    if (tor_memeq(key + LAST_HID_SERV_REQUEST_KEY_LEN -
+                  REND_SERVICE_ID_LEN_BASE32,
+                  onion_address,
+                  REND_SERVICE_ID_LEN_BASE32)) {
+      found = 1;
+    }
+
+    iter = strmap_iter_next(last_hid_serv_requests, iter);
+  }
+
+  return found;
+}
+
 /** Remove all requests related to the hidden service named
  * <b>onion_address</b> from the history of times of requests to
  * hidden service directories. */
@@ -1086,7 +1123,14 @@ rend_client_desc_trynow(const char *query)
                  "unavailable (try again later).",
                  safe_str_client(query));
       connection_mark_unattached_ap(conn, END_STREAM_REASON_RESOLVEFAILED);
-      rend_client_note_connection_attempt_ended(query);
+      /*
+       * Under some conditions connection_mark_unattached_ap() can call
+       * rend_client_note_connection_attempt_ended() itself; check first
+       * to avoid the redundancy.
+       */
+      if (is_hid_serv_in_last_hid_serv_requests(query)) {
+        rend_client_note_connection_attempt_ended(query);
+      }
     }
   } SMARTLIST_FOREACH_END(base_conn);
 }
