@@ -311,7 +311,7 @@ rend_add_service(rend_service_t *service)
 /** Parses a real-port to virtual-port mapping and returns a new
  * rend_service_port_config_t.
  *
- * The format is: VirtualPort (IP|RealPort|IP:RealPort)?
+ * The format is: VirtualPort (IP|RealPort|IP:RealPort|'socket':path)?
  *
  * IP defaults to 127.0.0.1; RealPort defaults to VirtualPort.
  */
@@ -325,6 +325,10 @@ parse_port_config(const char *string)
   tor_addr_t addr;
   const char *addrport;
   rend_service_port_config_t *result = NULL;
+  const char *socket_prefix = "socket:";
+  unsigned int is_unix_addr = 0;
+  int socket_path_len = 0;
+  char *socket_path = NULL;
 
   sl = smartlist_new();
   smartlist_split_string(sl, string, " ",
@@ -347,7 +351,31 @@ parse_port_config(const char *string)
     tor_addr_from_ipv4h(&addr, 0x7F000001u); /* 127.0.0.1 */
   } else {
     addrport = smartlist_get(sl,1);
-    if (strchr(addrport, ':') || strchr(addrport, '.')) {
+    /* If it starts with socket:, try to parse it as a socket path */
+    if (strstr(addrport, socket_prefix) == addrport) {
+      /* Allocate enough space for a socket path */
+      socket_path_len = strlen(addrport) - strlen(socket_prefix);
+      tor_assert(socket_path_len >= 0);
+      if (socket_path_len > 0) {
+#ifdef HAVE_SYS_UN_H
+        is_unix_addr = 1;
+        socket_path = tor_malloc(socket_path_len + 1);
+        strncpy(socket_path, addrport + strlen(socket_prefix),
+                socket_path_len + 1);
+#else
+        log_warn(LD_CONFIG,
+                 "Hidden service port configuration %s is for an AF_UNIX "
+                 "socket, but we have no support available on this platform",
+                 escaped(addrport));
+        goto err;
+#endif /* defined(HAVE_SYS_UN_H) */
+      } else {
+        log_warn(LD_CONFIG,
+                 "Empty socket path in hidden service port configuration.");
+        goto err;
+      }
+    } else if (strchr(addrport, ':') || strchr(addrport, '.')) {
+      /* else try it as an IP:port pair if it has a : or . in it */
       if (tor_addr_port_lookup(addrport, &addr, &p)<0) {
         log_warn(LD_CONFIG,"Unparseable address in hidden service port "
                  "configuration.");
@@ -366,15 +394,26 @@ parse_port_config(const char *string)
     }
   }
 
-  result = tor_malloc(sizeof(rend_service_port_config_t));
+  /* Allow room for unix_addr */
+  result = tor_malloc(sizeof(rend_service_port_config_t) +
+                      (is_unix_addr ? socket_path_len : 0) + 1);
   result->virtual_port = virtport;
-  /* TODO actually support AF_UNIX here */
-  result->is_unix_addr = 0;
-  result->real_port = realport;
-  tor_addr_copy(&result->real_addr, &addr);
+  result->is_unix_addr = is_unix_addr;
+  if (!is_unix_addr) {
+    result->real_port = realport;
+    tor_addr_copy(&result->real_addr, &addr);
+    result->unix_addr[0] = '\0';
+  } else {
+    result->real_port = 0;
+    memset(&(result->real_addr), sizeof(result->real_addr), 0);
+    strncpy(result->unix_addr, socket_path, socket_path_len + 1);
+  }
+
  err:
   SMARTLIST_FOREACH(sl, char *, c, tor_free(c));
   smartlist_free(sl);
+  if (socket_path) tor_free(socket_path);
+
   return result;
 }
 
