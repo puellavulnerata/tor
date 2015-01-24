@@ -56,6 +56,11 @@
 #include <pwd.h>
 #endif
 
+#ifdef HAVE_SYS_UN_H
+#include <sys/socket.h>
+#include <sys/un.h>
+#endif
+
 static connection_t *connection_listener_new(
                                const struct sockaddr *listensockaddr,
                                socklen_t listensocklen, int type,
@@ -1714,6 +1719,115 @@ connection_connect(connection_t *conn, const char *address,
   }
   return inprogress ? 0 : 1;
 }
+
+#ifdef HAVE_SYS_UN_H
+
+/** Take conn, make a nonblocking socket; try to connect to
+ * an AF_UNIX socket at socket_path. If fail, return -1 and if applicable
+ * put your best guess about errno into *<b>socket_error</b>. Else assign s
+ * to conn-\>s: if connected return 1, if EAGAIN return 0.
+ *
+ * On success, add conn to the list of polled connections.
+ */
+int
+connection_connect_unix(connection_t *conn, const char *socket_path,
+                        int *socket_error)
+{
+  tor_socket_t s;
+  int inprogress = 0;
+  struct sockaddr_un dest_addr;
+  const or_options_t *options = get_options();
+  int protocol_family;
+
+  tor_assert(conn);
+  tor_assert(socket_path);
+  tor_assert(socket_error);
+
+  if (get_n_open_sockets() >= get_options()->ConnLimit_-1) {
+    warn_too_many_conns();
+    *socket_error = SOCK_ERRNO(ENOBUFS);
+    return -1;
+  }
+
+  /* Check that we'll be able to fit it into dest_addr later */
+  if (strlen(socket_path) + 1 > sizeof(dest_addr.sun_path)) {
+    log_warn(LD_NET,
+             "Path %s is too long for an AF_UNIX socket\n",
+             escaped_safe_str_client(socket_path));
+    *socket_error = SOCK_ERRNO(ENAMETOOLONG);
+    return -1;
+  }
+
+  protocol_family = PF_UNIX;
+
+  if (get_options()->DisableNetwork) {
+    /* We should never even try to connect anyplace if DisableNetwork is set.
+     * Warn if we do, and refuse to make the connection. */
+    static ratelim_t disablenet_violated = RATELIM_INIT(30*60);
+    *socket_error = SOCK_ERRNO(ENETUNREACH);
+    log_fn_ratelim(&disablenet_violated, LOG_WARN, LD_BUG,
+                   "Tried to open a socket with DisableNetwork set.");
+    tor_fragile_assert();
+    return -1;
+  }
+
+  s = tor_open_socket_nonblocking(protocol_family, SOCK_STREAM, 0);
+  if (! SOCKET_OK(s)) {
+    *socket_error = tor_socket_errno(-1);
+    log_warn(LD_NET,"Error creating network socket: %s",
+             tor_socket_strerror(*socket_error));
+    return -1;
+  }
+
+  if (make_socket_reuseable(s) < 0) {
+    log_warn(LD_NET, "Error setting SO_REUSEADDR flag on new connection: %s",
+             tor_socket_strerror(errno));
+  }
+
+  tor_assert(options);
+  if (options->ConstrainedSockets)
+    set_constrained_socket_buffers(s, (int)options->ConstrainedSockSize);
+
+  memset(&dest_addr, 0, sizeof(dest_addr));
+  dest_addr.sun_family = AF_UNIX;
+  strncpy(dest_addr.sun_path, socket_path, sizeof(dest_addr.sun_path));
+
+  log_debug(LD_NET,
+            "Connecting to AF_UNIX socket at %s.",
+            escaped_safe_str_client(socket_path));
+
+  if (connect(s, (struct sockaddr *)(&dest_addr),
+              (socklen_t)(sizeof(dest_addr))) < 0) {
+    int e = tor_socket_errno(s);
+    if (!ERRNO_IS_CONN_EINPROGRESS(e)) {
+      /* yuck. kill it. */
+      *socket_error = e;
+      log_info(LD_NET,
+               "connect() to AF_UNIX socket %s failed: %s",
+               escaped_safe_str_client(socket_path),
+               tor_socket_strerror(e));
+      tor_close_socket(s);
+      return -1;
+    } else {
+      inprogress = 1;
+    }
+  }
+
+  /* it succeeded. we're connected. */
+  log_fn(inprogress ? LOG_DEBUG : LOG_INFO, LD_NET,
+         "Connection to AF_UNIX socket %s %s (sock "TOR_SOCKET_T_FORMAT").",
+         escaped_safe_str_client(socket_path),
+         inprogress ? "in progress" : "established", s);
+  conn->s = s;
+  if (connection_add_connecting(conn) < 0) {
+    /* no space, forget it */
+    *socket_error = SOCK_ERRNO(ENOBUFS);
+    return -1;
+  }
+  return inprogress ? 0 : 1;
+}
+
+#endif /* defined(HAVE_SYS_UN_H) */
 
 /** Convert state number to string representation for logging purposes.
  */
