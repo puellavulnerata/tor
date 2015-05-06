@@ -5020,6 +5020,7 @@ control_event_network_liveness_update(int liveness)
     if (get_cached_network_liveness() <= 0) {
       /* Update cached liveness */
       set_cached_network_liveness(1);
+      log_debug(LD_CONTROL, "Sending NETWORK_LIVENESS UP");
       send_control_event_string(EVENT_NETWORK_LIVENESS, ALL_FORMATS,
                                 "650 UP\r\n");
     }
@@ -5028,11 +5029,14 @@ control_event_network_liveness_update(int liveness)
     if (get_cached_network_liveness() > 0) {
       /* Update cached liveness */
       set_cached_network_liveness(0);
+      log_debug(LD_CONTROL, "Sending NETWORK_LIVENESS DOWN");
       send_control_event_string(EVENT_NETWORK_LIVENESS, ALL_FORMATS,
                                 "650 DOWN\r\n");
     }
     /* else was already dead, no-op */
   }
+
+  return 0;
 }
 
 /** Helper function for NS-style events. Constructs and sends an event
