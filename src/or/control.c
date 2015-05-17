@@ -5045,7 +5045,7 @@ control_event_network_liveness_update(int liveness)
       set_cached_network_liveness(1);
       log_debug(LD_CONTROL, "Sending NETWORK_LIVENESS UP");
       send_control_event_string(EVENT_NETWORK_LIVENESS, ALL_FORMATS,
-                                "650 UP\r\n");
+                                "650 NETWORK_LIVENESS UP\r\n");
     }
     /* else was already live, no-op */
   } else {
@@ -5054,7 +5054,7 @@ control_event_network_liveness_update(int liveness)
       set_cached_network_liveness(0);
       log_debug(LD_CONTROL, "Sending NETWORK_LIVENESS DOWN");
       send_control_event_string(EVENT_NETWORK_LIVENESS, ALL_FORMATS,
-                                "650 DOWN\r\n");
+                                "650 NETWORK_LIVENESS DOWN\r\n");
     }
     /* else was already dead, no-op */
   }
