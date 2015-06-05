@@ -55,6 +55,14 @@ void directory_initiate_command_routerstatus_rend(const routerstatus_t *status,
                                                   time_t if_modified_since,
                                                 const rend_data_t *rend_query);
 
+void directory_open_connection(const tor_addr_t *_addr, uint16_t port,
+                               const char *digest, uint8_t dir_purpose,
+                               uint8_t router_purpose,
+                               dir_indirection_t indirection,
+                               int anonymized_connection, int use_begindir,
+                               int isolation,
+                               dir_connection_t **conn_out);
+
 int parse_http_response(const char *headers, int *code, time_t *date,
                         compress_method_t *compression, char **response);
 

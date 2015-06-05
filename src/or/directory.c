@@ -1058,6 +1058,131 @@ directory_initiate_command_rend(const tor_addr_t *_addr,
   }
 }
 
+/** Open a new directory server connection without sending anything or
+ * massaging/checking the parameters as much as
+ * directory_initiate_command_rend() does.  This is intended for testing
+ * use.
+ */
+void
+directory_open_connection(const tor_addr_t *_addr, uint16_t port,
+                                const char *digest,
+                                uint8_t dir_purpose, uint8_t router_purpose,
+                                dir_indirection_t indirection,
+                                int anonymized_connection, int use_begindir,
+                                int isolation,
+                                dir_connection_t **conn_out)
+{
+  dir_connection_t *conn;
+  const or_options_t *options = get_options();
+  int socket_error = 0;
+  tor_addr_t addr;
+
+  tor_assert(_addr);
+  tor_assert(port);
+  tor_assert(digest);
+  tor_assert(conn_out);
+
+  tor_addr_copy(&addr, _addr);
+
+  log_debug(LD_DIR, "anonymized %d, use_begindir %d.",
+            anonymized_connection, use_begindir);
+
+  log_debug(LD_DIR, "Initiating %s", dir_conn_purpose_to_string(dir_purpose));
+
+  conn = dir_connection_new(tor_addr_family(&addr));
+
+  /* set up conn so it's got all the data we need to remember */
+  tor_addr_copy(&conn->base_.addr, &addr);
+  conn->base_.port = port;
+  conn->base_.address = tor_dup_addr(&addr);
+  memcpy(conn->identity_digest, digest, DIGEST_LEN);
+
+  conn->base_.purpose = dir_purpose;
+  conn->router_purpose = router_purpose;
+
+  /* give it an initial state */
+  conn->base_.state = DIR_CONN_STATE_CONNECTING;
+
+  /* decide whether we can learn our IP address from this conn */
+  /* XXXX This is a bad name for this field now. */
+  conn->dirconn_direct = !anonymized_connection;
+
+  if (!anonymized_connection && !use_begindir) {
+    /* then we want to connect to dirport directly */
+
+    if (options->HTTPProxy) {
+      tor_addr_copy(&addr, &options->HTTPProxyAddr);
+      port = options->HTTPProxyPort;
+    }
+
+    switch (connection_connect(TO_CONN(conn), conn->base_.address, &addr,
+                               port, &socket_error)) {
+      case -1:
+        connection_dir_request_failed(conn); /* retry if we want */
+        connection_free(TO_CONN(conn));
+        return;
+      case 1:
+        /* start flushing conn */
+        /* TODO still do this without directory_send_command() ? */
+        conn->base_.state = DIR_CONN_STATE_CLIENT_SENDING;
+        /* fall through */
+      case 0:
+        connection_watch_events(TO_CONN(conn), READ_EVENT | WRITE_EVENT);
+        /* writable indicates finish, readable indicates broken link,
+           error indicates broken link in windowsland. */
+    }
+  } else { /* we want to connect via a tor connection */
+    entry_connection_t *linked_conn;
+    /* Anonymized tunneled connections can never share a circuit.
+     * One-hop directory connections can share circuits with each other
+     * but nothing else. */
+    int iso_flags = isolation ? ISO_STREAM : ISO_SESSIONGRP;
+
+    /* If it's an anonymized connection, remember the fact that we
+     * wanted it for later: maybe we'll want it again soon. */
+    if (anonymized_connection && use_begindir)
+      rep_hist_note_used_internal(time(NULL), 0, 1);
+    else if (anonymized_connection && !use_begindir)
+      rep_hist_note_used_port(time(NULL), conn->base_.port);
+
+    /* make an AP connection
+     * populate it and add it at the right state
+     * hook up both sides
+     */
+    linked_conn =
+      connection_ap_make_link(TO_CONN(conn),
+                              conn->base_.address, conn->base_.port,
+                              digest,
+                              SESSION_GROUP_DIRCONN, iso_flags,
+                              use_begindir, conn->dirconn_direct);
+    if (!linked_conn) {
+      log_warn(LD_NET,"Making tunnel to dirserver failed.");
+      connection_mark_for_close(TO_CONN(conn));
+      *conn_out = NULL;
+      return;
+    }
+
+    if (connection_add(TO_CONN(conn)) < 0) {
+      log_warn(LD_NET,"Unable to add connection for link to dirserver.");
+      connection_mark_for_close(TO_CONN(conn));
+      *conn_out = NULL;
+      return;
+    }
+    /* TODO still do this without directory_send_command() ? */
+    conn->base_.state = DIR_CONN_STATE_CLIENT_SENDING;
+
+    connection_watch_events(TO_CONN(conn), READ_EVENT|WRITE_EVENT);
+    IF_HAS_BUFFEREVENT(ENTRY_TO_CONN(linked_conn), {
+      connection_watch_events(ENTRY_TO_CONN(linked_conn),
+                              READ_EVENT|WRITE_EVENT);
+    }) ELSE_IF_NO_BUFFEREVENT
+      connection_start_reading(ENTRY_TO_CONN(linked_conn));
+  }
+
+  /* End of function; success */
+  *conn_out = conn;
+}
+
 /** Return true iff anything we say on <b>conn</b> is being encrypted before
  * we send it to the client/server. */
 int
