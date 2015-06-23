@@ -1123,7 +1123,6 @@ directory_open_connection(const tor_addr_t *_addr, uint16_t port,
         return;
       case 1:
         /* start flushing conn */
-        /* TODO still do this without directory_send_command() ? */
         conn->base_.state = DIR_CONN_STATE_CLIENT_SENDING;
         /* fall through */
       case 0:
@@ -1168,7 +1167,6 @@ directory_open_connection(const tor_addr_t *_addr, uint16_t port,
       *conn_out = NULL;
       return;
     }
-    /* TODO still do this without directory_send_command() ? */
     conn->base_.state = DIR_CONN_STATE_CLIENT_SENDING;
 
     connection_watch_events(TO_CONN(conn), READ_EVENT|WRITE_EVENT);
