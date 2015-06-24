@@ -427,7 +427,10 @@ typedef enum {
 #define DIR_PURPOSE_FETCH_RENDDESC_V2 18
 /** A connection to a directory server: download a microdescriptor. */
 #define DIR_PURPOSE_FETCH_MICRODESC 19
-#define DIR_PURPOSE_MAX_ 19
+/** An idle directory server connection for the dirhack control port
+ * command. */
+#define DIR_PURPOSE_DIRHACK 20
+#define DIR_PURPOSE_MAX_ 20
 
 /** True iff <b>p</b> is a purpose corresponding to uploading data to a
  * directory server. */
