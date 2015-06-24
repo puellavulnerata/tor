@@ -173,6 +173,8 @@ static int handle_control_add_onion(control_connection_t *conn, uint32_t len,
                                     const char *body);
 static int handle_control_del_onion(control_connection_t *conn, uint32_t len,
                                     const char *body);
+static int handle_control_dirhack(control_connection_t *conn, uint32_t len,
+                                  const char *body);
 static int write_stream_target_to_buf(entry_connection_t *conn, char *buf,
                                       size_t len);
 static void orconn_target_get_name(char *buf, size_t len,
@@ -3910,6 +3912,327 @@ handle_control_del_onion(control_connection_t *conn,
   return 0;
 }
 
+static const char *
+dirconn_state_to_macro_name(uint8_t state) {
+  const char *rv;
+
+  switch (state) {
+    case DIR_CONN_STATE_CONNECTING:
+      rv = "DIR_CONN_STATE_CONNECTING";
+      break;
+    case DIR_CONN_STATE_CLIENT_SENDING:
+      rv = "DIR_CONN_STATE_CLIENT_SENDING";
+      break;
+    case DIR_CONN_STATE_CLIENT_READING:
+      rv = "DIR_CONN_STATE_CLIENT_READING";
+      break;
+    case DIR_CONN_STATE_CLIENT_FINISHED:
+      rv = "DIR_CONN_STATE_CLIENT_FINISHED";
+      break;
+    case DIR_CONN_STATE_SERVER_COMMAND_WAIT:
+      rv = "DIR_CONN_STATE_SERVER_COMMAND_WAIT";
+      break;
+    case DIR_CONN_STATE_SERVER_WRITING:
+      rv = "DIR_CONN_STATE_SERVER_WRITING";
+      break;
+    default:
+      rv = "UNKNOWN_STATE";
+  }
+
+  return rv;
+}
+
+static uint32_t next_dirhack_idx = 0;
+
+typedef struct dirhack_conn_table_entry_s dirhack_conn_table_entry_t;
+struct dirhack_conn_table_entry_s {
+  uint32_t dirhack_idx;
+  tor_addr_t addr;
+  uint16_t port;
+  char digest[DIGEST_LEN];
+  uint64_t conn_id;
+};
+
+static smartlist_t *dirhack_conns = NULL;
+
+/** Called when we get a DIRHACK command; parse the body, and do the right
+ * thing with directory_open_connection(). */
+static int
+handle_control_dirhack(control_connection_t *conn,
+                       uint32_t len, const char *body)
+{
+  smartlist_t *args = NULL;
+  const char *cmd = NULL;
+  uint32_t idx;
+  dirhack_conn_table_entry_t *dc;
+  int slpos;
+  tor_addr_t dirhack_target_addr;
+  uint16_t dirhack_target_port;
+  char dirhack_target_digest[DIGEST_LEN], hex_digest[HEX_DIGEST_LEN+1];
+  const char *digest_str = NULL;
+  int res, open_args_okay;
+  dir_indirection_t indirection = DIRIND_ONEHOP;
+  int isolation = 0;
+  int repcount = 1;
+  connection_t *dirconn_base = NULL;
+  dir_connection_t *dirconn = NULL;
+  const char *dirconn_state_str = NULL;
+
+  (void) len; /* body is nul-terminated; it's safe to ignore the length */
+  args = getargs_helper("DIRHACK", conn, body, 1, 4);
+
+  if (!args)
+    goto out;
+
+  cmd = smartlist_get(args, 0);
+  if (!strcasecmp(cmd, "OPEN")) {
+    log_debug(LD_CONTROL, "got DIRHACK OPEN");
+    /*
+     * Three args: IP address, port and digest
+     *
+     * TODO add control flags for isolation/begindir/etc.
+     */
+
+    if (smartlist_len(args) >= 4 &&
+        smartlist_len(args) <= 7) {
+      open_args_okay = 1;
+
+      /* Try parsing the address */
+      res = tor_addr_parse(&dirhack_target_addr, smartlist_get(args, 1));
+      if (res == -1) {
+        connection_printf_to_buf(conn,
+                                 "512 unparsable address \'%s\'\r\n",
+                                 (const char *)(smartlist_get(args, 1)));
+        open_args_okay = 0;
+      }
+
+      /* Now the port */
+      res = sscanf(smartlist_get(args, 2), "%hu", &dirhack_target_port);
+      if (res != 1) {
+        connection_printf_to_buf(conn,
+                                 "512 unparsable port \'%s\'\r\n",
+                                 (const char *)(smartlist_get(args, 2)));
+        open_args_okay = 0;
+      }
+
+      /* The digest */
+      digest_str = (const char *)(smartlist_get(args, 3));
+      if (is_legal_hexdigest(digest_str)) {
+        /* Skip the optional initial $ */
+        if (*digest_str == '$') {
+          ++digest_str;
+        }
+        /* Decode it */
+        base16_decode(dirhack_target_digest,
+                      sizeof(dirhack_target_digest),
+                      digest_str, HEX_DIGEST_LEN);
+      } else {
+        connection_printf_to_buf(conn,
+                                 "512 bad digest \'%s\'\r\n",
+                                 digest_str);
+        open_args_okay = 0;
+      }
+
+      /*
+       * Okay, we have our four required arguments; now optionally we can have
+       * an indirection type, a circuit isolation flag and a repetition count
+       *
+       * TODO parse them
+       */
+
+      if (open_args_okay) {
+        /* Okay, time to actually set up a new connection */
+
+        /* Emit a log message */
+        base16_encode(hex_digest, sizeof(hex_digest),
+                      dirhack_target_digest,
+                      sizeof(dirhack_target_digest));
+        log_debug(LD_CONTROL,
+                  "DIRHACK OPEN is to %s:%u (%s)",
+                  fmt_addr(&dirhack_target_addr),
+                  dirhack_target_port,
+                  hex_digest);
+
+        /* TODO implement repcount */
+
+        /* Allocate an entry in the table */
+        dc = tor_malloc_zero(sizeof(*dc));
+        dc->dirhack_idx = next_dirhack_idx++;
+        tor_addr_copy(&(dc->addr), &dirhack_target_addr);
+        dc->port = dirhack_target_port;
+        memcpy(&(dc->digest), dirhack_target_digest, sizeof(dc->digest));
+
+        /* Try to open a connection */
+        directory_open_connection(&dirhack_target_addr,
+                                  dirhack_target_port,
+                                  dirhack_target_digest,
+                                  DIR_PURPOSE_DIRHACK,
+                                  /*
+                                   * We won't be fetching descriptors, but
+                                   * just to be safe, don't use any.
+                                   */
+                                  ROUTER_PURPOSE_UNKNOWN,
+                                  indirection,
+                                  isolation,
+                                  &dirconn);
+
+        /* Check if it gave us a dirconn */
+        if (dirconn) {
+          dc->conn_id = TO_CONN(dirconn)->global_identifier;
+          if (!dirhack_conns) {
+            dirhack_conns = smartlist_new();
+          }
+
+          smartlist_add(dirhack_conns, dc);
+          connection_printf_to_buf(conn,
+                                   "250 connection " U64_FORMAT " at %p "
+                                   "started\r\n",
+                                   U64_PRINTF_ARG(dc->conn_id),
+                                   dirconn);
+        } else {
+          /* No luck... */
+          connection_printf_to_buf(conn,
+                                   "551 directory_open_connection() "
+                                   "failed\r\n");
+          tor_free(dc);
+        }
+      }
+      /* else we already emitted an error message */
+    } else {
+      connection_printf_to_buf(conn,
+                               "512 wrong number of args to "
+                               "DIRHACK OPEN\r\n");
+    }
+  } else if (!strcasecmp(cmd, "CLOSE")) {
+    log_debug(LD_CONTROL, "got DIRHACK CLOSE");
+    /* There should be exactly two args in this case */
+    if (smartlist_len(args) == 2) {
+      if (sscanf(smartlist_get(args, 1), "%u", &idx) == 1) {
+        /* Look for the relevant entry */
+        dc = NULL;
+        slpos = 0;
+        if (dirhack_conns) {
+          SMARTLIST_FOREACH_BEGIN(dirhack_conns,
+                                  dirhack_conn_table_entry_t *,
+                                  dctmp) {
+            if (dctmp->dirhack_idx == idx) {
+              dc = dctmp;
+              break;
+            }
+            ++slpos;
+          } SMARTLIST_FOREACH_END(dctmp);
+        }
+        /* else null, no connections */
+
+        /* Did we get one? */
+        if (dc) {
+          /* Get it out of the list */
+          smartlist_del(dirhack_conns, slpos);
+
+          /* See if it's still around */
+          dirconn_base = connection_get_by_global_id(dc->conn_id);
+
+          /* Mark it for close if it still exists */
+          if (dirconn_base) {
+            connection_mark_for_close(dirconn_base);
+            connection_printf_to_buf(conn,
+                                     "250 connection " U64_FORMAT " at %p"
+                                     "closed\r\n",
+                                     U64_PRINTF_ARG(dc->conn_id),
+                                     dirconn_base);
+          } else {
+            connection_printf_to_buf(conn,
+                                     "251 connection ID " U64_FORMAT
+                                     " gone\r\n",
+                                     U64_PRINTF_ARG(dc->conn_id));
+          }
+
+          tor_free(dc);
+          dirconn_base = NULL;
+        } else {
+          connection_printf_to_buf(conn,
+                                   "251 no such connection index %u\r\n",
+                                   idx);
+        }
+      } else {
+        connection_printf_to_buf(conn,
+                                 "512 couldn't parse \'%s\' as an index for "
+                                 "DIRHACK CLOSE\r\n",
+                                 (char *)(smartlist_get(args, 1)));
+      }
+    } else {
+      connection_printf_to_buf(conn,
+                               "512 wrong number of args to "
+                               "DIRHACK CLOSE\r\n");
+    }
+  } else if (!strcasecmp(cmd, "LIST")) {
+    log_debug(LD_CONTROL, "got DIRHACK LIST");
+    /* These should be exactly one arg in this case */
+    if (smartlist_len(args) == 1) {
+      if (dirhack_conns) {
+        connection_printf_to_buf(conn, "250 %d conns follow\r\n",
+                                 smartlist_len(dirhack_conns));
+        SMARTLIST_FOREACH_BEGIN(dirhack_conns, dirhack_conn_table_entry_t *,
+                                dctmp) {
+          /* See if we still have this connection */
+          dirconn_base = connection_get_by_global_id(dctmp->conn_id);
+          if (dirconn_base) {
+            if (dirconn_base->type == CONN_TYPE_DIR) {
+              dirconn = TO_DIR_CONN(dirconn_base);
+              dirconn_state_str =
+                dirconn_state_to_macro_name(dirconn_base->state);
+            } else {
+              dirconn_state_str = "UNKNOWN_TYPE";
+            }
+          } else {
+            /*
+             * No connection found; we'll free this later, but for now
+             * set the state string.
+             */
+            dirconn_state_str = "GONE";
+          }
+
+          connection_printf_to_buf(conn,
+                                   "250 %u " U64_FORMAT " %p %s %s "
+                                   "%u\r\n",
+                                   dctmp->dirhack_idx,
+                                   U64_PRINTF_ARG(dctmp->conn_id),
+                                   dirconn_base,
+                                   dirconn_state_str,
+                                   fmt_addr(&(dctmp->addr)),
+                                   dctmp->port);
+
+
+          if (!dirconn_base) {
+            /* Cleanup time */
+            tor_free(dctmp);
+            SMARTLIST_DEL_CURRENT(dirhack_conns, dctmp);
+          }
+        } SMARTLIST_FOREACH_END(dctmp);
+      } else {
+        connection_printf_to_buf(conn, "250 0 conns follow\r\n");
+      }
+    } else {
+      connection_printf_to_buf(conn,
+                               "512 wrong number of args to "
+                               "DIRHACK LIST\r\n");
+    }
+  } else {
+    log_debug(LD_CONTROL, "got unknown DIRHACK command %s", cmd);
+    connection_printf_to_buf(conn,
+                             "512 Unknown DIRHACK command %s\r\n", cmd);
+  }
+
+ out:
+  if (args) {
+    SMARTLIST_FOREACH_BEGIN(args, char *, cp) {
+      tor_free(cp);
+    } SMARTLIST_FOREACH_END(cp);
+    smartlist_free(args);
+  }
+  return 0;
+}
+
 /** Called when <b>conn</b> has no more bytes left on its outbuf. */
 int
 connection_control_finished_flushing(control_connection_t *conn)
@@ -4230,6 +4553,10 @@ connection_control_process_inbuf(control_connection_t *conn)
   } else if (!strcasecmp(conn->incoming_cmd, "DEL_ONION")) {
     int ret = handle_control_del_onion(conn, cmd_data_len, args);
     memwipe(args, 0, cmd_data_len); /* Scrub the service id/pk. */
+    if (ret)
+      return -1;
+  } else if (!strcasecmp(conn->incoming_cmd, "DIRHACK")) {
+    int ret = handle_control_dirhack(conn, cmd_data_len, args);
     if (ret)
       return -1;
   } else {
