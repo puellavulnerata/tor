@@ -190,6 +190,8 @@ dir_conn_purpose_to_string(int purpose)
       return "hidden-service v2 descriptor upload";
     case DIR_PURPOSE_FETCH_MICRODESC:
       return "microdescriptor fetch";
+    case DIR_PURPOSE_DIRHACK:
+      return "dirhack";
     }
 
   log_warn(LD_BUG, "Called with unknown purpose %d", purpose);
@@ -1068,13 +1070,13 @@ directory_open_connection(const tor_addr_t *_addr, uint16_t port,
                                 const char *digest,
                                 uint8_t dir_purpose, uint8_t router_purpose,
                                 dir_indirection_t indirection,
-                                int anonymized_connection, int use_begindir,
                                 int isolation,
                                 dir_connection_t **conn_out)
 {
   dir_connection_t *conn;
   const or_options_t *options = get_options();
   int socket_error = 0;
+  int anonymized_connection, use_begindir;
   tor_addr_t addr;
 
   tor_assert(_addr);
@@ -1084,10 +1086,28 @@ directory_open_connection(const tor_addr_t *_addr, uint16_t port,
 
   tor_addr_copy(&addr, _addr);
 
+  /*
+   * The connection is anonymized if the indirection is
+   * DIRIND_ANONYMOUS (begindir through a full Tor circuit)
+   * or DIRIND_ANON_DIRPORT (Tor circuit to the dirport)
+   */
+  anonymized_connection = dirind_is_anon(indirection);
+  
+  /*
+   * The connection uses begindir if it is DIRIND_ONEHOP or
+   * DIRIND_ANONYMOUS, not any of the direct connections; this
+   * is different from the test in directory_command_should_use_begindir()
+   * and will potentially try to make circuits even fascistfirewall is
+   * set and we know they will fail.  The DIRHACK command is for load testing
+   * and shouldn't second-guess that much.
+   */
+  use_begindir =
+    (indirection == DIRIND_ONEHOP ||
+     indirection == DIRIND_ANONYMOUS) ?
+    1 : 0;
+
   log_debug(LD_DIR, "anonymized %d, use_begindir %d.",
             anonymized_connection, use_begindir);
-
-  log_debug(LD_DIR, "Initiating %s", dir_conn_purpose_to_string(dir_purpose));
 
   conn = dir_connection_new(tor_addr_family(&addr));
 

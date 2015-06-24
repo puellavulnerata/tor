@@ -59,7 +59,6 @@ void directory_open_connection(const tor_addr_t *_addr, uint16_t port,
                                const char *digest, uint8_t dir_purpose,
                                uint8_t router_purpose,
                                dir_indirection_t indirection,
-                               int anonymized_connection, int use_begindir,
                                int isolation,
                                dir_connection_t **conn_out);
 
