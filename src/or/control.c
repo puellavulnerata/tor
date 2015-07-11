@@ -3974,12 +3974,14 @@ handle_control_dirhack(control_connection_t *conn,
   dir_indirection_t indirection = DIRIND_ONEHOP;
   int isolation = 0;
   int repcount = 1;
+  int i, failed, succeeded;
   connection_t *dirconn_base = NULL;
   dir_connection_t *dirconn = NULL;
-  const char *dirconn_state_str = NULL;
+  const char *dirconn_state_str = NULL, *indirection_str = NULL;
+  const char *isolation_str = NULL, *repcount_str = NULL;
 
   (void) len; /* body is nul-terminated; it's safe to ignore the length */
-  args = getargs_helper("DIRHACK", conn, body, 1, 4);
+  args = getargs_helper("DIRHACK", conn, body, 1, 7);
 
   if (!args)
     goto out;
@@ -3989,12 +3991,9 @@ handle_control_dirhack(control_connection_t *conn,
     log_debug(LD_CONTROL, "got DIRHACK OPEN");
     /*
      * Three args: IP address, port and digest
-     *
-     * TODO add control flags for isolation/begindir/etc.
      */
 
-    if (smartlist_len(args) >= 4 &&
-        smartlist_len(args) <= 7) {
+    if (smartlist_len(args) == 7) {
       open_args_okay = 1;
 
       /* Try parsing the address */
@@ -4034,11 +4033,46 @@ handle_control_dirhack(control_connection_t *conn,
       }
 
       /*
-       * Okay, we have our four required arguments; now optionally we can have
-       * an indirection type, a circuit isolation flag and a repetition count
-       *
-       * TODO parse them
+       * Okay, we have our address/port/digest; next parse an indirection
+       * type, a circuit isolation flag and a repetition count
        */
+
+      indirection_str = (const char *)(smartlist_get(args, 4));
+      if (strcasecmp(indirection_str, "onehop") == 0) {
+        indirection = DIRIND_ONEHOP;
+      } else if (strcasecmp(indirection_str, "anonymous") == 0) {
+        indirection = DIRIND_ANONYMOUS;
+      } else if (strcasecmp(indirection_str, "direct") == 0) {
+        indirection = DIRIND_DIRECT_CONN;
+      } else if (strcasecmp(indirection_str, "anon_dirport") == 0) {
+        indirection = DIRIND_ANON_DIRPORT;
+      } else {
+        connection_printf_to_buf(conn,
+                                 "512 bad indirection type \'%s\'\r\n",
+                                 indirection_str);
+        open_args_okay = 0;
+      }
+
+      isolation_str = (const char *)(smartlist_get(args, 5));
+      if (strcasecmp(isolation_str, "no_isolation") == 0) {
+        isolation = 0;
+      } else if (strcasecmp(isolation_str, "isolation") == 0) {
+        isolation = 1;
+      } else {
+        connection_printf_to_buf(conn,
+                                 "512 bad isolation type \'%s\'\r\n",
+                                 isolation_str);
+        open_args_okay = 0;
+      }
+
+      repcount_str = (const char *)(smartlist_get(args, 6));
+      res = sscanf(repcount_str, "%d", &repcount);
+      if (res != 1 || repcount <= 0) {
+        connection_printf_to_buf(conn,
+                                 "512 bad repcount \'%s\'\r\n",
+                                 repcount_str);
+        open_args_okay = 0;
+      }
 
       if (open_args_okay) {
         /* Okay, time to actually set up a new connection */
@@ -4052,49 +4086,56 @@ handle_control_dirhack(control_connection_t *conn,
                   fmt_addr(&dirhack_target_addr),
                   dirhack_target_port,
                   hex_digest);
+        log_debug(LD_CONTROL,
+                  "indirection %s, isolation %d, repcount %d",
+                  indirection_str, isolation, repcount);
 
-        /* TODO implement repcount */
+        for (i = 0, failed = 0, succeeded = 0; i < repcount; ++i) {
+          /* Allocate an entry in the table */
+          dc = tor_malloc_zero(sizeof(*dc));
+          dc->dirhack_idx = next_dirhack_idx++;
+          tor_addr_copy(&(dc->addr), &dirhack_target_addr);
+          dc->port = dirhack_target_port;
+          memcpy(&(dc->digest), dirhack_target_digest, sizeof(dc->digest));
 
-        /* Allocate an entry in the table */
-        dc = tor_malloc_zero(sizeof(*dc));
-        dc->dirhack_idx = next_dirhack_idx++;
-        tor_addr_copy(&(dc->addr), &dirhack_target_addr);
-        dc->port = dirhack_target_port;
-        memcpy(&(dc->digest), dirhack_target_digest, sizeof(dc->digest));
+          /* Try to open a connection */
+          directory_open_connection(&dirhack_target_addr,
+                                    dirhack_target_port,
+                                    dirhack_target_digest,
+                                    DIR_PURPOSE_DIRHACK,
+                                    /*
+                                     * We won't be fetching descriptors, but
+                                     * just to be safe, don't use any.
+                                     */
+                                    ROUTER_PURPOSE_UNKNOWN,
+                                    indirection,
+                                    isolation,
+                                    &dirconn);
 
-        /* Try to open a connection */
-        directory_open_connection(&dirhack_target_addr,
-                                  dirhack_target_port,
-                                  dirhack_target_digest,
-                                  DIR_PURPOSE_DIRHACK,
-                                  /*
-                                   * We won't be fetching descriptors, but
-                                   * just to be safe, don't use any.
-                                   */
-                                  ROUTER_PURPOSE_UNKNOWN,
-                                  indirection,
-                                  isolation,
-                                  &dirconn);
+          /* Check if it gave us a dirconn */
+          if (dirconn) {
+            dc->conn_id = TO_CONN(dirconn)->global_identifier;
+            if (!dirhack_conns) {
+              dirhack_conns = smartlist_new();
+            }
 
-        /* Check if it gave us a dirconn */
-        if (dirconn) {
-          dc->conn_id = TO_CONN(dirconn)->global_identifier;
-          if (!dirhack_conns) {
-            dirhack_conns = smartlist_new();
+            smartlist_add(dirhack_conns, dc);
+            ++succeeded;
+          } else {
+            /* No luck... */
+            ++failed;
+            tor_free(dc);
           }
+        }
 
-          smartlist_add(dirhack_conns, dc);
+        if (succeeded > 0) {
           connection_printf_to_buf(conn,
-                                   "250 connection " U64_FORMAT " at %p "
-                                   "started\r\n",
-                                   U64_PRINTF_ARG(dc->conn_id),
-                                   dirconn);
+                                   "250 got %d of %d new connections (%d failed)\r\n",
+                                   succeeded, repcount, failed);
         } else {
-          /* No luck... */
           connection_printf_to_buf(conn,
-                                   "551 directory_open_connection() "
-                                   "failed\r\n");
-          tor_free(dc);
+                                   "551 %d new connections failed\r\n",
+                                   failed);
         }
       }
       /* else we already emitted an error message */
