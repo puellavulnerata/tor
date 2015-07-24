@@ -366,6 +366,40 @@ nodelist_find_nodes_with_microdesc(const microdesc_t *md)
   return result;
 }
 
+/** Return a newly allocated smartlist of the nodes that could be the origin
+ * of a connection with source address addr.  As with
+ * nodelist_find_nodes_with_microdesc(), this is a list of pointers into
+ * the_nodelist, not a list of digests, so it should be used immediately
+ * and the caller can't rely on its elements not being freed out from
+ * under it otherwise. */
+
+smartlist_t *
+nodelist_find_nodes_with_address(const tor_addr_t *addr)
+{
+  smartlist_t *result = NULL;
+
+  tor_assert(addr != NULL);
+
+  result = smartlist_new();
+
+  if (the_nodelist == NULL)
+    return result;
+
+  SMARTLIST_FOREACH_BEGIN(the_nodelist->nodes, node_t *, node) {
+    if (node->rs) {
+      /* We have a routerstatus_t with address fields to compare */
+      if (tor_addr_eq_ipv4h(addr, node->rs->addr) ||
+          (!tor_addr_is_null(&(node->rs->ipv6_addr)) &&
+           tor_addr_eq(&(node->rs->ipv6_addr), addr))) {
+        /* An address matches... */
+        smartlist_add(result, node);
+      }
+    }
+  } SMARTLIST_FOREACH_END(node);
+
+  return result;
+}
+
 /** Release storage held by <b>node</b>  */
 static void
 node_free(node_t *node)
