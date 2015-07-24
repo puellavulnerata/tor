@@ -27,6 +27,7 @@ void nodelist_remove_microdesc(const char *identity_digest, microdesc_t *md);
 void nodelist_remove_routerinfo(routerinfo_t *ri);
 void nodelist_purge(void);
 smartlist_t *nodelist_find_nodes_with_microdesc(const microdesc_t *md);
+smartlist_t *nodelist_find_nodes_with_address(const tor_addr_t *addr);
 
 void nodelist_free_all(void);
 void nodelist_assert_ok(void);
