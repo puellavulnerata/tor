@@ -29,6 +29,7 @@
 #include "control.h"
 #include "cpuworker.h"
 #include "crypto_s2k.h"
+#include "dirdosfilter.h"
 #include "directory.h"
 #include "dirserv.h"
 #include "dirvote.h"
@@ -3086,6 +3087,7 @@ tor_free_all(int postfork)
   networkstatus_free_all();
   addressmap_free_all();
   dirserv_free_all();
+  dirdosfilter_free_all();
   rend_service_free_all();
   rend_cache_free_all();
   rend_service_authorization_free_all();
