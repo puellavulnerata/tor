@@ -29,6 +29,7 @@
 #include "connection_edge.h"
 #include "connection_or.h"
 #include "control.h"
+#include "dirdosfilter.h"
 #include "directory.h"
 #include "dirserv.h"
 #include "dns.h"
@@ -1571,6 +1572,34 @@ connection_init_accepted_conn(connection_t *conn,
                               const listener_connection_t *listener)
 {
   int rv;
+
+  if (conn->type == CONN_TYPE_DIR) {
+    struct sockaddr_storage dst_sockaddrbuf;
+    struct sockaddr *dst_sockaddr = (struct sockaddr *)(&dst_sockaddrbuf);
+    socklen_t dst_sockaddr_len = sizeof(dst_sockaddrbuf);
+    tor_addr_t dst_addr;
+    uint16_t dst_port;
+
+    /*
+     * This dirconn DoS tracker test is up here rather than in the
+     * switch block so we can decide to kill rejected connections before the
+     * connection_start_reading() call.
+     */
+
+    tor_assert(conn->s != TOR_INVALID_SOCKET);
+    if (tor_getsockname(conn->s, dst_sockaddr, &dst_sockaddr_len) == 0) {
+      tor_addr_from_sockaddr(&dst_addr, dst_sockaddr, &dst_port);
+
+      dirdosfilter_bump(&(conn->addr), &dst_addr, dst_port, 0, 0, 0);
+      /* TODO check return from dirdosfilter_bump / kill connections */
+    } else {
+      int e = tor_socket_errno(conn->s);
+      log_warn(LD_NET,
+               "getsockname() to determine destination for incoming dirconn "
+               "failed; skipping DoS filter (%s)",
+               tor_socket_strerror(e));
+    }
+  }
 
   connection_start_reading(conn);
 
