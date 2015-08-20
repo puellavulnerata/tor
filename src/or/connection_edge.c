@@ -24,6 +24,7 @@
 #include "control.h"
 #include "dns.h"
 #include "dnsserv.h"
+#include "dirdosfilter.h"
 #include "dirserv.h"
 #include "hibernate.h"
 #include "main.h"
@@ -3106,6 +3107,17 @@ connection_exit_connect_dir(edge_connection_t *exitconn)
   dirconn->dirreq_id = exitconn->dirreq_id;
 
   connection_link_connections(TO_CONN(dirconn), TO_CONN(exitconn));
+
+  /* Tell dirconn dos tracker/resistance code about this; the address is
+   * the address of the previous hop in the circuit this came in over.
+   */
+  dirdosfilter_bump(&(dirconn->base_.addr),
+                    NULL, /* No dest addr for begindir */
+                    0, /* No dest port for begindir */
+                    1, /* Yes, this was begindir */
+                    circ->p_chan->global_identifier,
+                    circ->p_circ_id);
+  /* TODO check return and kill conns as needed */
 
   if (connection_add(TO_CONN(exitconn))<0) {
     connection_edge_end(exitconn, END_STREAM_REASON_RESOURCELIMIT);
