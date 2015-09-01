@@ -9,7 +9,7 @@
 #ifndef TOR_DIRDOSFILTER_H
 #define TOR_DIRDOSFILTER_H
 
-uint32_t dirdosfilter_bump(const tor_addr_t *src_addr,
+int dirdosfilter_bump(const tor_addr_t *src_addr,
                            const tor_addr_t *dst_addr,
                            uint16_t dst_port,
                            uint8_t begindir,

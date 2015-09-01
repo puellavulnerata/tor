@@ -3292,13 +3292,22 @@ connection_exit_connect_dir(edge_connection_t *exitconn)
   /* Tell dirconn dos tracker/resistance code about this; the address is
    * the address of the previous hop in the circuit this came in over.
    */
-  dirdosfilter_bump(&(dirconn->base_.addr),
-                    NULL, /* No dest addr for begindir */
-                    0, /* No dest port for begindir */
-                    1, /* Yes, this was begindir */
-                    circ->p_chan->global_identifier,
-                    circ->p_circ_id);
-  /* TODO check return and kill conns as needed */
+  if (!dirdosfilter_bump(&(dirconn->base_.addr),
+                         NULL, /* No dest addr for begindir */
+                         0, /* No dest port for begindir */
+                         1, /* Yes, this was begindir */
+                         circ->p_chan->global_identifier,
+                         circ->p_circ_id)) {
+    /* Doesn't pass the DoS filter; kill it */
+    /* XXX should we also kill the circuit? */
+    log_info(LD_EXIT,
+             "Killing exitconn for DoS-filtered begindir from %s",
+             fmt_addr(&(dirconn->base_.addr)));
+    connection_edge_end(exitconn, END_STREAM_REASON_RESOURCELIMIT);
+    connection_free(TO_CONN(exitconn));
+    connection_free(TO_CONN(dirconn));
+    return 0;
+  }
 
   if (connection_add(TO_CONN(exitconn))<0) {
     connection_edge_end(exitconn, END_STREAM_REASON_RESOURCELIMIT);
