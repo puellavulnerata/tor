@@ -189,9 +189,9 @@ dirdosfilter_guess_indirection(const tor_addr_t *src_addr,
 }
 
 /**
- * Bump the appropriate counter for a new incoming connection and return its
- * updated value; this is called on incoming connections and the result is
- * used to decide if they pass the filter or not.
+ * Bump the appropriate counter for a new incoming connection and return
+ * whether the connection should be allowed through the filter or not; this
+ * is called on incoming connections from connection.c and connection_edge.c.
  *
  * Args:
  *
@@ -228,7 +228,7 @@ dirdosfilter_guess_indirection(const tor_addr_t *src_addr,
  *    - If begindir == 0, these should be zero.
  */
 
-uint32_t
+int
 dirdosfilter_bump(const tor_addr_t *src_addr,
                   const tor_addr_t *dst_addr,
                   uint16_t dst_port,
@@ -236,7 +236,7 @@ dirdosfilter_bump(const tor_addr_t *src_addr,
                   uint64_t channel_id,
                   circid_t circ_id)
 {
-  uint32_t res;
+  int res;
   dir_indirection_t ind;
 
   /* Argument validation asserts */
@@ -302,7 +302,7 @@ dirdosfilter_bump(const tor_addr_t *src_addr,
                  "dirdosfilter_guess_indirection() returned a weird "
                  "indirection type %d; filter will ignore this",
                  (int)(ind));
-      res = 0;
+      res = 1;
   }
 
   return res;
