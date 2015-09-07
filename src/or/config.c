@@ -217,6 +217,7 @@ static config_var_t option_vars_[] = {
   V(DataDirectoryGroupReadable,  BOOL,     "0"),
   V(DisableNetwork,              BOOL,     "0"),
   V(DirAllowPrivateAddresses,    BOOL,     "0"),
+  V(DirDoSFilterMaxBegindirPerCircuit, UINT, "1"),
   V(TestingAuthDirTimeToLearnReachability, INTERVAL, "30 minutes"),
   V(DirListenAddress,            LINELIST, NULL),
   V(DirPolicy,                   LINELIST, NULL),
@@ -2995,6 +2996,14 @@ options_validate(or_options_t *old_options, or_options_t *options,
     tor_asprintf(msg,
         "ConnLimit must be greater than 0, but was set to %d",
         options->ConnLimit);
+    return -1;
+  }
+
+  if (options->DirDoSFilterMaxBegindirPerCircuit <= 0) {
+    tor_asprintf(msg,
+        "DirDoSFilterMaxBegindirPerCircuit must be greater than 0, "
+        "but was set to %d",
+        options->DirDoSFilterMaxBegindirPerCircuit);
     return -1;
   }
 
