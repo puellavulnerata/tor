@@ -3,6 +3,9 @@
 
 #define DIRDOSFILTER_PRIVATE
 #include "or.h"
+#include "channel.h"
+#include "circuitlist.h"
+#include "config.h"
 #include "dirdosfilter.h"
 #include "directory.h"
 #include "nodelist.h"
@@ -14,6 +17,18 @@
  * DoS attempts.
  */
 
+static int dirdosfilter_bump_anon_dirport(
+                  const tor_addr_t *dst_addr,
+                  uint16_t dst_port);
+static int dirdosfilter_bump_anon(void);
+static int dirdosfilter_bump_circuit_begindir(
+                  uint64_t channel_id,
+                  circid_t circ_id);
+static int dirdosfilter_bump_direct(
+                  const tor_addr_t *src_addr,
+                  const tor_addr_t *dst_addr,
+                  uint16_t dst_port);
+static int dirdosfilter_bump_onehop(const tor_addr_t *src_addr);
 static dir_indirection_t dirdosfilter_guess_indirection_begindir(
                   const tor_addr_t *src_addr);
 static dir_indirection_t dirdosfilter_guess_indirection_dirport(
@@ -133,7 +148,7 @@ dirdosfilter_guess_indirection_dirport(const tor_addr_t *src_addr,
           (n->rs ? (n->rs->is_valid && n->rs->is_flagged_running) : 0)) {
         /* Check if it matches the exit policy for n */
         pol_match = compare_tor_addr_to_node_policy(dst_addr, dst_port, n);
-        if (pol_match == ADDR_POLICY_ACCEPTED ||
+          if (pol_match == ADDR_POLICY_ACCEPTED ||
             pol_match == ADDR_POLICY_PROBABLY_ACCEPTED) {
           /* We have a plausible previous hop for DIRIND_ANON_DIRPORT */
           guess = DIRIND_ANON_DIRPORT;
@@ -186,6 +201,130 @@ dirdosfilter_guess_indirection(const tor_addr_t *src_addr,
     return dirdosfilter_guess_indirection_dirport(src_addr,
                                                   dst_addr, dst_port);
   }
+}
+
+/**
+ * Bump the begindir counter for this circuit and return whether the
+ * connection should be allowed through or not.
+ */
+
+static int
+dirdosfilter_bump_circuit_begindir(uint64_t channel_id, circid_t circ_id)
+{
+  int allow_req = 1;
+  channel_t *chan = NULL;
+  circuit_t *circ = NULL;
+  or_circuit_t *orcirc = NULL;
+  uint32_t max_begindir_per_circuit =
+    get_options()->DirDoSFilterMaxBegindirPerCircuit;
+
+  /* First find the channel */
+  chan = channel_find_by_global_id(channel_id);
+  if (chan) {
+    /* Now look for the circuit */
+    circ = circuit_get_by_circid_channel(circ_id, chan);
+    if (circ) {
+      if (CIRCUIT_IS_ORCIRC(circ)) {
+        orcirc = TO_OR_CIRCUIT(circ);
+        /* Bump the begindir counter */
+        ++(orcirc->dirdosfilter_begindir_count);
+        if (orcirc->dirdosfilter_begindir_count >
+            max_begindir_per_circuit) {
+          log_info(LD_NET,
+                   "Blocking over-threshold begindir (%u / %u) on circuit %u"
+                   ", channel " U64_FORMAT,
+                   (unsigned int)(orcirc->dirdosfilter_begindir_count),
+                   (unsigned int)(max_begindir_per_circuit),
+                   (unsigned int)(circ_id),
+                   U64_PRINTF_ARG(channel_id));
+          allow_req = 0;
+        }
+      } else {
+        /* Block the request if we have no circuit */
+        log_debug(LD_NET,
+                  "Got a non-orcirc circuit %u on channel " U64_FORMAT
+                  "; this is a bug",
+                  (unsigned int)(circ_id), U64_PRINTF_ARG(channel_id));
+        allow_req = 0;
+      }
+    } else {
+      /* Block the request if we have no circuit */
+      log_debug(LD_NET, "Couldn't find circuit %u on channel " U64_FORMAT,
+                (unsigned int)(circ_id), U64_PRINTF_ARG(channel_id));
+      allow_req = 0;
+    }
+  } else {
+    /* Block the request if we have no channel (weird) */
+    log_debug(LD_NET, "Couldn't find channel " U64_FORMAT,
+              U64_PRINTF_ARG(channel_id));
+    allow_req = 0;
+  }
+
+  return allow_req;
+}
+
+/**
+ * Bump the counter for DIRIND_ANON_DIRPORT connections to this destination
+ * address/port and return whether the connection should be allowed through
+ * or not.
+ */
+
+static int
+dirdosfilter_bump_anon_dirport(const tor_addr_t *dst_addr,
+                               uint16_t dst_port)
+{
+  tor_assert(dst_addr != NULL);
+
+  /* TODO actually implement real counters/test here */
+
+  return 1;
+}
+
+/**
+ * Bump the counter for DIRIND_ANONYMOUS connections and return whether the
+ * connection should be allowed through or not.
+ */
+
+static int
+dirdosfilter_bump_anon(void)
+{
+  /* TODO actually implement real counters/test here */
+
+  return 1;
+}
+
+/**
+ * Bump the counter for this direct connections from this source address to
+ * this destination address/port, and return whether the connection should be
+ * allowed through or not.
+ */
+
+static int
+dirdosfilter_bump_direct(const tor_addr_t *src_addr,
+                         const tor_addr_t *dst_addr,
+                         uint16_t dst_port)
+{
+  tor_assert(src_addr != NULL);
+  tor_assert(dst_addr != NULL);
+
+  /* TODO actually implement real counters/test here */
+
+  return 1;
+}
+
+/**
+ * Bump the counter for DIRIND_ONEHOP connections from this source address
+ * and return whether the connection should be allowed through or not.
+ */
+
+static int
+dirdosfilter_bump_onehop(const tor_addr_t *src_addr)
+{
+  tor_assert(src_addr != NULL);
+
+  /* TODO actually implement real counters/test here */
+
+  return 1;
 }
 
 /**
@@ -275,6 +414,11 @@ dirdosfilter_bump(const tor_addr_t *src_addr,
       log_debug(LD_DIR,
                 "dirdosfilter sees a DIRIND_DIRECT_CONN from %s to %s",
                 fmt_addr(src_addr), fmt_addrport(dst_addr, dst_port));
+      /*
+       * The direct case will need to hash the src address in to find a
+       * counter per potential connection source.
+       */
+      res = dirdosfilter_bump_direct(src_addr, dst_addr, dst_port);
       break;
     case DIRIND_ANON_DIRPORT:
       tor_assert(dst_addr);
@@ -282,6 +426,12 @@ dirdosfilter_bump(const tor_addr_t *src_addr,
       log_debug(LD_DIR,
                 "dirdosfilter sees a DIRIND_ANON_DIRPORT from %s to %s",
                 fmt_addr(src_addr), fmt_addrport(dst_addr, dst_port));
+      /*
+       * ANON_DIRPORT case can only depend on dst port, but we pass those in
+       * to leave room to make it possible to set different policy per port
+       * if we listen on more than one.
+       */
+      res = dirdosfilter_bump_anon_dirport(dst_addr, dst_port);
       break;
     case DIRIND_ONEHOP:
       log_debug(LD_DIR,
@@ -289,6 +439,17 @@ dirdosfilter_bump(const tor_addr_t *src_addr,
                 U64_FORMAT ", circuit ID %u",
                 fmt_addr(src_addr),
                 U64_PRINTF_ARG(channel_id), (unsigned int)(circ_id));
+      /*
+       * In the ONEHOP case, we could kill it because we have too many
+       * recent attempts from this source address (as in DIRECT_CONN), or
+       * we've seen too many begindirs on this circuit (and we should keep)
+       * a counter in the circuit struct rather than messing with hash tables
+       * for that.
+       */
+      res = dirdosfilter_bump_circuit_begindir(channel_id, circ_id);
+      if (res > 0) {
+        res = dirdosfilter_bump_onehop(src_addr);
+      }
       break;
     case DIRIND_ANONYMOUS:
       log_debug(LD_DIR,
@@ -296,6 +457,11 @@ dirdosfilter_bump(const tor_addr_t *src_addr,
                 " ID " U64_FORMAT ", circuit ID %u",
                 fmt_addr(src_addr),
                 U64_PRINTF_ARG(channel_id), (unsigned int)(circ_id));
+      /* Like ONEHOP, but all anonymized circuits go in the same bucket */
+      res = dirdosfilter_bump_circuit_begindir(channel_id, circ_id);
+      if (res > 0) {
+        res = dirdosfilter_bump_anon();
+      }
       break;
     default:
       log_notice(LD_BUG,
