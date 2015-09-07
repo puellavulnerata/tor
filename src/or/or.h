@@ -3327,6 +3327,11 @@ typedef struct or_circuit_t {
    * to zero, it is initialized to the default value.
    */
   uint32_t max_middle_cells;
+
+  /** Number of begindir cells seen by dirdosfilter.c; reject if above
+   * filter threshold.
+   */
+  uint32_t dirdosfilter_begindir_count;
 } or_circuit_t;
 
 typedef struct or_circuit_rendinfo_s {
@@ -4456,6 +4461,10 @@ typedef struct {
 
   /** Autobool: Do we try to retain capabilities if we can? */
   int KeepBindCapabilities;
+
+  /** How many beginir cells allowed on a circuit until we hit the DoS
+   * filter? */
+  int DirDoSFilterMaxBegindirPerCircuit;
 } or_options_t;
 
 /** Persistent state for an onion router, as saved to disk. */
