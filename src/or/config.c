@@ -25,6 +25,7 @@
 #include "control.h"
 #include "confparse.h"
 #include "cpuworker.h"
+#include "dirdosfilter.h"
 #include "dirserv.h"
 #include "dirvote.h"
 #include "dns.h"
@@ -218,6 +219,7 @@ static config_var_t option_vars_[] = {
   V(DisableNetwork,              BOOL,     "0"),
   V(DirAllowPrivateAddresses,    BOOL,     "0"),
   V(DirDoSFilterMaxBegindirPerCircuit, UINT, "1"),
+  V(DirDoSFilterEWMATimeConstant, DOUBLE,  "1.0"),
   V(TestingAuthDirTimeToLearnReachability, INTERVAL, "30 minutes"),
   V(DirListenAddress,            LINELIST, NULL),
   V(DirPolicy,                   LINELIST, NULL),
@@ -1740,6 +1742,9 @@ options_act(const or_options_t *old_options)
       routerset_add_unknown_ccs(&options->ExcludeExitNodesUnion_, is_auto);
   }
 
+  /* Do DirDoSFilter time constant update */
+  dirdosfilter_set_time_constant(options->DirDoSFilterEWMATimeConstant);
+
   /* Check for transitions that need action. */
   if (old_options) {
     int revise_trackexithosts = 0;
@@ -3004,6 +3009,14 @@ options_validate(or_options_t *old_options, or_options_t *options,
         "DirDoSFilterMaxBegindirPerCircuit must be greater than 0, "
         "but was set to %d",
         options->DirDoSFilterMaxBegindirPerCircuit);
+    return -1;
+  }
+
+  if (options->DirDoSFilterEWMATimeConstant <= 0.0) {
+    tor_asprintf(msg,
+        "DirDoSFilterEWMATimeConstant must be greater than 0.0, "
+        "but was set to %f",
+        options->DirDoSFilterEWMATimeConstant);
     return -1;
   }
 

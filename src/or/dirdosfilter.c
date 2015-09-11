@@ -1,6 +1,9 @@
 /* Copyright (c) 2015, The Tor Project, Inc. */
 /* See LICENSE for licensing information */
 
+#include <math.h>
+#include <time.h>
+
 #define DIRDOSFILTER_PRIVATE
 #include "or.h"
 #include "channel.h"
@@ -17,6 +20,85 @@
  * DoS attempts.
  */
 
+/*
+ * Counters are exponentially-weighted moving averages of connection events;
+ * for simplicity they all age at the same rate.  The dirdosfilter_bump_*
+ * functions, except dirdosfilter_bump_circuit_begindir() which increments
+ * a non-aging per-circuit counter, all find the relevant counter for this
+ * connection attempt, and either increment it or return that incrementation
+ * would put it over the configured threshold.
+ *
+ * It is important to the implementation that only one such counter match
+ * each connection attempt; if more than one such filter applied, we might
+ * increment one counter, and then reject the attempt due to hitting the
+ * threshold on the second - we'd need a mechanism to back out the increment
+ * on the earlier counters to support that case.
+ *
+ * We need a global list of all counters in use so that, if the config
+ * option for the decay rate changes, we can update them all using the
+ * old decay rate to the time of change, and then apply the new decay
+ * rate going forward.  If we ever see time go backward when updating a
+ * counter, we should treat it as zero time having elapsed, but reset the
+ * saved time in the counter to the time just observed so it decays normally
+ * from that point onward.
+ *
+ * XXX 1: this would benefit from having real monotonic time
+ *
+ * XXX 2: there is a similar idiom in circuitmux_ewma.c, but with a more
+ *        ad-hoc approach to scale factor changes (I think it can calculate
+ *        incorrectly in some cases); there might be a benefit to refactoring
+ *        to use common EWMA counter code, but it would definitely not be
+ *        acceptable to put all counters in a common decay rate pool; the
+ *        cmux ones sometimes take their rate from the consensus.
+ */
+
+typedef struct {
+  /*
+   * Averaged rate of connection attempts:
+   *
+   *        / oo                              / oo
+   * r(T) = |     f(T - t) e^(-lambda t) dt / | e^(-lambda t) dt
+   *        / 0                               / 0
+   *
+   *               / oo
+   *      = lambda |    f(T - t) e^(-lambda t) dt
+   *               / 0
+   *
+   * Where f is the underlying signal (in this case a sum of Dirac deltas)
+   * for each point at which the counter is bumped, and lambda is the decay
+   * rate.
+   *
+   * This satisfies a differential equation, which is of more interest for
+   * continuous inputs, but considering it for Dirac delta valued f(T) points
+   * to our ultimate algorithm:
+   *
+   * dr/dT = lambda (f(T) - r(T))
+   *
+   * Suppose f(T) = delta(T); then for T < 0, we have r(T) = 0, and at T = 0
+   * dr/dT = lambda delta(0), so we have a discontinuous jump up to r(0) =
+   * lambda, then an exponential decay at rate lambda back down toward 0.
+   * Our discrete 'bump' inputs are just a sum of delta functions, and so at
+   * each bump of size B we add B * lambda.  Since we smoothly decay between
+   * bumps, we can just store the value as of the most recent bump, and the
+   * time of that bump, and then at the next we use the difference of
+   * timestamps to age the old value before adding the new bump.
+   */
+
+  double rate; /* Value of r(t) as of last_adjusted_tick */
+  time_t last_adjusted_tick; /* Time of last update */
+} dirdosfilter_counter_t;
+
+/*
+ * Keep a list of counters so we can do global updates when the decay rate
+ * changes
+ */
+static smartlist_t *dirdosfilter_counters = NULL;
+
+/*
+ * Current global decay rate
+ */
+static double dirdosfilter_lambda = 1.0;
+
 static int dirdosfilter_bump_anon_dirport(
                   const tor_addr_t *dst_addr,
                   uint16_t dst_port);
@@ -29,6 +111,9 @@ static int dirdosfilter_bump_direct(
                   const tor_addr_t *dst_addr,
                   uint16_t dst_port);
 static int dirdosfilter_bump_onehop(const tor_addr_t *src_addr);
+static void dirdosfilter_counter_update_all(time_t now);
+static void dirdosfilter_counter_update(dirdosfilter_counter_t *ctr,
+                                       time_t now);
 static dir_indirection_t dirdosfilter_guess_indirection_begindir(
                   const tor_addr_t *src_addr);
 static dir_indirection_t dirdosfilter_guess_indirection_dirport(
@@ -40,6 +125,53 @@ static dir_indirection_t dirdosfilter_guess_indirection(
                   const tor_addr_t *dst_addr,
                   uint16_t dst_port,
                   uint8_t begindir);
+
+/**
+ * Update all counters to the present time using the global decay rate
+ * dirdosfilter_lambda
+ */
+
+static void
+dirdosfilter_counter_update_all(time_t now)
+{
+  if (dirdosfilter_counters != NULL) {
+    SMARTLIST_FOREACH_BEGIN(dirdosfilter_counters,
+                            dirdosfilter_counter_t *,
+                            ctr) {
+      dirdosfilter_counter_update(ctr, now);
+    } SMARTLIST_FOREACH_END(ctr);
+  }
+}
+
+/**
+ * Update the counter to the present time using the global decay rate
+ * dirdosfilter_lambda
+ */
+
+static void
+dirdosfilter_counter_update(dirdosfilter_counter_t *ctr,
+                            time_t now)
+{
+  unsigned int elapsed;
+  double scale;
+
+  tor_assert(ctr != NULL);
+
+  /* Check if we haven't gone backward */
+  if (now >= ctr->last_adjusted_tick) {
+    elapsed = now - ctr->last_adjusted_tick;
+  } else {
+    /* No adjustment if time jumps back, but update the stored timestamp */
+    elapsed = 0;
+  }
+
+  /* Adjust rate */
+  scale = exp(- ((double)elapsed) * dirdosfilter_lambda);
+  ctr->rate *= scale;
+
+  /* Update stored timestamp */
+  ctr->last_adjusted_tick = now;
+}
 
 /**
  * Guess the indirection type for an incoming connection in the case that
@@ -480,6 +612,41 @@ dirdosfilter_bump(const tor_addr_t *src_addr,
 void
 dirdosfilter_free_all(void)
 {
-  /* TODO free data structures once we have some */
+  /* Free all rate counters */
+  if (dirdosfilter_counters != NULL) {
+    SMARTLIST_FOREACH_BEGIN(dirdosfilter_counters,
+                            dirdosfilter_counter_t *,
+                            ctr) {
+      free(ctr);
+    } SMARTLIST_FOREACH_END(ctr);
+
+    smartlist_free(dirdosfilter_counters);
+    dirdosfilter_counters = NULL;
+  }
+}
+
+/**
+ * Adjust the time constant, on config updates
+ */
+
+void
+dirdosfilter_set_time_constant(double t)
+{
+  /* t must be positive */
+  tor_assert(t > 0.0);
+
+  /*
+   * Get the time and do updates
+   *
+   * XXX something monotonic would be nice
+   */
+  dirdosfilter_counter_update_all(time(NULL));
+
+  /* Change the rate */
+  dirdosfilter_lambda = 1.0 / t;
+
+  log_debug(LD_DIR,
+            "dirdosfilter_lambda is now %f",
+            dirdosfilter_lambda);
 }
 
