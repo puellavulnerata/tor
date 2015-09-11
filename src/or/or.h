@@ -4465,6 +4465,9 @@ typedef struct {
   /** How many beginir cells allowed on a circuit until we hit the DoS
    * filter? */
   int DirDoSFilterMaxBegindirPerCircuit;
+
+  /** EWMA time constant for dirdosfilter counters */
+  double DirDoSFilterEWMATimeConstant;
 } or_options_t;
 
 /** Persistent state for an onion router, as saved to disk. */
