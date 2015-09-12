@@ -111,6 +111,12 @@ static int dirdosfilter_bump_direct(
                   const tor_addr_t *dst_addr,
                   uint16_t dst_port);
 static int dirdosfilter_bump_onehop(const tor_addr_t *src_addr);
+static int dirdosfilter_counter_increment_and_test(
+                 dirdosfilter_counter_t *ctr,
+                 double increment,
+                 double threshold);
+static void dirdosfilter_counter_increment(dirdosfilter_counter_t *ctr,
+                                           double increment);
 static void dirdosfilter_counter_update_all(time_t now);
 static void dirdosfilter_counter_update(dirdosfilter_counter_t *ctr,
                                        time_t now);
@@ -125,6 +131,45 @@ static dir_indirection_t dirdosfilter_guess_indirection(
                   const tor_addr_t *dst_addr,
                   uint16_t dst_port,
                   uint8_t begindir);
+
+/**
+ * Update the specified counter, and increment it if incrementation would
+ * not put it over the threshold.  Return 1 if incremented, 0 otherwise.
+ */
+
+static int
+dirdosfilter_counter_increment_and_test(dirdosfilter_counter_t *ctr,
+                                        double increment,
+                                        double threshold)
+{
+  double bump;
+
+  tor_assert(ctr != NULL);
+
+  dirdosfilter_counter_update(ctr, time(NULL));
+  bump = increment * dirdosfilter_lambda;
+
+  if (ctr->rate + bump <= threshold) {
+    ctr->rate += bump;
+    return 1;
+  } else {
+    return 0;
+  }
+}
+
+/**
+ * Update and increment the specified counter
+ */
+
+static void
+dirdosfilter_counter_increment(dirdosfilter_counter_t *ctr,
+                               double increment)
+{
+  tor_assert(ctr != NULL);
+
+  dirdosfilter_counter_update(ctr, time(NULL));
+  ctr->rate += increment * dirdosfilter_lambda;
+}
 
 /**
  * Update all counters to the present time using the global decay rate
