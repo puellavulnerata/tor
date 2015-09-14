@@ -99,6 +99,12 @@ static smartlist_t *dirdosfilter_counters = NULL;
  */
 static double dirdosfilter_lambda = 1.0;
 
+/*
+ * Maps to counters by indirection type
+ */
+
+static dirdosfilter_counter_t *anon_counter = NULL;
+
 static int dirdosfilter_bump_anon_dirport(
                   const tor_addr_t *dst_addr,
                   uint16_t dst_port);
@@ -112,12 +118,23 @@ static int dirdosfilter_bump_direct(
                   uint16_t dst_port);
 static int dirdosfilter_bump_onehop(const tor_addr_t *src_addr);
 static void dirdosfilter_counter_free(dirdosfilter_counter_t *ctr);
+static int dirdosfilter_counter_increment_and_test_with_time(
+                 dirdosfilter_counter_t *ctr,
+                 double increment,
+                 double threshold,
+                 time_t now);
 static int dirdosfilter_counter_increment_and_test(
                  dirdosfilter_counter_t *ctr,
                  double increment,
                  double threshold);
+static void dirdosfilter_counter_increment_with_time(
+                 dirdosfilter_counter_t *ctr,
+                 double increment,
+                 time_t now);
 static void dirdosfilter_counter_increment(dirdosfilter_counter_t *ctr,
                                            double increment);
+static dirdosfilter_counter_t * dirdosfilter_counter_new_with_time(
+                  double r, time_t now);
 static dirdosfilter_counter_t * dirdosfilter_counter_new(double r);
 static void dirdosfilter_counter_update_all(time_t now);
 static void dirdosfilter_counter_update(dirdosfilter_counter_t *ctr,
@@ -147,20 +164,22 @@ dirdosfilter_counter_free(dirdosfilter_counter_t *ctr)
 }
 
 /**
- * Update the specified counter, and increment it if incrementation would
- * not put it over the threshold.  Return 1 if incremented, 0 otherwise.
+ * Update the specified counter for the supplied timestamp, and increment
+ * it if incrementation would not put it over the threshold.  Return 1 if
+ * incremented, 0 otherwise.
  */
 
 static int
-dirdosfilter_counter_increment_and_test(dirdosfilter_counter_t *ctr,
-                                        double increment,
-                                        double threshold)
+dirdosfilter_counter_increment_and_test_with_time(dirdosfilter_counter_t *ctr,
+                                                  double increment,
+                                                  double threshold,
+                                                  time_t now)
 {
   double bump;
 
   tor_assert(ctr != NULL);
 
-  dirdosfilter_counter_update(ctr, time(NULL));
+  dirdosfilter_counter_update(ctr, now);
   bump = increment * dirdosfilter_lambda;
 
   if (ctr->rate + bump <= threshold) {
@@ -172,6 +191,35 @@ dirdosfilter_counter_increment_and_test(dirdosfilter_counter_t *ctr,
 }
 
 /**
+ * Update the specified counter, and increment it if incrementation would
+ * not put it over the threshold.  Return 1 if incremented, 0 otherwise.
+ */
+
+static int
+dirdosfilter_counter_increment_and_test(dirdosfilter_counter_t *ctr,
+                                        double increment,
+                                        double threshold)
+{
+  return dirdosfilter_counter_increment_and_test_with_time(ctr, increment,
+      threshold, time(NULL));
+}
+
+/**
+ * Update and increment the specified counter for the supplied timestamp
+ */
+
+static void
+dirdosfilter_counter_increment_with_time(dirdosfilter_counter_t *ctr,
+                                         double increment,
+                                         time_t now)
+{
+  tor_assert(ctr != NULL);
+
+  dirdosfilter_counter_update(ctr, now);
+  ctr->rate += increment * dirdosfilter_lambda;
+}
+
+/**
  * Update and increment the specified counter
  */
 
@@ -179,10 +227,31 @@ static void
 dirdosfilter_counter_increment(dirdosfilter_counter_t *ctr,
                                double increment)
 {
-  tor_assert(ctr != NULL);
+  dirdosfilter_counter_increment_with_time(ctr, increment, time(NULL));
+}
 
-  dirdosfilter_counter_update(ctr, time(NULL));
-  ctr->rate += increment * dirdosfilter_lambda;
+/**
+ * Allocate a new dirdosfilter_counter_t with initial value r and
+ * timestamp t and add it to the list
+ */
+
+static dirdosfilter_counter_t *
+dirdosfilter_counter_new_with_time(double r, time_t t)
+{
+  dirdosfilter_counter_t *ctr;
+
+  ctr = tor_malloc_zero(sizeof(*ctr));
+  ctr->rate = r;
+  ctr->last_adjusted_tick = t;
+
+  /* Make sure the list exists */
+  if (!dirdosfilter_counters) {
+    dirdosfilter_counters = smartlist_new();
+  }
+
+  smartlist_add(dirdosfilter_counters, ctr);
+
+  return ctr;
 }
 
 /**
@@ -503,9 +572,22 @@ dirdosfilter_bump_anon_dirport(const tor_addr_t *dst_addr,
 static int
 dirdosfilter_bump_anon(void)
 {
-  /* TODO actually implement real counters/test here */
+  int rv;
+  time_t now = time(NULL);
+  const double max_anon_rate = get_options()->DirDoSFilterMaxAnonConnectRate;
 
-  return 1;
+  /* Set up the counter if we don't have one yet */
+  if (!anon_counter) {
+    anon_counter = dirdosfilter_counter_new_with_time(0.0, now);
+  }
+
+  rv = dirdosfilter_counter_increment_and_test_with_time(
+      anon_counter,
+      1.0, /* increment is 1.0; just the one incoming connection per call */
+      max_anon_rate, /* threshold is max allowed rate of DIRIND_ANONYMOUS */
+      now);
+
+  return rv;
 }
 
 /**
@@ -695,7 +777,13 @@ dirdosfilter_bump(const tor_addr_t *src_addr,
 void
 dirdosfilter_free_all(void)
 {
-  /* Free all rate counters */
+  /* Free counter for DIRIND_ANONYMOUS */
+  if (anon_counter != NULL) {
+    dirdosfilter_counter_free(anon_counter);
+    anon_counter = NULL;
+  }
+
+  /* Free all remaining rate counters */
   if (dirdosfilter_counters != NULL) {
     SMARTLIST_FOREACH_BEGIN(dirdosfilter_counters,
                             dirdosfilter_counter_t *,
