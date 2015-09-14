@@ -111,12 +111,14 @@ static int dirdosfilter_bump_direct(
                   const tor_addr_t *dst_addr,
                   uint16_t dst_port);
 static int dirdosfilter_bump_onehop(const tor_addr_t *src_addr);
+static void dirdosfilter_counter_free(dirdosfilter_counter_t *ctr);
 static int dirdosfilter_counter_increment_and_test(
                  dirdosfilter_counter_t *ctr,
                  double increment,
                  double threshold);
 static void dirdosfilter_counter_increment(dirdosfilter_counter_t *ctr,
                                            double increment);
+static dirdosfilter_counter_t * dirdosfilter_counter_new(double r);
 static void dirdosfilter_counter_update_all(time_t now);
 static void dirdosfilter_counter_update(dirdosfilter_counter_t *ctr,
                                        time_t now);
@@ -131,6 +133,18 @@ static dir_indirection_t dirdosfilter_guess_indirection(
                   const tor_addr_t *dst_addr,
                   uint16_t dst_port,
                   uint8_t begindir);
+
+/**
+ * Free a dirdosfilter_counter_t and remove it from the list
+ */
+static void
+dirdosfilter_counter_free(dirdosfilter_counter_t *ctr)
+{
+  tor_assert(ctr != NULL);
+
+  smartlist_remove(dirdosfilter_counters, ctr);
+  tor_free(ctr);
+}
 
 /**
  * Update the specified counter, and increment it if incrementation would
@@ -169,6 +183,30 @@ dirdosfilter_counter_increment(dirdosfilter_counter_t *ctr,
 
   dirdosfilter_counter_update(ctr, time(NULL));
   ctr->rate += increment * dirdosfilter_lambda;
+}
+
+/**
+ * Allocate a new dirdosfilter_counter_t with initial value r and
+ * add it to the list
+ */
+
+static dirdosfilter_counter_t *
+dirdosfilter_counter_new(double r)
+{
+  dirdosfilter_counter_t *ctr;
+
+  ctr = tor_malloc_zero(sizeof(*ctr));
+  ctr->rate = r;
+  ctr->last_adjusted_tick = time(NULL);
+
+  /* Make sure the list exists */
+  if (!dirdosfilter_counters) {
+    dirdosfilter_counters = smartlist_new();
+  }
+
+  smartlist_add(dirdosfilter_counters, ctr);
+
+  return ctr;
 }
 
 /**
