@@ -214,6 +214,7 @@ static config_var_t option_vars_[] = {
   V(DataDirectory,               FILENAME, NULL),
   V(DisableNetwork,              BOOL,     "0"),
   V(DirAllowPrivateAddresses,    BOOL,     "0"),
+  V(DirDoSFilterMaxAnonConnectRate, DOUBLE, "32.0"),
   V(DirDoSFilterMaxBegindirPerCircuit, UINT, "1"),
   V(DirDoSFilterEWMATimeConstant, DOUBLE,  "1.0"),
   V(TestingAuthDirTimeToLearnReachability, INTERVAL, "30 minutes"),
@@ -2895,20 +2896,49 @@ options_validate(or_options_t *old_options, or_options_t *options,
     return -1;
   }
 
-  if (options->DirDoSFilterMaxBegindirPerCircuit <= 0) {
-    tor_asprintf(msg,
-        "DirDoSFilterMaxBegindirPerCircuit must be greater than 0, "
-        "but was set to %d",
-        options->DirDoSFilterMaxBegindirPerCircuit);
-    return -1;
-  }
+  /* Check DirDoSFilter options */
+  {
+    double dirdosfilter_ewma_bump_size;
 
-  if (options->DirDoSFilterEWMATimeConstant <= 0.0) {
-    tor_asprintf(msg,
-        "DirDoSFilterEWMATimeConstant must be greater than 0.0, "
-        "but was set to %f",
-        options->DirDoSFilterEWMATimeConstant);
-    return -1;
+    if (options->DirDoSFilterMaxBegindirPerCircuit <= 0) {
+      tor_asprintf(msg,
+          "DirDoSFilterMaxBegindirPerCircuit must be greater than 0, "
+          "but was set to %d",
+          options->DirDoSFilterMaxBegindirPerCircuit);
+      return -1;
+    }
+
+    if (options->DirDoSFilterEWMATimeConstant <= 0.0) {
+      tor_asprintf(msg,
+          "DirDoSFilterEWMATimeConstant must be greater than 0.0, "
+          "but was set to %f",
+          options->DirDoSFilterEWMATimeConstant);
+      return -1;
+    }
+
+    /*
+     * This is the smallest bump in a counter for this time constant; if
+     * max rates are below this, a new connection arriving on a 0.0 counter
+     * will be rejected and no connections can ever get through.
+     */
+    dirdosfilter_ewma_bump_size =
+      1.0 / options->DirDoSFilterEWMATimeConstant;
+
+    if (options->DirDoSFilterMaxAnonConnectRate <= 0.0) {
+      tor_asprintf(msg,
+          "DirDoSFilterMaxAnonConnectRate must be positive, "
+          "but was set to %f",
+          options->DirDoSFilterMaxAnonConnectRate);
+      return -1;
+    } else if (options->DirDoSFilterMaxAnonConnectRate <=
+               dirdosfilter_ewma_bump_size) {
+      tor_asprintf(msg,
+          "DirDoSFilterMaxAnonConnectRate is so low no connections can pass "
+          "(was %f, minimum for this decay rate is %f)",
+          options->DirDoSFilterMaxAnonConnectRate,
+          dirdosfilter_ewma_bump_size);
+      return -1;
+    }
   }
 
   if (options->PathsNeededToBuildCircuits >= 0.0) {
