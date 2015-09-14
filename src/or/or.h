@@ -4487,6 +4487,9 @@ typedef struct {
 
   /** EWMA time constant for dirdosfilter counters */
   double DirDoSFilterEWMATimeConstant;
+
+  /** Maximum allowed rate of DIRIND_ANONYMOUS connections */
+  double DirDoSFilterMaxAnonConnectRate;
 } or_options_t;
 
 /** Persistent state for an onion router, as saved to disk. */
