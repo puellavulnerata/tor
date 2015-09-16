@@ -103,7 +103,10 @@ static double dirdosfilter_lambda = 1.0;
  * Maps to counters by indirection type
  */
 
+/** One counter for DIRIND_ANONYMOUS */
 static dirdosfilter_counter_t *anon_counter = NULL;
+/** One counter for DIRIND_ANON_DIRPORT */
+static dirdosfilter_counter_t *anon_dirport_counter = NULL;
 
 static int dirdosfilter_bump_anon_dirport(
                   const tor_addr_t *dst_addr,
@@ -557,11 +560,24 @@ static int
 dirdosfilter_bump_anon_dirport(const tor_addr_t *dst_addr,
                                uint16_t dst_port)
 {
+  int rv;
+  time_t now = time(NULL);
+  const double max_anon_dirport_rate =
+    get_options()->DirDoSFilterMaxAnonDirportConnectRate;
+
   tor_assert(dst_addr != NULL);
 
-  /* TODO actually implement real counters/test here */
+  if (!anon_dirport_counter) {
+    anon_dirport_counter = dirdosfilter_counter_new_with_time(0.0, now);
+  }
 
-  return 1;
+  rv = dirdosfilter_counter_increment_and_test_with_time(
+      anon_dirport_counter,
+      1.0, /* increment is 1.0; just the one incoming connection per call */
+      max_anon_dirport_rate, /* threshold is max DIRIND_ANON_DIRPORT rate */
+      now);
+
+  return rv;
 }
 
 /**
@@ -781,6 +797,12 @@ dirdosfilter_free_all(void)
   if (anon_counter != NULL) {
     dirdosfilter_counter_free(anon_counter);
     anon_counter = NULL;
+  }
+
+  /* Free counter for DIRIND_ANON_DIRPORT */
+  if (anon_dirport_counter != NULL) {
+    dirdosfilter_counter_free(anon_dirport_counter);
+    anon_dirport_counter = NULL;
   }
 
   /* Free all remaining rate counters */
