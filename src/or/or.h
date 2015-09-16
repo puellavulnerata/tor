@@ -4490,6 +4490,9 @@ typedef struct {
 
   /** Maximum allowed rate of DIRIND_ANONYMOUS connections */
   double DirDoSFilterMaxAnonConnectRate;
+
+  /** Maximum allowed rate of DIRIND_ANON_DIRPORT connections */
+  double DirDoSFilterMaxAnonDirportConnectRate;
 } or_options_t;
 
 /** Persistent state for an onion router, as saved to disk. */
