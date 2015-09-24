@@ -719,7 +719,6 @@ dirdosfilter_bump(const tor_addr_t *src_addr,
    */
   ind = dirdosfilter_guess_indirection(src_addr, dst_addr, dst_port,
                                        begindir);
-  /* TODO update some counters, don't just log for testing like this */
   switch (ind) {
     case DIRIND_DIRECT_CONN:
       tor_assert(dst_addr);
