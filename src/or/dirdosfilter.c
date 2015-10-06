@@ -881,16 +881,16 @@ dirdosfilter_compact_ht(struct dirdosfilter_counter_map *ht, double cutoff)
 void
 dirdosfilter_compact(void)
 {
-  /*
-   * TODO replace hard-coded cutoffs with something scaled proportional to
-   * the DoS blocking threshold from config.
-   */
+  const double direct_conn_drop_cutoff = 
+    0.01 * (get_options()->DirDoSFilterMaxDirectConnRatePerIP);
+  const double onehop_drop_cutoff = 
+    0.01 * (get_options()->DirDoSFilterMaxBegindirRatePerIP);
 
   /* First, update everything */
   dirdosfilter_counter_update_all(approx_time());
   /* Next, compact both hash tables */
-  dirdosfilter_compact_ht(&direct_counters, 0.01);
-  dirdosfilter_compact_ht(&onehop_counters, 0.01);
+  dirdosfilter_compact_ht(&direct_counters, direct_conn_drop_cutoff);
+  dirdosfilter_compact_ht(&onehop_counters, onehop_drop_cutoff);
 }
 
 /**
