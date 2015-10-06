@@ -1228,6 +1228,8 @@ typedef struct {
   time_t check_for_correct_dns;
   /** When do we next make sure our Ed25519 keys aren't about to expire? */
   time_t check_ed_keys;
+  /** When do we compact the dirdosfilter hash tables? */
+  time_t dirdosfilter_ht_compact;
 
 } time_to_t;
 
@@ -1496,6 +1498,13 @@ run_scheduled_events(time_t now)
     time_to.retry_dns_init = now + RETRY_DNS_INTERVAL;
     if (is_server && has_dns_init_failed())
       dns_init();
+  }
+
+#define COMPACT_DIRDOSFILTER_HT_INTERVAL (15*60)
+  /* Try compacting the dirdosfilter hash tables */
+  if (time_to.dirdosfilter_ht_compact < now) {
+    time_to.retry_dns_init = now + RETRY_DNS_INTERVAL;
+    dirdosfilter_compact();
   }
 
   /* 2. Periodically, we consider force-uploading our descriptor

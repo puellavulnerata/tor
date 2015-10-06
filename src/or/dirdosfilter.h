@@ -15,6 +15,7 @@ int dirdosfilter_bump(const tor_addr_t *src_addr,
                            uint8_t begindir,
                            uint64_t channel_id,
                            circid_t circ_id);
+void dirdosfilter_compact(void);
 void dirdosfilter_free_all(void);
 void dirdosfilter_set_time_constant(double t);
 
