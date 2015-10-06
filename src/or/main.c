@@ -1224,6 +1224,7 @@ CALLBACK(expire_old_ciruits_serverside);
 CALLBACK(check_dns_honesty);
 CALLBACK(write_bridge_ns);
 CALLBACK(check_fw_helper_app);
+CALLBACK(dirdosfilter_ht_compact);
 CALLBACK(heartbeat);
 
 #undef CALLBACK
@@ -1256,6 +1257,7 @@ static periodic_event_item_t periodic_events[] = {
   CALLBACK(check_dns_honesty),
   CALLBACK(write_bridge_ns),
   CALLBACK(check_fw_helper_app),
+  CALLBACK(dirdosfilter_ht_compact),
   CALLBACK(heartbeat),
   END_OF_PERIODIC_EVENTS
 };
@@ -1790,9 +1792,6 @@ retry_dns_callback(time_t now, const or_options_t *options)
   return RETRY_DNS_INTERVAL;
 }
 
-  /* 2. Periodically, we consider force-uploading our descriptor
-   * (if we've passed our internal checks). */
-
 static int
 check_descriptor_callback(time_t now, const or_options_t *options)
 {
@@ -1960,6 +1959,19 @@ check_fw_helper_app_callback(time_t now, const or_options_t *options)
     smartlist_free(ports_to_forward);
   }
   return PORT_FORWARDING_CHECK_INTERVAL;
+}
+
+static int
+dirdosfilter_ht_compact_callback(time_t now,  const or_options_t *options)
+{
+  (void)now;
+  (void)options;
+
+#define COMPACT_DIRDOSFILTER_HT_INTERVAL (15*60)
+  /* Try compacting the dirdosfilter hash tables */
+  dirdosfilter_compact();
+
+  return COMPACT_DIRDOSFILTER_HT_INTERVAL;
 }
 
 static int
