@@ -89,6 +89,15 @@ typedef struct {
 } dirdosfilter_counter_t;
 
 /*
+ * Hash table entry for DIRIND_ONEHOP and DIRIND_DIRECT cases
+ */
+typedef struct dirdosfilter_counter_map_entry_s {
+  HT_ENTRY(dirdosfilter_counter_map_entry_s) node;
+  tor_addr_t src_addr;
+  dirdosfilter_counter_t *counter;
+} dirdosfilter_counter_map_entry_t;
+
+/*
  * Keep a list of counters so we can do global updates when the decay rate
  * changes
  */
@@ -108,6 +117,29 @@ static dirdosfilter_counter_t *anon_counter = NULL;
 /** One counter for DIRIND_ANON_DIRPORT */
 static dirdosfilter_counter_t *anon_dirport_counter = NULL;
 
+/** Hash table from src_addr to counters for DIRIND_DIRECT */
+HT_HEAD(dirdosfilter_counter_map, dirdosfilter_counter_map_entry_s);
+
+struct dirdosfilter_counter_map direct_counters = HT_INITIALIZER();
+struct dirdosfilter_counter_map onehop_counters = HT_INITIALIZER();
+
+/* Hash table related prototypes */
+static unsigned dirdosfilter_counter_map_hash(
+    const dirdosfilter_counter_map_entry_t *ent);
+static int dirdosfilter_counter_map_eq(
+    const dirdosfilter_counter_map_entry_t *a,
+    const dirdosfilter_counter_map_entry_t *b);
+
+HT_PROTOTYPE(dirdosfilter_counter_map,
+             dirdosfilter_counter_map_entry_s,
+             node,
+             dirdosfilter_counter_map_hash,
+             dirdosfilter_counter_map_eq);
+
+static void dirdosfilter_compact_ht(struct dirdosfilter_counter_map *ht,
+                                    double cutoff);
+
+/* General prototypes */
 static int dirdosfilter_bump_anon_dirport(
                   const tor_addr_t *dst_addr,
                   uint16_t dst_port);
@@ -153,6 +185,31 @@ static dir_indirection_t dirdosfilter_guess_indirection(
                   const tor_addr_t *dst_addr,
                   uint16_t dst_port,
                   uint8_t begindir);
+
+/* Generate hash table functions */
+HT_GENERATE2(dirdosfilter_counter_map,
+             dirdosfilter_counter_map_entry_s,
+             node,
+             dirdosfilter_counter_map_hash,
+             dirdosfilter_counter_map_eq,
+             0.5,
+             tor_reallocarray_,
+             tor_free_);
+
+/** Evaluate the hash function for this entry */
+static unsigned
+dirdosfilter_counter_map_hash(const dirdosfilter_counter_map_entry_t *ent)
+{
+  return (unsigned) tor_addr_hash(&(ent->src_addr));
+}
+
+/** Compare if two map entries have the same key */
+static int
+dirdosfilter_counter_map_eq(const dirdosfilter_counter_map_entry_t *a,
+                            const dirdosfilter_counter_map_entry_t *b)
+{
+  return !tor_addr_compare(&a->src_addr, &b->src_addr, CMP_EXACT);
+}
 
 /**
  * Free a dirdosfilter_counter_t and remove it from the list
@@ -214,8 +271,7 @@ dirdosfilter_counter_increment_and_test(dirdosfilter_counter_t *ctr,
 static void
 dirdosfilter_counter_increment_with_time(dirdosfilter_counter_t *ctr,
                                          double increment,
-                                         time_t now)
-{
+                                         time_t now) {
   tor_assert(ctr != NULL);
 
   dirdosfilter_counter_update(ctr, now);
@@ -787,6 +843,57 @@ dirdosfilter_bump(const tor_addr_t *src_addr,
 }
 
 /**
+ * Compact ht by removing all counters below cutoff
+ */
+
+static void
+dirdosfilter_compact_ht(struct dirdosfilter_counter_map *ht, double cutoff)
+{
+  dirdosfilter_counter_map_entry_t **i;
+  dirdosfilter_counter_t *counter;
+
+  tor_assert(ht != NULL);
+
+  i = HT_START(dirdosfilter_counter_map, ht);
+  while (i) {
+    counter = (*i != NULL) ? ((*i)->counter) : NULL;
+
+    if (!counter) {
+      log_warn(LD_BUG, "Somehow, an HT iterator gave us a NULL counter.");
+      break;
+    } else {
+      if (counter->rate < cutoff) {
+        /* Remove this entry */
+        i = HT_NEXT_RMV(dirdosfilter_counter_map, ht, i);
+        dirdosfilter_counter_free(counter);
+      } else {
+        /* Keep this one, go to the next */
+        i = HT_NEXT(dirdosfilter_counter_map, ht, i);
+      }
+    }
+  }
+}
+
+/**
+ * Compact the hash tables by removing entries that have decayed close to
+ * zero.
+ */
+void
+dirdosfilter_compact(void)
+{
+  /*
+   * TODO replace hard-coded cutoffs with something scaled proportional to
+   * the DoS blocking threshold from config.
+   */
+
+  /* First, update everything */
+  dirdosfilter_counter_update_all(approx_time());
+  /* Next, compact both hash tables */
+  dirdosfilter_compact_ht(&direct_counters, 0.01);
+  dirdosfilter_compact_ht(&onehop_counters, 0.01);
+}
+
+/**
  * Free all dirdosfilter.c data structures before exit
  */
 void
@@ -803,6 +910,10 @@ dirdosfilter_free_all(void)
     dirdosfilter_counter_free(anon_dirport_counter);
     anon_dirport_counter = NULL;
   }
+
+  /* Clear the hash tables; we'll get the counters themselves next */
+  dirdosfilter_counter_map_HT_CLEAR(&direct_counters);
+  dirdosfilter_counter_map_HT_CLEAR(&onehop_counters);
 
   /* Free all remaining rate counters */
   if (dirdosfilter_counters != NULL) {
