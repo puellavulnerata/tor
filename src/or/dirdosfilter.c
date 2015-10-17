@@ -162,19 +162,8 @@ static int dirdosfilter_counter_increment_and_test_with_time(
                  double increment,
                  double threshold,
                  time_t now);
-static int dirdosfilter_counter_increment_and_test(
-                 dirdosfilter_counter_t *ctr,
-                 double increment,
-                 double threshold);
-static void dirdosfilter_counter_increment_with_time(
-                 dirdosfilter_counter_t *ctr,
-                 double increment,
-                 time_t now);
-static void dirdosfilter_counter_increment(dirdosfilter_counter_t *ctr,
-                                           double increment);
 static dirdosfilter_counter_t * dirdosfilter_counter_new_with_time(
                   double r, time_t now);
-static dirdosfilter_counter_t * dirdosfilter_counter_new(double r);
 static void dirdosfilter_counter_update_all(time_t now);
 static void dirdosfilter_counter_update(dirdosfilter_counter_t *ctr,
                                        time_t now);
@@ -303,45 +292,6 @@ dirdosfilter_counter_increment_and_test_with_time(dirdosfilter_counter_t *ctr,
 }
 
 /**
- * Update the specified counter, and increment it if incrementation would
- * not put it over the threshold.  Return 1 if incremented, 0 otherwise.
- */
-
-static int
-dirdosfilter_counter_increment_and_test(dirdosfilter_counter_t *ctr,
-                                        double increment,
-                                        double threshold)
-{
-  return dirdosfilter_counter_increment_and_test_with_time(ctr, increment,
-      threshold, time(NULL));
-}
-
-/**
- * Update and increment the specified counter for the supplied timestamp
- */
-
-static void
-dirdosfilter_counter_increment_with_time(dirdosfilter_counter_t *ctr,
-                                         double increment,
-                                         time_t now) {
-  tor_assert(ctr != NULL);
-
-  dirdosfilter_counter_update(ctr, now);
-  ctr->rate += increment * dirdosfilter_lambda;
-}
-
-/**
- * Update and increment the specified counter
- */
-
-static void
-dirdosfilter_counter_increment(dirdosfilter_counter_t *ctr,
-                               double increment)
-{
-  dirdosfilter_counter_increment_with_time(ctr, increment, time(NULL));
-}
-
-/**
  * Allocate a new dirdosfilter_counter_t with initial value r and
  * timestamp t and add it to the list
  */
@@ -354,30 +304,6 @@ dirdosfilter_counter_new_with_time(double r, time_t t)
   ctr = tor_malloc_zero(sizeof(*ctr));
   ctr->rate = r;
   ctr->last_adjusted_tick = t;
-
-  /* Make sure the list exists */
-  if (!dirdosfilter_counters) {
-    dirdosfilter_counters = smartlist_new();
-  }
-
-  smartlist_add(dirdosfilter_counters, ctr);
-
-  return ctr;
-}
-
-/**
- * Allocate a new dirdosfilter_counter_t with initial value r and
- * add it to the list
- */
-
-static dirdosfilter_counter_t *
-dirdosfilter_counter_new(double r)
-{
-  dirdosfilter_counter_t *ctr;
-
-  ctr = tor_malloc_zero(sizeof(*ctr));
-  ctr->rate = r;
-  ctr->last_adjusted_tick = time(NULL);
 
   /* Make sure the list exists */
   if (!dirdosfilter_counters) {
