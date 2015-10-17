@@ -152,6 +152,10 @@ static int dirdosfilter_bump_direct(
                   const tor_addr_t *dst_addr,
                   uint16_t dst_port);
 static int dirdosfilter_bump_onehop(const tor_addr_t *src_addr);
+static int dirdosfilter_counter_map_bump(struct dirdosfilter_counter_map *ht,
+                                         const tor_addr_t *src_addr,
+                                         time_t now,
+                                         double threshold);
 static void dirdosfilter_counter_free(dirdosfilter_counter_t *ctr);
 static int dirdosfilter_counter_increment_and_test_with_time(
                  dirdosfilter_counter_t *ctr,
@@ -209,6 +213,54 @@ dirdosfilter_counter_map_eq(const dirdosfilter_counter_map_entry_t *a,
                             const dirdosfilter_counter_map_entry_t *b)
 {
   return !tor_addr_compare(&a->src_addr, &b->src_addr, CMP_EXACT);
+}
+
+/**
+ * Look up a counter in the hash table for this source IP, creating one
+ * if none is present, and then increment-and-test it as with
+ * dirdosfilter_counter_increment_and_test_with_time().
+ */
+
+static int 
+dirdosfilter_counter_map_bump(struct dirdosfilter_counter_map *ht,
+                              const tor_addr_t *src_addr,
+                              time_t now,
+                              double threshold)
+{
+  int rv;
+  dirdosfilter_counter_t *ctr = NULL;
+  dirdosfilter_counter_map_entry_t search, *hashent = NULL;
+
+  tor_assert(ht != NULL);
+  tor_assert(src_addr != NULL);
+
+  /* Check if we already have a counter for this source address */
+  tor_addr_copy(&(search.src_addr), src_addr);
+  hashent = HT_FIND(dirdosfilter_counter_map, ht, &search);
+  if (hashent) {
+    /* Got one; pull out a pointer to it */
+    ctr = hashent->counter;
+  } else {
+    /* No counter; allocate and insert one */
+    hashent = tor_malloc_zero(sizeof(*hashent));
+    tor_addr_copy(&(hashent->src_addr), src_addr);
+    hashent->counter = dirdosfilter_counter_new_with_time(0.0, now);
+    HT_INSERT(dirdosfilter_counter_map, ht, hashent);
+
+    /* Save a pointer to the counter */
+    ctr = hashent->counter;
+  }
+
+  /* Assert we did get a counter */
+  tor_assert(ctr != NULL);
+
+  rv = dirdosfilter_counter_increment_and_test_with_time(
+      ctr,
+      1.0, /* increment is 1.0; just the one incoming connection per call */
+      threshold, /* threshold is passed in and depends on which ht */
+      now);
+
+  return rv;
 }
 
 /**
@@ -673,12 +725,15 @@ dirdosfilter_bump_direct(const tor_addr_t *src_addr,
                          const tor_addr_t *dst_addr,
                          uint16_t dst_port)
 {
+  time_t now = time(NULL);
+  const double max_direct_rate =
+    get_options()->DirDoSFilterMaxDirectConnRatePerIP;
+
   tor_assert(src_addr != NULL);
   tor_assert(dst_addr != NULL);
 
-  /* TODO actually implement real counters/test here */
-
-  return 1;
+  return dirdosfilter_counter_map_bump(&direct_counters,
+                                       src_addr, now, max_direct_rate);
 }
 
 /**
@@ -689,11 +744,14 @@ dirdosfilter_bump_direct(const tor_addr_t *src_addr,
 static int
 dirdosfilter_bump_onehop(const tor_addr_t *src_addr)
 {
+  time_t now = time(NULL);
+  const double max_onehop_rate =
+    get_options()->DirDoSFilterMaxBegindirRatePerIP;
+
   tor_assert(src_addr != NULL);
 
-  /* TODO actually implement real counters/test here */
-
-  return 1;
+  return dirdosfilter_counter_map_bump(&onehop_counters,
+                                       src_addr, now, max_onehop_rate);
 }
 
 /**
