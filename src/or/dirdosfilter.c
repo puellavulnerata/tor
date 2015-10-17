@@ -221,7 +221,7 @@ dirdosfilter_counter_map_eq(const dirdosfilter_counter_map_entry_t *a,
  * dirdosfilter_counter_increment_and_test_with_time().
  */
 
-static int 
+static int
 dirdosfilter_counter_map_bump(struct dirdosfilter_counter_map *ht,
                               const tor_addr_t *src_addr,
                               time_t now,
@@ -939,9 +939,9 @@ dirdosfilter_compact_ht(struct dirdosfilter_counter_map *ht, double cutoff)
 void
 dirdosfilter_compact(void)
 {
-  const double direct_conn_drop_cutoff = 
+  const double direct_conn_drop_cutoff =
     0.01 * (get_options()->DirDoSFilterMaxDirectConnRatePerIP);
-  const double onehop_drop_cutoff = 
+  const double onehop_drop_cutoff =
     0.01 * (get_options()->DirDoSFilterMaxBegindirRatePerIP);
 
   /* First, update everything */
