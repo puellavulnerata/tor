@@ -3106,10 +3106,11 @@ connection_exit_connect_dir(edge_connection_t *exitconn)
    * the edge conn, so that we can measure download times. */
   dirconn->dirreq_id = exitconn->dirreq_id;
 
-  connection_link_connections(TO_CONN(dirconn), TO_CONN(exitconn));
-
   /* Tell dirconn dos tracker/resistance code about this; the address is
    * the address of the previous hop in the circuit this came in over.
+   *
+   * connection_free() will be unhappy about linked conns, so this filter
+   * step should come before the connection_link_connections() call.
    */
   if (!dirdosfilter_bump(&(dirconn->base_.addr),
                          NULL, /* No dest addr for begindir */
@@ -3127,6 +3128,8 @@ connection_exit_connect_dir(edge_connection_t *exitconn)
     connection_free(TO_CONN(dirconn));
     return 0;
   }
+
+  connection_link_connections(TO_CONN(dirconn), TO_CONN(exitconn));
 
   if (connection_add(TO_CONN(exitconn))<0) {
     connection_edge_end(exitconn, END_STREAM_REASON_RESOURCELIMIT);
