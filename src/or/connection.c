@@ -1595,6 +1595,14 @@ connection_init_accepted_conn(connection_t *conn,
                  "Killing incoming dirport connection from %s due to "
                  "DoS filter",
                  fmt_addr(&(conn->addr)));
+
+        /*
+         * We need this crud because connection_mark_for_close_() will call
+         * assert_connection_ok().
+         */
+        conn->purpose = DIR_PURPOSE_SERVER;
+        conn->state = DIR_CONN_STATE_SERVER_COMMAND_WAIT;
+
         return -1;
       }
     } else {
