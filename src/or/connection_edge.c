@@ -3118,11 +3118,17 @@ connection_exit_connect_dir(edge_connection_t *exitconn)
                          1, /* Yes, this was begindir */
                          circ->p_chan->global_identifier,
                          circ->p_circ_id)) {
-    /* Doesn't pass the DoS filter; kill it */
-    /* XXX should we also kill the circuit? */
+    /*
+     * Doesn't pass the DoS filter; kill it, and kill the circuit so the
+     * client doesn't keep retrying.
+     */
     log_info(LD_EXIT,
-             "Killing exitconn for DoS-filtered begindir from %s",
-             fmt_addr(&(dirconn->base_.addr)));
+             "Killing exitconn for DoS-filtered begindir from %s, on "
+             "inbound circuit %u on channel " U64_FORMAT,
+             fmt_addr(&(dirconn->base_.addr)),
+             (unsigned int)(circ->p_circ_id),
+             U64_PRINTF_ARG(circ->p_chan->global_identifier));
+    circuit_mark_for_close(TO_CIRCUIT(circ), END_STREAM_REASON_RESOURCELIMIT);
     connection_edge_end(exitconn, END_STREAM_REASON_RESOURCELIMIT);
     connection_free(TO_CONN(exitconn));
     connection_free(TO_CONN(dirconn));
