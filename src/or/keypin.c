@@ -57,6 +57,9 @@ static int keypin_check_and_add_impl(const uint8_t *rsa_id_digest,
                                      const uint8_t *ed25519_id_key,
                                      const int do_not_add,
                                      const int replace);
+static void keypin_add_line_to_pruner(keypin_journal_pruner_t *p,
+                                      keypin_ent_t *ent,
+                                      const char *line, int len);
 static int keypin_add_or_replace_entry_in_map(keypin_ent_t *ent);
 
 static HT_HEAD(rsamap, keypin_ent_st) the_rsa_map = HT_INITIALIZER();
@@ -343,10 +346,61 @@ keypin_journal_append_entry(const uint8_t *rsa_id_digest,
   return 0;
 }
 
+/** Add a line to the pruner; this just goes into the line list so we can
+ * correctly re-emit it later, and if a keypin_ent_t is provided, we also
+ * add it to the right indices and prune.
+ */
+static void
+keypin_add_line_to_pruner(keypin_journal_pruner_t *p,
+                          keypin_ent_t *ent,
+                          const char *line, int len)
+{
+  keypin_journal_line_t *l = NULL;
+  int adding = 1;
+
+  /* Asserts for sanity */
+  tor_assert(p != NULL);
+  tor_assert(line != NULL);
+
+  if (ent) {
+    /*
+     * TODO remove conflicts, detect duplicates and set adding = 0 as
+     * needed
+     */
+  }
+
+  /* If we're adding this one, add it */
+  if (adding) {
+    /* Allocate a line, as many chars as we need plus room for the NUL */
+    l = tor_malloc_zero(sizeof(*l) + len + 1);
+    /* Assign the entry pointer */
+    l->ent = tor_malloc_zero(sizeof(*(l->ent)));
+    memcpy(l->ent, ent, sizeof(*(l->ent)));
+    l->ent->line_info = l;
+    /* TODO insert into the hash tables */
+    /* Copy over the line */
+    memcpy(l->line, line, len);
+    l->line[len] = '\0';
+    /* Insert it into the pruner at the end of the list */
+    l->next = NULL;
+    l->prev = p->tail;
+    if (p->tail) p->tail->next = l;
+    else p->head = l;
+    p->tail = l;
+    /* Update the pruner counters */
+    ++(p->nlines);
+  }
+}
+
 /** Load a journal from the <b>size</b>-byte region at <b>data</b>.  Return 0
- * on success, -1 on failure. */
+ * on success, -1 on failure.  If pruner is not null, add info to it for
+ * pruning the journal file.  If a pruner is supplied, skip adding entries
+ * to the real keypin map unless also_add_to_main_map is set.
+ */
 STATIC int
-keypin_load_journal_impl(const char *data, size_t size)
+keypin_load_journal_impl(const char *data, size_t size,
+                         keypin_journal_pruner_t *pruner,
+                         int also_add_to_main_map)
 {
   const char *start = data, *end = data + size, *next;
 
@@ -363,15 +417,19 @@ keypin_load_journal_impl(const char *data, size_t size)
     next = eol ? eol + 1 : end;
 
     if (len == 0) {
+      /* We're skipping all whitespace lines below, so skip blanks too */
+      if (pruner) keypin_add_line_to_pruner(pruner, NULL, cp, len);
       continue;
     }
 
     if (*cp == '@') {
       /* Lines that start with @ are reserved. Ignore for now. */
+      if (pruner) keypin_add_line_to_pruner(pruner, NULL, cp, len);
       continue;
     }
     if (*cp == '#') {
       /* Lines that start with # are comments. */
+      if (pruner) keypin_add_line_to_pruner(pruner, NULL, cp, len);
       continue;
     }
 
@@ -381,35 +439,65 @@ keypin_load_journal_impl(const char *data, size_t size)
        * Ignore them either way */
       for (const char *s = cp; s < eos; ++s) {
         if (! TOR_ISSPACE(*s)) {
-          ++n_corrupt_lines;
+          /*
+           * Never add corrupt lines to pruner, but if we're pruning, count
+           * them there too.
+           */
+          if (pruner) ++(pruner->nlines_pruned_corrupt);
+          if (!pruner || also_add_to_main_map) ++n_corrupt_lines;
           break;
         }
       }
+
+      /*
+       * We're not dropping blanks above, so preserve these all-whitespace
+       * lines when pruning too.
+       */
+      if (pruner) keypin_add_line_to_pruner(pruner, NULL, cp, len);
       continue;
     }
 
     keypin_ent_t *ent = keypin_parse_journal_line(cp);
 
     if (ent == NULL) {
-      ++n_corrupt_lines;
+      /*
+       * As above, note the corrupt line in the pruner too if we're using
+       * one.
+       */
+      if (pruner) ++(pruner->nlines_pruned_corrupt);
+      if (!pruner || also_add_to_main_map) ++n_corrupt_lines;
       continue;
     }
 
-    const int r = keypin_add_or_replace_entry_in_map(ent);
-    if (r == 0) {
-      ++n_duplicates;
-    } else if (r == -1) {
-      ++n_conflicts;
-    }
+    /* Add the parsed line to the pruner */
+    if (pruner) keypin_add_line_to_pruner(pruner, ent, cp, len);
 
-    ++n_entries;
+    if (!pruner || also_add_to_main_map) {
+      const int r = keypin_add_or_replace_entry_in_map(ent);
+      if (r == 0) {
+        ++n_duplicates;
+      } else if (r == -1) {
+        ++n_conflicts;
+      }
+
+      ++n_entries;
+    } else {
+      /*
+       * We didn't add the entity to the main map, and
+       * keypin_add_line_to_pruner() will have copied it
+       * for the pruner, so free it.
+       */
+      tor_free(ent);
+    }
   }
 
-  int severity = (n_corrupt_lines || n_duplicates) ? LOG_WARN : LOG_INFO;
-  tor_log(severity, LD_DIRSERV,
-          "Loaded %d entries from keypin journal. "
-          "Found %d corrupt lines, %d duplicates, and %d conflicts.",
-          n_entries, n_corrupt_lines, n_duplicates, n_conflicts);
+  if (!pruner || also_add_to_main_map) {
+    int severity = (n_corrupt_lines || n_duplicates) ? LOG_WARN : LOG_INFO;
+    tor_log(severity, LD_DIRSERV,
+            "Loaded %d entries from keypin journal. "
+            "Found %d corrupt lines, %d duplicates, and %d conflicts.",
+            n_entries, n_corrupt_lines, n_duplicates, n_conflicts);
+  }
 
   return 0;
 }
@@ -428,7 +516,7 @@ keypin_load_journal(const char *fname)
     else
       return -1;
   }
-  int r = keypin_load_journal_impl(map->data, map->size);
+  int r = keypin_load_journal_impl(map->data, map->size, NULL, 1);
   tor_munmap_file(map);
   return r;
 }
