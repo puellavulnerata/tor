@@ -82,7 +82,7 @@ test_keypin_parse_file(void *arg)
 "Z2dsZSBpbiBzd29tZWVzd2FucyA aW4gdm9sdXB0YXRlIGF4ZS1oYWNrZXIgZXNzZSByaXA\n"
 "cHVsdXMgY3J1bW1paSBldSBtb28 ZiBudWxsYSBzbnV2di5QTFVHSFBMT1ZFUlhZWlpZLi4\n";
 
-  tt_int_op(0, ==, keypin_load_journal_impl(data1, strlen(data1)));
+  tt_int_op(0, ==, keypin_load_journal_impl(data1, strlen(data1), NULL, 1));
   tt_int_op(8, ==, smartlist_len(mock_addent_got));
   keypin_ent_t *ent = smartlist_get(mock_addent_got, 2);
   tt_mem_op(ent->rsa_id, ==, "r lerkim, sed do bar", 20);
@@ -107,7 +107,7 @@ test_keypin_parse_file(void *arg)
     "ZHMgc3BlYWsgdHJ1dGgsIGFuZCA aXQgd2FzIHRydaUgdGhhdCBhbGwgdGhlIG1hc3Rlcgo\n"
     ;
 
-  tt_int_op(0, ==, keypin_load_journal_impl(data2, strlen(data2)));
+  tt_int_op(0, ==, keypin_load_journal_impl(data2, strlen(data2), NULL, 1));
   tt_int_op(13, ==, smartlist_len(mock_addent_got));
   ent = smartlist_get(mock_addent_got, 9);
   tt_mem_op(ent->rsa_id, ==, "\"You have made a goo", 20);
@@ -120,7 +120,7 @@ test_keypin_parse_file(void *arg)
   /* File truncated before NL */
   const char data3[] =
     "Tm8gZHJhZ29uIGNhbiByZXNpc3Q IHRoZSBmYXNjaW5hdGlvbiBvZiByaWRkbGluZyB0YWw";
-  tt_int_op(0, ==, keypin_load_journal_impl(data3, strlen(data3)));
+  tt_int_op(0, ==, keypin_load_journal_impl(data3, strlen(data3), NULL, 1));
   tt_int_op(14, ==, smartlist_len(mock_addent_got));
   ent = smartlist_get(mock_addent_got, 13);
   tt_mem_op(ent->rsa_id, ==, "No dragon can resist", 20);
