@@ -642,6 +642,87 @@ keypin_load_journal(const char *fname)
   return r;
 }
 
+/**
+ * Load a journal from the file specified by fname into a pruner, then delete
+ * it and replace it with the pruned version.  Return 0 on success,
+ * -1 on failure.
+ */
+int
+keypin_prune_journal(const char *fname)
+{
+  keypin_journal_pruner_t *pruner = NULL;
+  keypin_journal_line_t *l;
+  tor_mmap_t *map;
+  int fd = -1;
+
+  /* Mmap the file */
+  map = tor_mmap_file(fname);
+  if (!map) {
+    if (errno == ENOENT)
+      return 0;
+    else
+      return -1;
+  }
+
+  /* Create a pruner */
+  pruner = keypin_create_pruner();
+
+  /* Prune it */
+  int r = keypin_load_journal_impl(map->data, map->size, pruner, 0);
+  /* Unmap it */
+  tor_munmap_file(map);
+
+  if (r == 0) {
+    /*
+     * Loading into the pruner succeeded; truncate the old file and emit
+     *
+     * The output should always be smaller than the original file was, but
+     * under really pessimal circumstances, something else might gobble up
+     * a lot of disk space before we're done emitting and we might fail to
+     * emit and end up losing the journal.
+     *
+     * The alternative would be to emit to a temp file and then only delete
+     * the old journal when we've written the new one, but then we might fail
+     * to prune when disk space is tight.
+     */
+    fd = tor_open_cloexec(fname, O_WRONLY|O_TRUNC|O_BINARY, 0600);
+    if (fd < 0)
+      goto err;
+
+    l = pruner->head;
+    while (l) {
+      if (write_all(fd, l->line, strlen(l->line), 0) < 0)
+        goto err;
+      if (write(fd, "\n", 1) < 1)
+        goto err;
+
+      l = l->next;
+    }
+
+    close(fd);
+  }
+
+  log_info(LD_DIRSERV,
+           "Pruned key-pinning journal; %d lines make %d entries, dropped "
+           "%d as corrupt, %d as conflicting and %d as duplicates",
+           pruner->nlines, pruner->nentries,
+           pruner->nlines_pruned_corrupt, pruner->nlines_pruned_conflict,
+           pruner->nlines_pruned_duplicate);
+
+  keypin_free_pruner(pruner);
+
+  return 0;
+
+ err:
+  log_warn(LD_DIRSERV, "Error while pruning key-pinning "
+           "journal %s: %s", fname, strerror(errno));
+
+  if (fd >= 0) close(fd);
+  if (pruner) keypin_free_pruner(pruner);
+
+  return -1;
+}
+
 /** Parse a single keypinning journal line entry from <b>cp</b>.  The input
  * does not need to be NUL-terminated, but it <em>does</em> need to have
  * KEYPIN_JOURNAL_LINE_LEN -1 bytes available to read.  Return a new entry
