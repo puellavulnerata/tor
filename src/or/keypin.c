@@ -525,6 +525,7 @@ keypin_load_journal_impl(const char *data, size_t size,
   int n_entries = 0;
   int n_duplicates = 0;
   int n_conflicts = 0;
+  int corrupt_flag;
 
   for (const char *cp = start; cp < end; cp = next) {
     const char *eol = memchr(cp, '\n', end-cp);
@@ -554,6 +555,7 @@ keypin_load_journal_impl(const char *data, size_t size,
     if (len != JOURNAL_LINE_LEN - 1) {
       /* Lines with a bad length are corrupt unless they are empty.
        * Ignore them either way */
+      corrupt_flag = 0;
       for (const char *s = cp; s < eos; ++s) {
         if (! TOR_ISSPACE(*s)) {
           /*
@@ -562,6 +564,7 @@ keypin_load_journal_impl(const char *data, size_t size,
            */
           if (pruner) ++(pruner->nlines_pruned_corrupt);
           if (!pruner || also_add_to_main_map) ++n_corrupt_lines;
+          corrupt_flag = 1;
           break;
         }
       }
@@ -570,7 +573,7 @@ keypin_load_journal_impl(const char *data, size_t size,
        * We're not dropping blanks above, so preserve these all-whitespace
        * lines when pruning too.
        */
-      if (pruner) keypin_add_line_to_pruner(pruner, NULL, cp, len);
+      if (!corrupt_flag && pruner) keypin_add_line_to_pruner(pruner, NULL, cp, len);
       continue;
     }
 
