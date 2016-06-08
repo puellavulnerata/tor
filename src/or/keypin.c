@@ -60,7 +60,11 @@ static int keypin_check_and_add_impl(const uint8_t *rsa_id_digest,
 static void keypin_add_line_to_pruner(keypin_journal_pruner_t *p,
                                       keypin_ent_t *ent,
                                       const char *line, int len);
-static int keypin_add_or_replace_entry_in_map(keypin_ent_t *ent);
+static int keypin_add_or_replace_entry_in_map(
+    keypin_ent_t *ent,
+    keypin_journal_pruner_t *pruner);
+static void keypin_remove_entry_from_pruner(keypin_journal_pruner_t *p,
+                                            keypin_ent_t *ent);
 
 static struct rsamap the_rsa_map = HT_INITIALIZER();
 static struct edmap the_ed_map = HT_INITIALIZER();
@@ -179,7 +183,7 @@ keypin_check_and_add_impl(const uint8_t *rsa_id_digest,
     return KEYPIN_NOT_FOUND;
 
   ent = tor_memdup(&search, sizeof(search));
-  int r = keypin_add_or_replace_entry_in_map(ent);
+  int r = keypin_add_or_replace_entry_in_map(ent, NULL);
   if (! replace) {
     tor_assert(r == 1);
   } else {
@@ -193,25 +197,46 @@ keypin_check_and_add_impl(const uint8_t *rsa_id_digest,
  * Helper: add <b>ent</b> to the hash tables.
  */
 MOCK_IMPL(STATIC void,
-keypin_add_entry_to_map, (keypin_ent_t *ent))
+keypin_add_entry_to_map, (keypin_ent_t *ent, keypin_journal_pruner_t *pruner))
 {
-  HT_INSERT(rsamap, &the_rsa_map, ent);
-  HT_INSERT(edmap, &the_ed_map, ent);
+  if (!pruner) {
+    HT_INSERT(rsamap, &the_rsa_map, ent);
+    HT_INSERT(edmap, &the_ed_map, ent);
+  } else {
+    HT_INSERT(rsamap, &(pruner->pruner_rsamap), ent);
+    HT_INSERT(edmap, &(pruner->pruner_edmap), ent);
+  }
 }
 
 /**
  * Helper: add 'ent' to the maps, replacing any entries that contradict it.
- * Take ownership of 'ent', freeing it if needed.
+ * Take ownership of 'ent', freeing it if needed.  If a pruner is passed in
+ * use the hash tables in the pruner instead.
  *
  * Return 0 if the entry was a duplicate, -1 if there was a conflict,
  * and 1 if there was no conflict.
  */
 static int
-keypin_add_or_replace_entry_in_map(keypin_ent_t *ent)
+keypin_add_or_replace_entry_in_map(keypin_ent_t *ent,
+                                   keypin_journal_pruner_t *pruner)
 {
   int r = 1;
-  keypin_ent_t *ent2 = HT_FIND(rsamap, &the_rsa_map, ent);
-  keypin_ent_t *ent3 = HT_FIND(edmap, &the_ed_map, ent);
+  struct rsamap *rsa_map = NULL;
+  struct edmap *ed_map = NULL;
+
+  if (!pruner) {
+    /* Use the main map */
+    rsa_map = &the_rsa_map;
+    ed_map = &the_ed_map;
+  } else {
+    /* Use the pruner hash tables instead */
+    rsa_map = &(pruner->pruner_rsamap);
+    ed_map = &(pruner->pruner_edmap);
+  }
+
+  keypin_ent_t *ent2 = HT_FIND(rsamap, rsa_map, ent);
+  keypin_ent_t *ent3 = HT_FIND(edmap, ed_map, ent);
+
   if (ent2 &&
       fast_memeq(ent2->ed25519_key, ent->ed25519_key, DIGEST256_LEN)) {
     /* We already have this mapping stored. Ignore it. */
@@ -229,25 +254,71 @@ keypin_add_or_replace_entry_in_map(keypin_ent_t *ent)
      */
     const keypin_ent_t *t;
     if (ent2) {
-      t = HT_REMOVE(rsamap, &the_rsa_map, ent2);
+      t = HT_REMOVE(rsamap, rsa_map, ent2);
       tor_assert(ent2 == t);
-      t = HT_REMOVE(edmap, &the_ed_map, ent2);
+      t = HT_REMOVE(edmap, ed_map, ent2);
       tor_assert(ent2 == t);
     }
     if (ent3 && ent2 != ent3) {
-      t = HT_REMOVE(rsamap, &the_rsa_map, ent3);
+      t = HT_REMOVE(rsamap, rsa_map, ent3);
       tor_assert(ent3 == t);
-      t = HT_REMOVE(edmap, &the_ed_map, ent3);
+      t = HT_REMOVE(edmap, ed_map, ent3);
       tor_assert(ent3 == t);
-      tor_free(ent3);
+      if (pruner) keypin_remove_entry_from_pruner(pruner, ent3);
+      else tor_free(ent3);
     }
-    tor_free(ent2);
+    if (pruner) keypin_remove_entry_from_pruner(pruner, ent2);
+    else tor_free(ent2);
     r = -1;
     /* Fall through */
   }
 
-  keypin_add_entry_to_map(ent);
+  keypin_add_entry_to_map(ent, pruner);
   return r;
+}
+
+/** Remove an entry from a pruner; we'll need to free the associated
+ * line info with it and adjust the linked list.
+ */
+static void
+keypin_remove_entry_from_pruner(keypin_journal_pruner_t *p,
+                                keypin_ent_t *ent)
+{
+  keypin_journal_line_t *l = NULL;
+
+  tor_assert(p != NULL);
+  tor_assert(ent != NULL);
+
+  /* If we're using a pruner, there should be line info */
+  tor_assert(ent->line_info);
+  l = ent->line_info;
+  tor_assert(l->ent == ent);
+
+  /* We've got the line; unlink it */
+  if (l->next) l->next->prev = l->prev;
+  else {
+    /* This was the tail */
+    tor_assert(p->tail == l);
+    p->tail = l->prev;
+  }
+
+  if (l->prev) l->prev->next = l->next;
+  else {
+    /* This was the head */
+    tor_assert(p->head == l);
+    p->head = l->next;
+  }
+
+  l->next = l->prev = NULL;
+
+  /* Now that it's unlinked, adjust the line counters in the pruner */
+  tor_assert(p->nlines > 0);
+  --(p->nlines);
+
+  /* The caller already removed this from p's hash tables */
+  /* Free the entry and the line */
+  tor_free(ent);
+  tor_free(l);
 }
 
 /**
@@ -356,17 +427,44 @@ keypin_add_line_to_pruner(keypin_journal_pruner_t *p,
                           const char *line, int len)
 {
   keypin_journal_line_t *l = NULL;
-  int adding = 1;
+  keypin_ent_t *our_ent = NULL;
+  int adding = 1, r;
 
   /* Asserts for sanity */
   tor_assert(p != NULL);
   tor_assert(line != NULL);
 
   if (ent) {
+    /* Duplicate the entity; we take ownership from here */
+    our_ent = tor_malloc_zero(sizeof(*our_ent));
+    memcpy(our_ent, ent, sizeof(*our_ent));
+
     /*
-     * TODO remove conflicts, detect duplicates and set adding = 0 as
-     * needed
+     * Try adding it to the pruner map and find duplicates/conflicts.  If
+     * there are conflicts, this will remove them from the pruner and adjust
+     * the linked list and counters too.  If there are no duplicates or
+     * conflicts, this will add ent to the pruner hash tables, but it
+     * won't go in the linked list until we insert it below.
      */
+
+    r = keypin_add_or_replace_entry_in_map(ent, p);
+    if (r == 0) {
+      /*
+       * This was a duplicate; we just freed it and won't be adding
+       * anything to the list, but should bump the duplicate counter.
+       */
+      adding = 0;
+      ent = NULL;
+      ++(p->nlines_pruned_duplicate);
+    } else if (r == -1) {
+      /*
+       * This was a conflict; we removed and freed old entries and
+       * inserted it into the pruner's hash table, so we must add it to
+       * the linked list below.  We should bump the conflict counter.
+       */
+       ++(p->nlines_pruned_conflict);
+    }
+    /* else just add it */
   }
 
   /* If we're adding this one, add it */
@@ -374,10 +472,8 @@ keypin_add_line_to_pruner(keypin_journal_pruner_t *p,
     /* Allocate a line, as many chars as we need plus room for the NUL */
     l = tor_malloc_zero(sizeof(*l) + len + 1);
     /* Assign the entry pointer */
-    l->ent = tor_malloc_zero(sizeof(*(l->ent)));
-    memcpy(l->ent, ent, sizeof(*(l->ent)));
+    l->ent = our_ent;
     l->ent->line_info = l;
-    /* TODO insert into the hash tables */
     /* Copy over the line */
     memcpy(l->line, line, len);
     l->line[len] = '\0';
@@ -473,7 +569,7 @@ keypin_load_journal_impl(const char *data, size_t size,
     if (pruner) keypin_add_line_to_pruner(pruner, ent, cp, len);
 
     if (!pruner || also_add_to_main_map) {
-      const int r = keypin_add_or_replace_entry_in_map(ent);
+      const int r = keypin_add_or_replace_entry_in_map(ent, NULL);
       if (r == 0) {
         ++n_duplicates;
       } else if (r == -1) {
