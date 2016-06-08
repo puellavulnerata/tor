@@ -15,6 +15,7 @@ int keypin_check(const uint8_t *rsa_id_digest,
 int keypin_open_journal(const char *fname);
 int keypin_close_journal(void);
 int keypin_load_journal(const char *fname);
+int keypin_prune_journal(const char *fname);
 void keypin_clear(void);
 int keypin_check_lone_rsa(const uint8_t *rsa_id_digest);
 
