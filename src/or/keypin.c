@@ -253,23 +253,37 @@ keypin_add_or_replace_entry_in_map(keypin_ent_t *ent,
      * and ed'!= ed.
      */
     const keypin_ent_t *t;
+    /* Correctly count how many conflicts we remove; return -1 or -2 */
+    r = 0;
+    /* Got an ent2? */
     if (ent2) {
       t = HT_REMOVE(rsamap, rsa_map, ent2);
       tor_assert(ent2 == t);
       t = HT_REMOVE(edmap, ed_map, ent2);
       tor_assert(ent2 == t);
+      --r;
     }
+    /* Got a distinct ent3? */
     if (ent3 && ent2 != ent3) {
       t = HT_REMOVE(rsamap, rsa_map, ent3);
       tor_assert(ent3 == t);
       t = HT_REMOVE(edmap, ed_map, ent3);
       tor_assert(ent3 == t);
+      --r;
       if (pruner) keypin_remove_entry_from_pruner(pruner, ent3);
       else tor_free(ent3);
     }
-    if (pruner) keypin_remove_entry_from_pruner(pruner, ent2);
-    else tor_free(ent2);
-    r = -1;
+    /* Be sure we only try to free ent2 if we had an ent2 */
+    if (ent2) {
+      if (pruner) keypin_remove_entry_from_pruner(pruner, ent2);
+      else tor_free(ent2);
+    }
+    /*
+     * We should always have this; if we don't and we return it, we're
+     * incorrectly signalling a duplicate without having freed it and the
+     * caller would leak, so assert it.
+     */
+    tor_assert(r < 0);
     /* Fall through */
   }
 
@@ -314,6 +328,9 @@ keypin_remove_entry_from_pruner(keypin_journal_pruner_t *p,
   /* Now that it's unlinked, adjust the line counters in the pruner */
   tor_assert(p->nlines > 0);
   --(p->nlines);
+  /* We're removing an entry, not just a line */
+  tor_assert(p->nentries > 0);
+  --(p->nentries);
 
   /* The caller already removed this from p's hash tables */
   /* Free the entry and the line */
@@ -456,13 +473,13 @@ keypin_add_line_to_pruner(keypin_journal_pruner_t *p,
       adding = 0;
       ent = NULL;
       ++(p->nlines_pruned_duplicate);
-    } else if (r == -1) {
+    } else if (r < 0) {
       /*
        * This was a conflict; we removed and freed old entries and
        * inserted it into the pruner's hash table, so we must add it to
        * the linked list below.  We should bump the conflict counter.
        */
-       ++(p->nlines_pruned_conflict);
+       p->nlines_pruned_conflict -= r;
     }
     /* else just add it */
   }
@@ -472,8 +489,12 @@ keypin_add_line_to_pruner(keypin_journal_pruner_t *p,
     /* Allocate a line, as many chars as we need plus room for the NUL */
     l = tor_malloc_zero(sizeof(*l) + len + 1);
     /* Assign the entry pointer */
-    l->ent = our_ent;
-    l->ent->line_info = l;
+    if (our_ent) {
+      l->ent = our_ent;
+      l->ent->line_info = l;
+      /* Update nentries here */
+      ++(p->nentries);
+    }
     /* Copy over the line */
     memcpy(l->line, line, len);
     l->line[len] = '\0';
@@ -572,8 +593,8 @@ keypin_load_journal_impl(const char *data, size_t size,
       const int r = keypin_add_or_replace_entry_in_map(ent, NULL);
       if (r == 0) {
         ++n_duplicates;
-      } else if (r == -1) {
-        ++n_conflicts;
+      } else if (r < 0) {
+        n_conflicts -= r;
       }
 
       ++n_entries;
