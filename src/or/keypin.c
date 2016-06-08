@@ -689,3 +689,100 @@ keypin_clear(void)
   }
 }
 
+/** Allocate a new pruner */
+
+STATIC keypin_journal_pruner_t *
+keypin_create_pruner(void)
+{
+  keypin_journal_pruner_t *p = NULL;
+
+  p = tor_malloc_zero(sizeof(*p));
+  HT_INIT(rsamap, &(p->pruner_rsamap));
+  HT_INIT(edmap, &(p->pruner_edmap));
+
+  return p;
+}
+
+/** Free a pruner and all associated structures */
+
+STATIC void
+keypin_free_pruner(keypin_journal_pruner_t *p)
+{
+  keypin_ent_t **i, *to_remove;
+  keypin_journal_line_t *l, *nextl;
+
+  if (!p) return;
+
+  /* First, free the entries */
+  i = HT_START(rsamap, &(p->pruner_rsamap));
+  while (i) {
+    to_remove = *i;
+
+    if (to_remove) {
+      /* Get it out of edmap too if it's there */
+      HT_REMOVE(edmap, &(p->pruner_edmap), to_remove);
+
+      /* Unlink it from the line */
+      if (to_remove->line_info) {
+        tor_assert(to_remove->line_info->ent == to_remove);
+        to_remove->line_info->ent = NULL;
+        to_remove->line_info = NULL;
+      }
+    }
+
+    i = HT_NEXT_RMV(rsamap, &(p->pruner_rsamap), i);
+
+    /* Free it */
+    tor_free(to_remove);
+  }
+
+  /* Iterate over edmap too, just in case */
+  i = HT_START(edmap, &(p->pruner_edmap));
+  while (i) {
+    to_remove = *i;
+
+    if (to_remove) {
+      /* Get it out of rsamap too if it's there (but it shouldn't be) */
+      HT_REMOVE(rsamap, &(p->pruner_rsamap), to_remove);
+
+      /* Unlink it from the line */
+      if (to_remove->line_info) {
+        tor_assert(to_remove->line_info->ent == to_remove);
+        to_remove->line_info->ent = NULL;
+        to_remove->line_info = NULL;
+      }
+    }
+
+    i = HT_NEXT_RMV(edmap, &(p->pruner_edmap), i);
+
+    /* Free it */
+    tor_free(to_remove);
+  }
+
+  HT_CLEAR(rsamap, &(p->pruner_rsamap));
+  HT_CLEAR(edmap, &(p->pruner_edmap));
+
+  /* Now walk the linked list and free everything */
+  l = p->head;
+  while (l) {
+    /* Save a next pointer */
+    nextl = l->next;
+
+    /* Unlink l */
+    if (l->next) l->next->prev = l->prev;
+    else p->tail = l->prev;
+    if (l->prev) l->prev->next = l->next;
+    else p->head = l->next;
+    l->next = l->prev = NULL;
+
+    /* Free l */
+    tor_free(l);
+
+    /* Advance */
+    l = nextl;
+  }
+
+  /* Now free the pruner itself */
+  tor_free(p);
+}
+
