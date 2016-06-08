@@ -573,7 +573,8 @@ keypin_load_journal_impl(const char *data, size_t size,
        * We're not dropping blanks above, so preserve these all-whitespace
        * lines when pruning too.
        */
-      if (!corrupt_flag && pruner) keypin_add_line_to_pruner(pruner, NULL, cp, len);
+      if (!corrupt_flag && pruner)
+        keypin_add_line_to_pruner(pruner, NULL, cp, len);
       continue;
     }
 
