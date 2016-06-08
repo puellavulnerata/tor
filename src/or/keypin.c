@@ -464,7 +464,7 @@ keypin_add_line_to_pruner(keypin_journal_pruner_t *p,
      * won't go in the linked list until we insert it below.
      */
 
-    r = keypin_add_or_replace_entry_in_map(ent, p);
+    r = keypin_add_or_replace_entry_in_map(our_ent, p);
     if (r == 0) {
       /*
        * This was a duplicate; we just freed it and won't be adding
