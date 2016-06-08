@@ -29,6 +29,10 @@ int keypin_check_lone_rsa(const uint8_t *rsa_id_digest);
 typedef struct keypin_ent_st keypin_ent_t;
 typedef struct keypin_journal_line_st keypin_journal_line_t;
 
+/* Hash table structs */
+HT_HEAD(rsamap, keypin_ent_st);
+HT_HEAD(edmap, keypin_ent_st);
+
 /**
  * In-memory representation of a key-pinning table entry.
  */
@@ -67,7 +71,9 @@ typedef struct keypin_journal_pruner_s {
   /* Doubly linked list of lines to preserve order and comment/reserved
    * lines */
   keypin_journal_line_t *head, *tail;
-  /* TODO hash tables for detecting conflicts and duplicates */
+  /* Conflict/duplicate detection hash tables */
+  struct rsamap pruner_rsamap;
+  struct edmap pruner_edmap;
 } keypin_journal_pruner_t;
 
 STATIC keypin_ent_t * keypin_parse_journal_line(const char *cp);

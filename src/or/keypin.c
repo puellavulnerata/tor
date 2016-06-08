@@ -62,8 +62,8 @@ static void keypin_add_line_to_pruner(keypin_journal_pruner_t *p,
                                       const char *line, int len);
 static int keypin_add_or_replace_entry_in_map(keypin_ent_t *ent);
 
-static HT_HEAD(rsamap, keypin_ent_st) the_rsa_map = HT_INITIALIZER();
-static HT_HEAD(edmap, keypin_ent_st) the_ed_map = HT_INITIALIZER();
+static struct rsamap the_rsa_map = HT_INITIALIZER();
+static struct edmap the_ed_map = HT_INITIALIZER();
 
 /** Hashtable helper: compare two keypin table entries and return true iff
  * they have the same RSA key IDs. */
