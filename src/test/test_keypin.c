@@ -243,6 +243,88 @@ test_keypin_journal(void *arg)
   keypin_clear();
 }
 
+static void
+test_keypin_pruner(void *arg)
+{
+  (void)arg;
+  keypin_journal_pruner_t *p = NULL;
+  /* A sample:
+   *
+   *  - 4 lines are comments/reserved/whitespace and should generate lines,
+   *    but not entries.
+   *  - Two lines are corrupt because they have the wrong length
+   *  - One line is corrupt because it won't parse
+   *  - Ten lines should get as far as being parsed and added to the pruner
+   *    - One will be dropped because it is a duplicate
+   *    - One will be dropped by a one-way conflict
+   *    - Two will be dropped by a double conflict
+   *
+   *  We should end up with 10 lines, 6 entries, 3 corrupts, 3 conflicts and
+   *  1 duplicate
+   */
+  const char sample_to_parse[] =
+    "PT09PT09PT09PT09PT09PT09PT0 PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0\n"
+    /* These should be preserved but not generate entries */
+    "# This is a comment.\n"
+    "     \n"
+    "QXQgdGhlIGVuZCBvZiB0aGUgeWU YXIgS3VycmVta2FybWVycnVrIHNhaWQgdG8gaGltLCA\n"
+    "IllvdSBoYXZlIG1hZGUgYSBnb28 ZCBiZWdpbm5pbmcuIiBCdXQgbm8gbW9yZS4gV2l6YXI\n"
+    "ZHMgc3BlYWsgdHJ1dGgsIGFuZCA aXQgd2FzIHRydWUgdGhhdCBhbGwgdGhlIG1hc3Rlcgo\n"
+    /* This will conflict with line 6 and remove it */
+    "ZHMgc3BlYWsgdaJ1dGgsIGFuZCA aXQgd2FzIHRydWUgdGhhdCBhbGwgdGhlIG1hc3Rlcgo\n"
+    /* These should be preserved but not generate entries */
+    "\n"
+    "@reserved for a future extension \n"
+    "ZHMgc3BlYWsgdHJ1dGgsIGFuZCA aXQgd2FzIHRydaUgdGhhdCBhbGwgdGhlIG1hc3Rlcgo\n"
+    /* This is a duplicate of line 4 and should be dropped */
+    "QXQgdGhlIGVuZCBvZiB0aGUgeWU YXIgS3VycmVta2FybWVycnVrIHNhaWQgdG8gaGltLCA\n"
+    /* These are corrupt due to wrong length*/
+    "eSBvZiBOYW1lcyB0aGF0IEdlZCA aGFkIHRvaWxlZCbyB3aW4gdGhhdCB5ZWFyIHdhcyA\n"
+    "eSBvZiBOYW1lcyB0aGF0IEdlZCA aGFkIHRvaWxlZCbyB3aW4gdGhhdCB5ZWFyIHdhcy"
+              "A line too long\n"
+    /* These are setting up for the double-conflict test */
+    "TG9yYXggaXBzdW0gZ3J1dnZ1bHU cyB0aG5lZWQgYW1ldCwgc25lcmdlbGx5IG9uY2UtbGU\n"
+    "ciBsZXJraW0sIHNlZCBkbyBiYXI YmFsb290IHRlbXBvciBnbHVwcGl0dXMgdXQgbGFib3I\n"
+    /* This will conflict with both lines 14 and 15 and remove them */
+    "TG9yYXggaXBzdW0gZ3J1dnZ1bHU YmFsb290IHRlbXBvciBnbHVwcGl0dXMgdXQgbGFib3I\n"
+    /* This is corrupt by non-parseability */
+    "dGhlIG1lcmUgc3RhcnQgb2Ygd2g YXQgaGUgbXVzdCBnbyBvb!BsZWFybmluZy4uLi4uLi4\n"
+    ;
+
+  /*
+   * Install the same mock as in parse_file, but now we're testing we add
+   * nothing, since we should only use the pruner.
+   */
+  mock_addent_got = smartlist_new();
+  MOCK(keypin_add_entry_to_map, mock_addent);
+
+  /* Create a pruner */
+  p = keypin_create_pruner();
+  tt_assert(p != NULL);
+
+  if (p) {
+    tt_int_op(0, ==,
+        keypin_load_journal_impl(sample_to_parse, strlen(sample_to_parse),
+                                 p, 0));
+    /* Assert we haven't got anything given to the mock without the pruner */
+    tt_int_op(0, ==, smartlist_len(mock_addent_got));
+    /* Assert statistics are as expected */
+    tt_int_op(10, ==, p->nlines);
+    tt_int_op(6, ==, p->nentries);
+    tt_int_op(3, ==, p->nlines_pruned_corrupt);
+    tt_int_op(3, ==, p->nlines_pruned_conflict);
+    tt_int_op(1, ==, p->nlines_pruned_duplicate);
+    /* Free it */
+    keypin_free_pruner(p);
+  }
+
+ done:
+  UNMOCK(keypin_add_entry_to_map);
+
+  keypin_clear();
+  smartlist_free(mock_addent_got);
+}
+
 #undef ADD
 #undef LONE_RSA
 
@@ -254,6 +336,7 @@ struct testcase_t keypin_tests[] = {
   TEST( parse_file, TT_FORK ),
   TEST( add_entry, TT_FORK ),
   TEST( journal, TT_FORK ),
+  TEST( pruner, TT_FORK ),
   END_OF_TESTCASES
 };
 
