@@ -713,6 +713,7 @@ keypin_free_pruner(keypin_journal_pruner_t *p)
 {
   keypin_ent_t **i, *to_remove;
   keypin_journal_line_t *l, *nextl;
+  int entries_removed = 0, lines_removed = 0;
 
   if (!p) return;
 
@@ -731,6 +732,8 @@ keypin_free_pruner(keypin_journal_pruner_t *p)
         to_remove->line_info->ent = NULL;
         to_remove->line_info = NULL;
       }
+
+      ++entries_removed;
     }
 
     i = HT_NEXT_RMV(rsamap, &(p->pruner_rsamap), i);
@@ -754,6 +757,8 @@ keypin_free_pruner(keypin_journal_pruner_t *p)
         to_remove->line_info->ent = NULL;
         to_remove->line_info = NULL;
       }
+
+      ++entries_removed;
     }
 
     i = HT_NEXT_RMV(edmap, &(p->pruner_edmap), i);
@@ -781,9 +786,15 @@ keypin_free_pruner(keypin_journal_pruner_t *p)
     /* Free l */
     tor_free(l);
 
+    ++lines_removed;
+
     /* Advance */
     l = nextl;
   }
+
+  /* Consistency check on the counters */
+  tor_assert(lines_removed == p->nlines);
+  tor_assert(entries_removed == p->nentries);
 
   /* Now free the pruner itself */
   tor_free(p);
