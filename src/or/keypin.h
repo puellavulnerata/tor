@@ -67,6 +67,7 @@ typedef struct keypin_journal_pruner_s {
    * reasons.
    */
   int nlines;
+  int nentries;
   int nlines_pruned_corrupt, nlines_pruned_duplicate, nlines_pruned_conflict;
   /* Doubly linked list of lines to preserve order and comment/reserved
    * lines */
