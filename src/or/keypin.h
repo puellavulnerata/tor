@@ -81,7 +81,8 @@ STATIC int keypin_load_journal_impl(const char *data, size_t size,
                                     keypin_journal_pruner_t *pruner,
                                     int also_add_to_main_map);
 
-MOCK_DECL(STATIC void, keypin_add_entry_to_map, (keypin_ent_t *ent));
+MOCK_DECL(STATIC void, keypin_add_entry_to_map,
+          (keypin_ent_t *ent, keypin_journal_pruner_t *pruner));
 #endif
 
 #endif

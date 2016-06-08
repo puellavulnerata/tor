@@ -57,10 +57,13 @@ test_keypin_parse_line(void *arg)
 
 static smartlist_t *mock_addent_got = NULL;
 static void
-mock_addent(keypin_ent_t *ent)
+mock_addent(keypin_ent_t *ent, keypin_journal_pruner_t *pruner)
 {
-  smartlist_add(mock_addent_got, ent);
-  keypin_add_entry_to_map__real(ent);
+  if (!pruner) {
+    smartlist_add(mock_addent_got, ent);
+  }
+
+  keypin_add_entry_to_map__real(ent, pruner);
 }
 
 static void
