@@ -82,6 +82,9 @@ STATIC int keypin_load_journal_impl(const char *data, size_t size,
                                     keypin_journal_pruner_t *pruner,
                                     int also_add_to_main_map);
 
+STATIC keypin_journal_pruner_t * keypin_create_pruner(void);
+STATIC void keypin_free_pruner(keypin_journal_pruner_t *p);
+
 MOCK_DECL(STATIC void, keypin_add_entry_to_map,
           (keypin_ent_t *ent, keypin_journal_pruner_t *pruner));
 #endif
