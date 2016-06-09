@@ -2395,6 +2395,10 @@ do_main_loop(void)
   if (authdir_mode_v3(get_options())) {
     char *fname = get_datadir_fname("key-pinning-journal");
     int r = 0;
+    if (keypin_prune_journal(fname)<0) {
+      log_err(LD_DIR, "Error pruning key-pinning journal: %s",strerror(errno));
+      r = -1;
+    }
     if (keypin_load_journal(fname)<0) {
       log_err(LD_DIR, "Error loading key-pinning journal: %s",strerror(errno));
       r = -1;
