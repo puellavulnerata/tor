@@ -19,6 +19,8 @@ int base64_encode_nopad(char *dest, size_t destlen,
                         const uint8_t *src, size_t srclen);
 int base64_decode_nopad(uint8_t *dest, size_t destlen,
                         const char *src, size_t srclen);
+int base64_decode_internal(char *dest, size_t destlen,
+                        const char *src, size_t srclen);
 
 /** Characters that can appear (case-insensitively) in a base32 encoding. */
 #define BASE32_CHARS "abcdefghijklmnopqrstuvwxyz234567"

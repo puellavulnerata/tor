@@ -322,7 +322,13 @@ base64_decode_nopad(uint8_t *dest, size_t destlen,
       buflen = srclen + 1;
       break;
   }
-  int n = base64_decode((char*)dest, destlen, buf, buflen);
+  if (destlen < (srclen*3)/4)
+    return -1;
+
+  if (destlen > SIZE_T_CEILING)
+    return -1;
+
+  int n = base64_decode_internal((char*)dest, destlen, buf, buflen);
   tor_free(buf);
   return n;
 }
@@ -373,11 +379,6 @@ static const uint8_t base64_decode_table[256] = {
 int
 base64_decode(char *dest, size_t destlen, const char *src, size_t srclen)
 {
-  const char *eos = src+srclen;
-  uint32_t n=0;
-  int n_idx=0;
-  char *dest_orig = dest;
-
   /* Max number of bits == srclen*6.
    * Number of bytes required to hold all bits == (srclen*6)/8.
    * Yes, we want to round down: anything that hangs over the end of a
@@ -386,6 +387,24 @@ base64_decode(char *dest, size_t destlen, const char *src, size_t srclen)
     return -1;
   if (destlen > SIZE_T_CEILING)
     return -1;
+
+  return base64_decode_internal(dest,destlen,src,srclen);
+}
+
+/** base64_decode_internal takes care of decoding the <b>src</b> buffer
+ * and write the results into the <b>dest</b> buffer.
+ * <b>WARNING</b>: This method does NOT check input and output sizes. It is the
+ * responsability of base64_decode{_nopad}. IT SHOULD NEVER BE CALLED FOR
+ * FOR DECODING A BASE64 STRING DIRECTLY. Use base64_decode and
+ * base64_decode_nopad.
+ * */
+int
+base64_decode_internal(char *dest, size_t destlen, const char *src,
+        size_t srclen) {
+  const char *eos = src+srclen;
+  uint32_t n=0;
+  int n_idx=0;
+  char *dest_orig = dest;
 
   memset(dest, 0, destlen);
 
