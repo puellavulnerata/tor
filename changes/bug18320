@@ -1,0 +1,4 @@
+  o Bugfixes:
+    - Prune the key pinning journal to remove duplicate or conflicting entries
+      each time we start up before we open it, to prevent dirauth disk space
+      exhaustion.  Fixes bug 18320.
