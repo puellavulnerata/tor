@@ -59,7 +59,7 @@ static int keypin_check_and_add_impl(const uint8_t *rsa_id_digest,
                                      const int replace);
 static void keypin_add_line_to_pruner(keypin_journal_pruner_t *p,
                                       keypin_ent_t *ent,
-                                      const char *line, int len);
+                                      const char *line, size_t len);
 static int keypin_add_or_replace_entry_in_map(
     keypin_ent_t *ent,
     keypin_journal_pruner_t *pruner);
@@ -213,8 +213,11 @@ keypin_add_entry_to_map, (keypin_ent_t *ent, keypin_journal_pruner_t *pruner))
  * Take ownership of 'ent', freeing it if needed.  If a pruner is passed in
  * use the hash tables in the pruner instead.
  *
- * Return 0 if the entry was a duplicate, -1 if there was a conflict,
- * and 1 if there was no conflict.
+ * Return 0 if the entry was a duplicate, < 0 if there was a conflict,
+ * and 1 if there was no conflict.  In the event of conflict, the negative
+ * value returned is the adjustment to the size of the map (i.e., -1 if
+ * only one conflicting entry was removed, -2 if both keys conflicted and
+ * two entries were removed).
  */
 static int
 keypin_add_or_replace_entry_in_map(keypin_ent_t *ent,
@@ -441,7 +444,7 @@ keypin_journal_append_entry(const uint8_t *rsa_id_digest,
 static void
 keypin_add_line_to_pruner(keypin_journal_pruner_t *p,
                           keypin_ent_t *ent,
-                          const char *line, int len)
+                          const char *line, size_t len)
 {
   keypin_journal_line_t *l = NULL;
   keypin_ent_t *our_ent = NULL;
@@ -700,6 +703,9 @@ keypin_prune_journal(const char *fname)
     }
 
     close(fd);
+  } else {
+    /* Don't log that we pruned the journal if we couldn't load it */
+    goto err;
   }
 
   log_info(LD_DIRSERV,
@@ -718,7 +724,7 @@ keypin_prune_journal(const char *fname)
            "journal %s: %s", fname, strerror(errno));
 
   if (fd >= 0) close(fd);
-  if (pruner) keypin_free_pruner(pruner);
+  keypin_free_pruner(pruner);
 
   return -1;
 }
