@@ -4,6 +4,7 @@
 #ifndef TOR_KEYPIN_H
 #define TOR_KEYPIN_H
 
+#include "tor_queue.h"
 #include "testsupport.h"
 
 int keypin_check_and_add(const uint8_t *rsa_id_digest,
@@ -54,8 +55,8 @@ struct keypin_ent_st {
  */
 
 struct keypin_journal_line_st {
-  /* Next/prev line pointers */
-  keypin_journal_line_t *next, *prev;
+  /* TOR_TAILQ_* stuff */
+  TOR_TAILQ_ENTRY(keypin_journal_line_st) q;
   /* Parsed keypin entry, or NULL for a comment/reserved line? */
   keypin_ent_t *ent;
   /* Exact line so we can re-emit it correctly after pruning */
@@ -72,7 +73,7 @@ typedef struct keypin_journal_pruner_s {
   int nlines_pruned_corrupt, nlines_pruned_duplicate, nlines_pruned_conflict;
   /* Doubly linked list of lines to preserve order and comment/reserved
    * lines */
-  keypin_journal_line_t *head, *tail;
+  TOR_TAILQ_HEAD(keypin_journal_line_list_s, keypin_journal_line_st) lines;
   /* Conflict/duplicate detection hash tables */
   struct rsamap pruner_rsamap;
   struct edmap pruner_edmap;

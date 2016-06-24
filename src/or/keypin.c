@@ -311,22 +311,8 @@ keypin_remove_entry_from_pruner(keypin_journal_pruner_t *p,
   l = ent->line_info;
   tor_assert(l->ent == ent);
 
-  /* We've got the line; unlink it */
-  if (l->next) l->next->prev = l->prev;
-  else {
-    /* This was the tail */
-    tor_assert(p->tail == l);
-    p->tail = l->prev;
-  }
-
-  if (l->prev) l->prev->next = l->next;
-  else {
-    /* This was the head */
-    tor_assert(p->head == l);
-    p->head = l->next;
-  }
-
-  l->next = l->prev = NULL;
+  /* Unlink it from the list */
+  TOR_TAILQ_REMOVE(&(p->lines), l, q);
 
   /* Now that it's unlinked, adjust the line counters in the pruner */
   tor_assert(p->nlines > 0);
@@ -502,11 +488,7 @@ keypin_add_line_to_pruner(keypin_journal_pruner_t *p,
     memcpy(l->line, line, len);
     l->line[len] = '\0';
     /* Insert it into the pruner at the end of the list */
-    l->next = NULL;
-    l->prev = p->tail;
-    if (p->tail) p->tail->next = l;
-    else p->head = l;
-    p->tail = l;
+    TOR_TAILQ_INSERT_TAIL(&(p->lines), l, q);
     /* Update the pruner counters */
     ++(p->nlines);
   }
@@ -692,14 +674,11 @@ keypin_prune_journal(const char *fname)
     if (fd < 0)
       goto err;
 
-    l = pruner->head;
-    while (l) {
+    TOR_TAILQ_FOREACH(l, &(pruner->lines), q) {
       if (write_all(fd, l->line, strlen(l->line), 0) < 0)
         goto err;
       if (write(fd, "\n", 1) < 1)
         goto err;
-
-      l = l->next;
     }
 
     close(fd);
@@ -790,6 +769,7 @@ keypin_create_pruner(void)
   p = tor_malloc_zero(sizeof(*p));
   HT_INIT(rsamap, &(p->pruner_rsamap));
   HT_INIT(edmap, &(p->pruner_edmap));
+  TOR_TAILQ_INIT(&(p->lines));
 
   return p;
 }
@@ -859,25 +839,13 @@ keypin_free_pruner(keypin_journal_pruner_t *p)
   HT_CLEAR(edmap, &(p->pruner_edmap));
 
   /* Now walk the linked list and free everything */
-  l = p->head;
-  while (l) {
-    /* Save a next pointer */
-    nextl = l->next;
+  TOR_TAILQ_FOREACH_SAFE(l, &(p->lines), q, nextl) {
+    /* Unlink */
+    TOR_TAILQ_REMOVE(&(p->lines), l, q);
 
-    /* Unlink l */
-    if (l->next) l->next->prev = l->prev;
-    else p->tail = l->prev;
-    if (l->prev) l->prev->next = l->next;
-    else p->head = l->next;
-    l->next = l->prev = NULL;
-
-    /* Free l */
+    /* Free */
     tor_free(l);
-
     ++lines_removed;
-
-    /* Advance */
-    l = nextl;
   }
 
   /* Consistency check on the counters */
