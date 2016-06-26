@@ -257,6 +257,8 @@ void clock_skew_warning(const connection_t *conn, long apparent_skew,
                         int trusted, log_domain_mask_t domain,
                         const char *received, const char *source);
 
+void connection_handle_oos(int n_socks, int failed);
+
 #ifdef USE_BUFFEREVENTS
 int connection_type_uses_bufferevent(connection_t *conn);
 void connection_configure_bufferevent_callbacks(connection_t *conn);
