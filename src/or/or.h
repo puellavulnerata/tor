@@ -3646,6 +3646,14 @@ typedef struct {
   /** Above this value, consider ourselves low on RAM. */
   uint64_t MaxMemInQueues_low_threshold;
 
+  /*
+   * MaxSockets value from the config; used to derive MaxSockets and
+   * MaxSockets_low_threshold.
+   */
+  int MaxSockets_raw;
+  int MaxSockets;
+  int MaxSockets_low_threshold;
+
   /** @name port booleans
    *
    * Derived booleans: True iff there is a non-listener port on an AF_INET or

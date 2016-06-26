@@ -323,6 +323,7 @@ static config_var_t option_vars_[] = {
   V(MaxCircuitDirtiness,         INTERVAL, "10 minutes"),
   V(MaxClientCircuitsPending,    UINT,     "32"),
   VAR("MaxMemInQueues",          MEMUNIT,   MaxMemInQueues_raw, "0"),
+  VAR("MaxSockets",              UINT, MaxSockets_raw, "0"),
   OBSOLETE("MaxOnionsPending"),
   V(MaxOnionQueueDelay,          MSEC_INTERVAL, "1750 msec"),
   V(MinMeasuredBWsForAuthToIgnoreAdvertised, INT, "500"),
@@ -623,6 +624,7 @@ static int options_validate_cb(void *old_options, void *options,
                                int from_setconf, char **msg);
 static uint64_t compute_real_max_mem_in_queues(const uint64_t val,
                                                int log_guess);
+static int compute_real_max_sockets(const int val);
 
 /** Magic value for or_options_t. */
 #define OR_OPTIONS_MAGIC 9090909
@@ -3142,6 +3144,10 @@ options_validate(or_options_t *old_options, or_options_t *options,
                                    server_mode(options));
   options->MaxMemInQueues_low_threshold = (options->MaxMemInQueues / 4) * 3;
 
+  options->MaxSockets =
+    compute_real_max_sockets(options->MaxSockets_raw);
+  options->MaxSockets_low_threshold = (options->MaxSockets / 4) * 3;
+
   options->AllowInvalid_ = 0;
 
   if (options->AllowInvalidNodes) {
@@ -4096,6 +4102,54 @@ compute_real_max_mem_in_queues(const uint64_t val, int log_guess)
     return ONE_GIGABYTE / 4;
   } else {
     /* The value was fine all along */
+    return val;
+  }
+}
+
+#define MAX_SOCKETS_LOW_WARN_THRESH 64
+
+/* Given the value that the user has set for MaxMemInQueues, compute the
+ * actual maximum value.  We clip this value if it's too low, and autodetect
+ * it if it's set to 0. */
+static int
+compute_real_max_sockets(const int val)
+{
+  int sys_max;
+
+  sys_max = get_max_sockets();
+  if (val <= 0) {
+    /*
+     * No user-configured socket limit; use the system limit and warn if
+     * it is very low.
+     */
+    if (sys_max < MAX_SOCKETS_LOW_WARN_THRESH) {
+      log_warn(LD_CONFIG,
+               "System reported socket limit %d is very small and likely to "
+               "not work well",
+               sys_max);
+    }
+
+    return sys_max;
+  } else {
+    if (val < MAX_SOCKETS_LOW_WARN_THRESH) {
+      log_warn(LD_CONFIG,
+               "MaxSockets is manually set to something very small (%d) and "
+               "this is likely to not work well",
+               val);
+      /*
+       * But don't stop the user from doing this so we can test OOS
+       * handling
+       */
+    }
+
+    /* Try to check against the system socket limit */
+    if (val > sys_max) {
+      log_warn(LD_CONFIG,
+               "MaxSockets is configured larger (%d) than the "
+               "system limit (%d); you may encounter socket exhaustion",
+               val, sys_max);
+    }
+
     return val;
   }
 }
