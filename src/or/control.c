@@ -2931,6 +2931,14 @@ static const getinfo_item_t getinfo_items[] = {
       "Return a list of known router descriptor digests"),
   DOC("downloads/desc/<desc>",
       "Return a download status for a given descriptor digest"),
+  PREFIX("downloads/bridge/", downloads,
+         "Download statuses for bridge descriptors, by bridge identity "
+         "digest"),
+  DOC("downloads/bridge/bridges",
+      "Return a list of configured bridge identity digests with download "
+      "statuses"),
+  DOC("downloads/bridge/<desc>",
+      "Return a download status for a given bridge identity digest"),
   ITEM("info/names", misc,
        "List of GETINFO options, types, and documentation."),
   ITEM("events/names", misc,
