@@ -2248,6 +2248,9 @@ getinfo_helper_downloads_cert(const char *fp_sk_req,
 
   if (strcmp(fp_sk_req, "fps") == 0) {
     *digest_list = list_authority_ids_with_downloads();
+    if (!(*digest_list)) {
+      *errmsg = "Failed to get list of authority identity digests (!)";
+    }
   } else if (!strcmpstart(fp_sk_req, "fp/")) {
     fp_sk_req += strlen("fp/");
     /* Okay, look for another / to tell the fp from fp-sk cases */
@@ -2261,12 +2264,20 @@ getinfo_helper_downloads_cert(const char *fp_sk_req,
         if (strcmp(sk_req, "sks") == 0) {
           /* We're asking for the list of signing key fingerprints */
           *digest_list = list_sk_digests_for_authority_id(id_digest);
+          if (!(*digest_list)) {
+            *errmsg = "Failed to get list of signing key digests for this "
+                      "authority identity digest";
+          }
         } else {
           /* We've got a signing key digest */
           if (base16_decode(sk_digest, DIGEST_LEN,
                             sk_req, strlen(sk_req)) == DIGEST_LEN) {
             *dl_to_emit =
               download_status_for_authority_id_and_sk(id_digest, sk_digest);
+            if (!(*dl_to_emit)) {
+              *errmsg = "Failed to get download status for this identity/"
+                        "signing key digest pair";
+            }
           } else {
             *errmsg = "That didn't look like a signing key digest";
           }
@@ -2280,6 +2291,10 @@ getinfo_helper_downloads_cert(const char *fp_sk_req,
         if (base16_decode(id_digest, DIGEST_LEN,
                           fp_sk_req, strlen(fp_sk_req)) == DIGEST_LEN) {
           *dl_to_emit = id_only_download_status_for_authority_id(id_digest);
+          if (!(*dl_to_emit)) {
+            *errmsg = "Failed to get download status for this authority "
+                      "identity digest";
+          }
         } else {
           *errmsg = "That didn't look like a digest";
         }
