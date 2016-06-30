@@ -1032,6 +1032,10 @@ dump_desc_populate_fifo_from_directory(const char *dirname)
              "totaling " U64_FORMAT " bytes",
              smartlist_len(descs_dumped), U64_PRINTF_ARG(len_descs_dumped));
   }
+
+  /* Free the original list */
+  SMARTLIST_FOREACH(files, char *, f, tor_free(f));
+  smartlist_free(files);
 }
 
 /** For debugging purposes, dump unparseable descriptor *<b>desc</b> of
