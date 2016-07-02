@@ -4940,8 +4940,8 @@ oos_victim_comparator(const void **a_v, const void **b_v)
 /** Pick n victim connections for the OOS handler and return them in a
  * smartlist.
  */
-static smartlist_t *
-pick_oos_victims(int n)
+MOCK_IMPL(STATIC smartlist_t *,
+pick_oos_victims, (int n))
 {
   smartlist_t *eligible = NULL, *victims = NULL;
   smartlist_t *conns;
@@ -5029,8 +5029,8 @@ pick_oos_victims(int n)
 }
 
 /** Kill a list of connections for the OOS handler. */
-static void
-kill_conn_list_for_oos(smartlist_t *conns)
+MOCK_IMPL(STATIC void,
+kill_conn_list_for_oos, (smartlist_t *conns))
 {
   if (!conns) return;
 
