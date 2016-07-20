@@ -1537,6 +1537,24 @@ directory_send_command(dir_connection_t *conn,
              (int)(strlen(proxystring) + strlen(url)), proxystring, url);
   }
 
+  if (get_options()->SimulateDirDownloadFailures) {
+    log_info(LD_DIR,
+             "SimulateDirDownloadFailures is set, killing conn that would "
+             "%s %s%s HTTP/1.0",
+             httpcommand, proxystring, url);
+
+    /* Kill conn early without sending a request */
+    connection_mark_for_close(TO_CONN(conn));
+
+    /* Free things */
+    tor_free(url);
+    SMARTLIST_FOREACH(headers, char *, h, tor_free(h));
+    smartlist_free(headers);
+
+    /* Early exit, simulated failure */
+    return;
+  }
+
   tor_snprintf(request, sizeof(request), "%s %s", httpcommand, proxystring);
   connection_write_to_buf(request, strlen(request), TO_CONN(conn));
   connection_write_to_buf(url, strlen(url), TO_CONN(conn));

@@ -4530,6 +4530,10 @@ typedef struct {
    * participate in the protocol. If on (default), a flag is added to the
    * vote indicating participation. */
   int AuthDirSharedRandomness;
+
+  /** Bool (default: 0): simulate directory download failures for testing
+   * purposes. */
+  int SimulateDirDownloadFailures;
 } or_options_t;
 
 /** Persistent state for an onion router, as saved to disk. */

@@ -412,6 +412,7 @@ static config_var_t option_vars_[] = {
   V(SchedulerHighWaterMark__,    MEMUNIT,  "101 MB"),
   V(SchedulerMaxFlushCells__,    UINT,     "1000"),
   V(ShutdownWaitLength,          INTERVAL, "30 seconds"),
+  V(SimulateDirDownloadFailures, BOOL,     "0"),
   V(SocksListenAddress,          LINELIST, NULL),
   V(SocksPolicy,                 LINELIST, NULL),
   VPORT(SocksPort,                   LINELIST, NULL),
