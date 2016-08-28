@@ -1067,6 +1067,13 @@ smartlist_uniq_digests256(smartlist_t *sl)
   smartlist_uniq(sl, compare_digests256_, tor_free_);
 }
 
+/** Remove duplicate pointers from a sorted list */
+void
+smartlist_uniq_pointers(smartlist_t *sl)
+{
+  smartlist_uniq(sl, compare_ptrs_, NULL);
+}
+
 /** Helper: Declare an entry type and a map type to implement a mapping using
  * ht.h.  The map type will be called <b>maptype</b>.  The key part of each
  * entry is declared using the C declaration <b>keydecl</b>.  All functions
