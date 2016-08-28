@@ -618,7 +618,8 @@ directory_get_from_all_authorities(uint8_t dir_purpose,
  */
 
 smartlist_t *
-directory_find_dirconns_by_resource(uint8_t dir_purpose,
+directory_find_dirconns_by_resource(const char *digest,
+                                    uint8_t dir_purpose,
                                     uint8_t router_purpose,
                                     const char *resource)
 {
@@ -633,11 +634,19 @@ directory_find_dirconns_by_resource(uint8_t dir_purpose,
     if (c && !(c->marked_for_close) &&
         c->type == CONN_TYPE_DIR) {
       dc = TO_DIR_CONN(c);
+      /* Check if purposes match */
       if (c->purpose == dir_purpose &&
-          dc->router_purpose == router_purpose &&
-          dc->requested_resource != NULL &&
-          strcmp(dc->requested_resource, resource) == 0) {
-        smartlist_add(matching_conns, dc);
+          dc->router_purpose == router_purpose) {
+        /* Check if resource matches, if needed */
+        if (resource == NULL ||
+            (dc->requested_resource != NULL &&
+             strcmp(dc->requested_resource, resource) == 0)) {
+          /* Check if digests match, if needed */
+          if (digest == NULL ||
+              memcmp(digest, dc->identity_digest, DIGEST_LEN) == 0) {
+            smartlist_add(matching_conns, dc);
+          }
+        }
       }
     }
   } SMARTLIST_FOREACH_END(c);

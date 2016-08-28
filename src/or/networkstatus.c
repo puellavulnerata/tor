@@ -847,6 +847,7 @@ smartlist_t *
 networkstatus_find_dirconns_downloading_flavor(int flavor)
 {
   return directory_find_dirconns_by_resource(
+      NULL,
       DIR_PURPOSE_FETCH_CONSENSUS,
       ROUTER_PURPOSE_GENERAL,
       networkstatus_get_flavor_name(flavor));
