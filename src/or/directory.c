@@ -610,6 +610,41 @@ directory_get_from_all_authorities(uint8_t dir_purpose,
   } SMARTLIST_FOREACH_END(ds);
 }
 
+/** Return, in a newly allocated smartlist_t, pointers to all currently
+ * open dirconns for this dir_purpose, router_purpose and resource.  The
+ * caller should not assume the pointers will remain valid if it does
+ * anything which allows the main loop to run, since this may free any
+ * connections which are marked for close.
+ */
+
+smartlist_t *
+directory_find_dirconns_by_resource(uint8_t dir_purpose,
+                                    uint8_t router_purpose,
+                                    const char *resource)
+{
+  smartlist_t *matching_conns, *all_conns;
+  dir_connection_t *dc;
+
+  matching_conns = smartlist_new();
+  all_conns = get_connection_array();
+  /* Walk the conn list, look for dirconns matching these parameters */
+  SMARTLIST_FOREACH_BEGIN(all_conns, connection_t *, c) {
+    /* Got an active dirconn? */
+    if (c && !(c->marked_for_close) &&
+        c->type == CONN_TYPE_DIR) {
+      dc = TO_DIR_CONN(c);
+      if (c->purpose == dir_purpose &&
+          dc->router_purpose == router_purpose &&
+          dc->requested_resource != NULL &&
+          strcmp(dc->requested_resource, resource) == 0) {
+        smartlist_add(matching_conns, dc);
+      }
+    }
+  } SMARTLIST_FOREACH_END(c);
+
+  return matching_conns;
+}
+
 /** Return true iff <b>ind</b> requires a multihop circuit. */
 static int
 dirind_is_anon(dir_indirection_t ind)
