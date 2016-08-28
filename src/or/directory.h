@@ -25,7 +25,8 @@ MOCK_DECL(void, directory_get_from_dirserver, (
 void directory_get_from_all_authorities(uint8_t dir_purpose,
                                         uint8_t router_purpose,
                                         const char *resource);
-smartlist_t * directory_find_dirconns_by_resource(uint8_t dir_purpose,
+smartlist_t * directory_find_dirconns_by_resource(const char *digest,
+                                                  uint8_t dir_purpose,
                                                   uint8_t router_purpose,
                                                   const char *resource);
 
