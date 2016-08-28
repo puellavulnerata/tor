@@ -842,6 +842,16 @@ check_consensus_waiting_for_certs(int flavor, time_t now,
   return 0;
 }
 
+/** Get a list of dirconns downloading the given consensus flavor */
+smartlist_t *
+networkstatus_find_dirconns_downloading_flavor(int flavor)
+{
+  return directory_find_dirconns_by_resource(
+      DIR_PURPOSE_FETCH_CONSENSUS,
+      ROUTER_PURPOSE_GENERAL,
+      networkstatus_get_flavor_name(flavor));
+}
+
 /** If we want to download a fresh consensus, launch a new download as
  * appropriate. */
 static void
