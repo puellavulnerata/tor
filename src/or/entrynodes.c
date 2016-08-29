@@ -2471,7 +2471,6 @@ get_bridge_desc_dirconns_by_id(const char *digest)
   smartlist_t *bridge_desc_fetches;
   char resource[10 + HEX_DIGEST_LEN];
 
-
   /*
    * Are we trying to fetch it directly from the bridge?
    *
