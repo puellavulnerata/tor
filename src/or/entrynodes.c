@@ -2461,6 +2461,62 @@ get_bridge_dl_status_by_id, (const char *digest))
   return dl;
 }
 
+/** Get a list of active dirconns trying to download a bridge descriptor, by
+ * identity. */
+smartlist_t *
+get_bridge_desc_dirconns_by_id(const char *digest)
+{
+  smartlist_t *direct_bridge_desc_fetches = NULL;
+  smartlist_t *auth_bridge_desc_fetches = NULL;
+  smartlist_t *bridge_desc_fetches;
+  char resource[10 + HEX_DIGEST_LEN];
+
+
+  /*
+   * Are we trying to fetch it directly from the bridge?
+   *
+   * Cf. call to directory_initiate_command() in
+   * launch_direct_bridge_descriptor_fetch()
+   */
+  direct_bridge_desc_fetches =
+    directory_find_dirconns_by_resource(
+        digest, DIR_PURPOSE_FETCH_SERVERDESC, ROUTER_PURPOSE_BRIDGE,
+        "authority.z");
+
+  /*
+   * Are we trying to fetch it from a bridge authority?
+   *
+   * Cf. fetch_bridge_descriptors(); the resource string we construct must
+   * match
+   */
+
+  memcpy(resource, "fp/", 3);
+  base16_encode(resource + 3, HEX_DIGEST_LEN + 1,
+                digest, DIGEST_LEN);
+  memcpy(resource + 3 + HEX_DIGEST_LEN, ".z", 3);
+  auth_bridge_desc_fetches =
+    directory_find_dirconns_by_resource(
+      NULL, DIR_PURPOSE_FETCH_SERVERDESC, ROUTER_PURPOSE_BRIDGE,
+      resource);
+
+  /* Merge and return, freeing the temporary lists in the process */
+  bridge_desc_fetches = smartlist_new();
+  if (direct_bridge_desc_fetches) {
+    smartlist_add_all(bridge_desc_fetches,
+                      direct_bridge_desc_fetches);
+    smartlist_free(direct_bridge_desc_fetches);
+  }
+  if (auth_bridge_desc_fetches) {
+    smartlist_add_all(bridge_desc_fetches,
+                      auth_bridge_desc_fetches);
+    smartlist_free(auth_bridge_desc_fetches);
+  }
+  smartlist_sort_pointers(bridge_desc_fetches);
+  smartlist_uniq_pointers(bridge_desc_fetches);
+
+  return bridge_desc_fetches;
+}
+
 /** Return 1 if we have at least one descriptor for an entry guard
  * (bridge or member of EntryNodes) and all descriptors we know are
  * down. Else return 0. If <b>act</b> is 1, then mark the down guards
