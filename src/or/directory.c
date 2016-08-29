@@ -654,6 +654,72 @@ directory_find_dirconns_by_resource(const char *digest,
   return matching_conns;
 }
 
+/** Return, in a newly allocated smartlist_t, pointers to all currently
+ * open dirconns which are downloading this router descriptor by its
+ * descriptor digest.  As with directory_find_dirconns_by_resource(),
+ * the caller should not assume the pointers will not be freed if the main
+ * loop runs, since they could be subsequently marked for close.
+ */
+
+smartlist_t *
+directory_find_dirconns_for_desc_digest(const char *digest)
+{
+  smartlist_t *matching_conns, *all_conns;
+  smartlist_t *fps = NULL;
+  dir_connection_t *dc;
+
+  matching_conns = smartlist_new();
+  all_conns = get_connection_array();
+  /* Walk the conn list, look for dirconns matching these parameters */
+  SMARTLIST_FOREACH_BEGIN(all_conns, connection_t *, c) {
+    /* Got an active dirconn? */
+    if (c && !(c->marked_for_close) &&
+        c->type == CONN_TYPE_DIR) {
+      dc = TO_DIR_CONN(c);
+      /*
+       * One connection downloads many microdescs, so we need to split up
+       * the resource and compare each fingerprint.
+       */
+      if (c->purpose == DIR_PURPOSE_FETCH_SERVERDESC) {
+        /*
+         * The resource is allowed to be either "d/" or "fp/", but we're
+         * querying by descriptor digest, not identity digest, so only
+         * use the ones with "d/"
+         */
+        tor_assert(dc->requested_resource &&
+                   (!strcmpstart(dc->requested_resource, "d/") ||
+                    !strcmpstart(dc->requested_resource, "fp/")));
+        if (!strcmpstart(dc->requested_resource, "d/")) {
+          fps = smartlist_new();
+          dir_split_resource_into_fingerprints(dc->requested_resource + 2,
+                                               fps, NULL, 0);
+          /* Comparison loop to see if it matches this digest */
+          SMARTLIST_FOREACH_BEGIN(fps, char *, cp) {
+            /*
+             * dir_split_resource_into_fingerprints() will have decoded them
+             * already
+             */
+            if (!memcmp(cp, digest, DIGEST_LEN)) {
+              /*
+               * We have a match, add this dirconn to the last and don't
+               * bother checking any more digests.
+               */
+              smartlist_add(matching_conns, dc);
+              break;
+            }
+          } SMARTLIST_FOREACH_END(cp);
+          /* Now free the split-up resource */
+          SMARTLIST_FOREACH(fps, char *, cp, tor_free(cp));
+          smartlist_free(fps);
+          fps = NULL;
+        }
+      }
+    }
+  } SMARTLIST_FOREACH_END(c);
+
+  return matching_conns;
+}
+
 /** Return true iff <b>ind</b> requires a multihop circuit. */
 static int
 dirind_is_anon(dir_indirection_t ind)
