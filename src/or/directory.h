@@ -30,6 +30,9 @@ smartlist_t * directory_find_dirconns_by_resource(const char *digest,
                                                   uint8_t router_purpose,
                                                   const char *resource);
 smartlist_t * directory_find_dirconns_for_desc_digest(const char *digest);
+smartlist_t * auth_cert_dls_find_dirconns_by_auth_id(const char *digest);
+smartlist_t * auth_cert_dls_find_dirconns_by_auth_id_and_sk(
+    const char *id_digest, const char *sk_digest);
 
 /** Enumeration of ways to connect to a directory server */
 typedef enum {
