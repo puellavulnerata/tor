@@ -265,20 +265,24 @@ add_onion_helper_clientauth(const char *arg, int *created, char **err_msg_out);
 STATIC void getinfo_helper_downloads_networkstatus(
     const char *flavor,
     download_status_t **dl_to_emit,
+    smartlist_t **dirconns_out,
     const char **errmsg);
 STATIC void getinfo_helper_downloads_cert(
     const char *fp_sk_req,
     download_status_t **dl_to_emit,
+    smartlist_t **dirconns_out,
     smartlist_t **digest_list,
     const char **errmsg);
 STATIC void getinfo_helper_downloads_desc(
     const char *desc_req,
     download_status_t **dl_to_emit,
+    smartlist_t **dirconns_out,
     smartlist_t **digest_list,
     const char **errmsg);
 STATIC void getinfo_helper_downloads_bridge(
     const char *bridge_req,
     download_status_t **dl_to_emit,
+    smartlist_t **dirconns_out,
     smartlist_t **digest_list,
     const char **errmsg);
 STATIC int getinfo_helper_downloads(

@@ -2179,10 +2179,13 @@ download_status_to_string(const download_status_t *dl)
   return rv;
 }
 
-/** Handle the consensus download cases for getinfo_helper_downloads() */
+/** Handle the consensus download cases for getinfo_helper_downloads(); the
+ * download_status_t goes in *dl_to_emit, and the list of active dirconns
+ * goes in *dirconns_out if present. */
 STATIC void
 getinfo_helper_downloads_networkstatus(const char *flavor,
                                        download_status_t **dl_to_emit,
+                                       smartlist_t **dirconns_out,
                                        const char **errmsg)
 {
   /*
@@ -2191,18 +2194,42 @@ getinfo_helper_downloads_networkstatus(const char *flavor,
    */
   if (strcmp(flavor, "ns") == 0) {
     *dl_to_emit = networkstatus_get_dl_status_by_flavor(FLAV_NS);
+    if (dirconns_out) {
+      *dirconns_out =
+        networkstatus_find_dirconns_downloading_flavor(FLAV_NS);
+    }
   } else if (strcmp(flavor, "ns/bootstrap") == 0) {
     *dl_to_emit = networkstatus_get_dl_status_by_flavor_bootstrap(FLAV_NS);
+    if (dirconns_out) {
+      *dirconns_out =
+        networkstatus_find_dirconns_downloading_flavor(FLAV_NS);
+    }
   } else if (strcmp(flavor, "ns/running") == 0 ) {
     *dl_to_emit = networkstatus_get_dl_status_by_flavor_running(FLAV_NS);
+    if (dirconns_out) {
+      *dirconns_out =
+        networkstatus_find_dirconns_downloading_flavor(FLAV_NS);
+    }
   } else if (strcmp(flavor, "microdesc") == 0) {
     *dl_to_emit = networkstatus_get_dl_status_by_flavor(FLAV_MICRODESC);
+    if (dirconns_out) {
+      *dirconns_out =
+        networkstatus_find_dirconns_downloading_flavor(FLAV_MICRODESC);
+    }
   } else if (strcmp(flavor, "microdesc/bootstrap") == 0) {
     *dl_to_emit =
       networkstatus_get_dl_status_by_flavor_bootstrap(FLAV_MICRODESC);
+    if (dirconns_out) {
+      *dirconns_out =
+        networkstatus_find_dirconns_downloading_flavor(FLAV_MICRODESC);
+    }
   } else if (strcmp(flavor, "microdesc/running") == 0) {
     *dl_to_emit =
       networkstatus_get_dl_status_by_flavor_running(FLAV_MICRODESC);
+    if (dirconns_out) {
+      *dirconns_out =
+        networkstatus_find_dirconns_downloading_flavor(FLAV_MICRODESC);
+    }
   } else {
     *errmsg = "Unknown flavor";
   }
@@ -2212,6 +2239,7 @@ getinfo_helper_downloads_networkstatus(const char *flavor,
 STATIC void
 getinfo_helper_downloads_cert(const char *fp_sk_req,
                               download_status_t **dl_to_emit,
+                              smartlist_t **dirconns_out,
                               smartlist_t **digest_list,
                               const char **errmsg)
 {
@@ -2275,7 +2303,13 @@ getinfo_helper_downloads_cert(const char *fp_sk_req,
                             sk_req, strlen(sk_req)) == DIGEST_LEN) {
             *dl_to_emit =
               download_status_for_authority_id_and_sk(id_digest, sk_digest);
-            if (!(*dl_to_emit)) {
+            if (*dl_to_emit) {
+              if (dirconns_out) {
+                *dirconns_out =
+                  auth_cert_dls_find_dirconns_by_auth_id_and_sk(
+                      id_digest, sk_digest);
+              }
+            } else {
               *errmsg = "Failed to get download status for this identity/"
                         "signing key digest pair";
             }
@@ -2292,7 +2326,12 @@ getinfo_helper_downloads_cert(const char *fp_sk_req,
         if (base16_decode(id_digest, DIGEST_LEN,
                           fp_sk_req, strlen(fp_sk_req)) == DIGEST_LEN) {
           *dl_to_emit = id_only_download_status_for_authority_id(id_digest);
-          if (!(*dl_to_emit)) {
+          if (*dl_to_emit) {
+            if (dirconns_out) {
+              *dirconns_out =
+                auth_cert_dls_find_dirconns_by_auth_id(id_digest);
+            }
+          } else {
             *errmsg = "Failed to get download status for this authority "
                       "identity digest";
           }
@@ -2312,6 +2351,7 @@ getinfo_helper_downloads_cert(const char *fp_sk_req,
 STATIC void
 getinfo_helper_downloads_desc(const char *desc_req,
                               download_status_t **dl_to_emit,
+                              smartlist_t **dirconns_out,
                               smartlist_t **digest_list,
                               const char **errmsg)
 {
@@ -2343,7 +2383,12 @@ getinfo_helper_downloads_desc(const char *desc_req,
                       desc_req, strlen(desc_req)) == DIGEST_LEN) {
       /* Okay we got a digest-shaped thing; try asking for it */
       *dl_to_emit = router_get_dl_status_by_descriptor_digest(desc_digest);
-      if (!(*dl_to_emit)) {
+      if (*dl_to_emit) {
+        if (dirconns_out) {
+          *dirconns_out =
+            directory_find_dirconns_for_desc_digest(desc_digest);
+        }
+      } else {
         *errmsg = "No such descriptor digest found";
       }
     } else {
@@ -2354,10 +2399,13 @@ getinfo_helper_downloads_desc(const char *desc_req,
   }
 }
 
-/** Handle the bridge download cases for getinfo_helper_downloads() */
+/** Handle the bridge download cases for getinfo_helper_downloads(); the
+ * list of active dirconns matching a supplied download_status_t goes in
+ * dirconns_out if present. */
 STATIC void
 getinfo_helper_downloads_bridge(const char *bridge_req,
                                 download_status_t **dl_to_emit,
+                                smartlist_t **dirconns_out,
                                 smartlist_t **digest_list,
                                 const char **errmsg)
 {
@@ -2385,7 +2433,11 @@ getinfo_helper_downloads_bridge(const char *bridge_req,
                       bridge_req, strlen(bridge_req)) == DIGEST_LEN) {
       /* Okay we got a digest-shaped thing; try asking for it */
       *dl_to_emit = get_bridge_dl_status_by_id(bridge_digest);
-      if (!(*dl_to_emit)) {
+      if (*dl_to_emit) {
+        if (dirconns_out) {
+          *dirconns_out = get_bridge_desc_dirconns_by_id(bridge_digest);
+        }
+      } else {
         *errmsg = "No such bridge identity digest found";
       }
     } else {
@@ -2403,8 +2455,10 @@ getinfo_helper_downloads(control_connection_t *control_conn,
                    const char *question, char **answer,
                    const char **errmsg)
 {
+  int rv;
   download_status_t *dl_to_emit = NULL;
   smartlist_t *digest_list = NULL;
+  smartlist_t *dirconns_list = NULL;
 
   /* Assert args are sane */
   tor_assert(control_conn != NULL);
@@ -2419,22 +2473,22 @@ getinfo_helper_downloads(control_connection_t *control_conn,
   if (!strcmpstart(question, "downloads/networkstatus/")) {
     getinfo_helper_downloads_networkstatus(
         question + strlen("downloads/networkstatus/"),
-        &dl_to_emit, errmsg);
+        &dl_to_emit, &dirconns_list, errmsg);
   /* Certificates? */
   } else if (!strcmpstart(question, "downloads/cert/")) {
     getinfo_helper_downloads_cert(
         question + strlen("downloads/cert/"),
-        &dl_to_emit, &digest_list, errmsg);
+        &dl_to_emit, &dirconns_list, &digest_list, errmsg);
   /* Router descriptors? */
   } else if (!strcmpstart(question, "downloads/desc/")) {
     getinfo_helper_downloads_desc(
         question + strlen("downloads/desc/"),
-        &dl_to_emit, &digest_list, errmsg);
+        &dl_to_emit, &dirconns_list, &digest_list, errmsg);
   /* Bridge descriptors? */
   } else if (!strcmpstart(question, "downloads/bridge/")) {
     getinfo_helper_downloads_bridge(
         question + strlen("downloads/bridge/"),
-        &dl_to_emit, &digest_list, errmsg);
+        &dl_to_emit, &dirconns_list, &digest_list, errmsg);
   } else {
     *errmsg = "Unknown download status query";
   }
@@ -2442,20 +2496,54 @@ getinfo_helper_downloads(control_connection_t *control_conn,
   if (dl_to_emit) {
     *answer = download_status_to_string(dl_to_emit);
 
-    return 0;
+    /*
+     * TODO do something with dirconns_list.  At least emit the number
+     * of connections found; maybe also a list of them if there's
+     * some identifier we can use elsewhere to query about them.
+     *
+     * (see if the control interface already offers connection-status
+     * inquiries like that)
+     *
+     * for now, log how many conns we got
+     */
+    if (dirconns_list) {
+      log_debug(LD_CONTROL,
+                "Download status query (\"%s\") had a dirconn list of "
+                "%d entries",
+                question,
+                smartlist_len(dirconns_list));
+    } else {
+      log_debug(LD_CONTROL,
+                "Download status query (\"%s\") had no dirconn list",
+                question);
+    }
+
+    rv = 0;
   } else if (digest_list) {
     *answer = digest_list_to_string(digest_list);
     SMARTLIST_FOREACH(digest_list, void *, s, tor_free(s));
     smartlist_free(digest_list);
 
-    return 0;
+    rv = 0;
   } else {
     if (!(*errmsg)) {
       *errmsg = "Unknown error";
     }
 
-    return -1;
+    rv = -1;
   }
+
+  if (dirconns_list) {
+    /*
+     * Note that connections are potentially volatile, as soon as
+     * the event loop gets a chance to clean up ones marked for close,
+     * so we couldn't keep this smartlist of pointers around longer
+     * even if we wanted it.
+     */
+    smartlist_free(dirconns_list);
+  }
+
+  return rv;
 }
 
 /** Allocate and return a description of <b>circ</b>'s current status,
