@@ -654,6 +654,55 @@ directory_find_dirconns_by_resource(const char *digest,
   return matching_conns;
 }
 
+/* Forward declaration */
+
+static smartlist_t *
+directory_find_dirconns_for_string_matcher(uint8_t purpose,
+                                           int (*matcher)(const char *,
+                                                          const void *),
+                                           const void *matcher_arg);
+
+/** Resource stringer matcher helper function for
+ * directory_find_dirconns_for_desc_digest()
+ */
+
+static int
+desc_digest_resource_string_matcher(const char *resource,
+                                    const void *digest)
+{
+  int match = 0;
+  smartlist_t *fps = NULL;
+
+  /* Matches by descriptor digest start with "d/" */
+
+  if (!strcmpstart(resource, "d/")) {
+    /* Split the digest list into strings */
+    fps = smartlist_new();
+    dir_split_resource_into_fingerprints(resource + 2, fps, NULL, 0);
+    /* Comparison loop to see if it matches this digest */
+    SMARTLIST_FOREACH_BEGIN(fps, char *, cp) {
+      /*
+       * dir_split_resource_into_fingerprints() will have decoded them
+       * already
+       */
+      if (!memcmp(cp, digest, DIGEST_LEN)) {
+        /*
+         * We have a match, add this dirconn to the last and don't
+         * bother checking any more digests.
+         */
+        match = 1;
+        break;
+      }
+    } SMARTLIST_FOREACH_END(cp);
+    /* Now free the split-up resource */
+    SMARTLIST_FOREACH(fps, char *, cp, tor_free(cp));
+    smartlist_free(fps);
+    fps = NULL;
+  }
+
+  return match;
+}
+
 /** Return, in a newly allocated smartlist_t, pointers to all currently
  * open dirconns which are downloading this router descriptor by its
  * descriptor digest.  As with directory_find_dirconns_by_resource(),
@@ -664,8 +713,23 @@ directory_find_dirconns_by_resource(const char *digest,
 smartlist_t *
 directory_find_dirconns_for_desc_digest(const char *digest)
 {
+  return directory_find_dirconns_for_string_matcher(
+      DIR_PURPOSE_FETCH_SERVERDESC,
+      desc_digest_resource_string_matcher,
+      digest);
+}
+
+/** Find dirconns matching purpose and the supplied matching function
+ * on requested_resource.
+ */
+
+static smartlist_t *
+directory_find_dirconns_for_string_matcher(uint8_t purpose,
+                                           int (*matcher)(const char *,
+                                                          const void *),
+                                           const void *matcher_arg)
+{
   smartlist_t *matching_conns, *all_conns;
-  smartlist_t *fps = NULL;
   dir_connection_t *dc;
 
   matching_conns = smartlist_new();
@@ -680,44 +744,152 @@ directory_find_dirconns_for_desc_digest(const char *digest)
        * One connection downloads many microdescs, so we need to split up
        * the resource and compare each fingerprint.
        */
-      if (c->purpose == DIR_PURPOSE_FETCH_SERVERDESC) {
-        /*
-         * The resource is allowed to be either "d/" or "fp/", but we're
-         * querying by descriptor digest, not identity digest, so only
-         * use the ones with "d/"
-         */
-        tor_assert(dc->requested_resource &&
-                   (!strcmpstart(dc->requested_resource, "d/") ||
-                    !strcmpstart(dc->requested_resource, "fp/")));
-        if (!strcmpstart(dc->requested_resource, "d/")) {
-          fps = smartlist_new();
-          dir_split_resource_into_fingerprints(dc->requested_resource + 2,
-                                               fps, NULL, 0);
-          /* Comparison loop to see if it matches this digest */
-          SMARTLIST_FOREACH_BEGIN(fps, char *, cp) {
-            /*
-             * dir_split_resource_into_fingerprints() will have decoded them
-             * already
-             */
-            if (!memcmp(cp, digest, DIGEST_LEN)) {
-              /*
-               * We have a match, add this dirconn to the last and don't
-               * bother checking any more digests.
-               */
-              smartlist_add(matching_conns, dc);
-              break;
-            }
-          } SMARTLIST_FOREACH_END(cp);
-          /* Now free the split-up resource */
-          SMARTLIST_FOREACH(fps, char *, cp, tor_free(cp));
-          smartlist_free(fps);
-          fps = NULL;
-        }
+      if (c->purpose == purpose &&
+          matcher(dc->requested_resource, matcher_arg)) {
+        smartlist_add(matching_conns, dc);
       }
     }
   } SMARTLIST_FOREACH_END(c);
 
   return matching_conns;
+}
+
+/** Helper function that checks if resource URLs have the requested digest
+ * for auth_cert_dls_find_dirconns_by_auth_id().
+ */
+
+static int
+auth_cert_by_fp_resource_string_matcher(const char *resource,
+                                        const void *digest)
+{
+  int match = 0;
+  smartlist_t *fps = NULL;
+  const char *fp_pfx = "fp/";
+
+  /* Matches by authority fingerprint list start with "fp/" */
+
+  if (!strcmpstart(resource, fp_pfx)) {
+    /* Split the digest list into strings */
+    fps = smartlist_new();
+    dir_split_resource_into_fingerprints(resource + strlen(fp_pfx),
+                                         fps, NULL, DSR_HEX);
+    /* Comparison loop to see if it matches this digest */
+    SMARTLIST_FOREACH_BEGIN(fps, char *, cp) {
+      /*
+       * dir_split_resource_into_fingerprints() will have decoded them
+       * already
+       */
+      if (!memcmp(cp, digest, DIGEST_LEN)) {
+        /*
+         * We have a match, add this dirconn to the last and don't
+         * bother checking any more digests.
+         */
+        match = 1;
+        break;
+      }
+    } SMARTLIST_FOREACH_END(cp);
+    /* Now free the split-up resource */
+    SMARTLIST_FOREACH(fps, char *, cp, tor_free(cp));
+    smartlist_free(fps);
+    fps = NULL;
+  }
+
+  return match;
+}
+
+/** Return, in a newly allocated smartlist_t, pointers to all currently
+ * open dirconns which are downloading this authority certificate by its
+ * identity digest.  As with directory_find_dirconns_by_resource(),
+ * the caller should not assume the pointers will not be freed if the main
+ * loop runs, since they could be subsequently marked for close.
+ */
+
+smartlist_t *
+auth_cert_dls_find_dirconns_by_auth_id(const char *digest)
+{
+  /*
+   * We have to scan for dirconns with purpose DIR_PURPOSE_FETCH_CERTIFICATE
+   * (see authority_certs_fetch_resource_impl() in routerlist.c) and
+   * resource strings of the form "fp/<digest>+<digest>+...+<digest>"
+   * (see construction in authority_certs_fetch_missing() in routerlist.c)
+   */
+
+  return directory_find_dirconns_for_string_matcher(
+      DIR_PURPOSE_FETCH_CERTIFICATE,
+      auth_cert_by_fp_resource_string_matcher,
+      digest);
+}
+
+/** Helper function that checks if resource URLs have the requested digest
+ * and signing key for auth_cert_dls_find_dirconns_by_auth_id_and_sk().
+ */
+
+static int
+auth_cert_by_fpsk_resource_string_matcher(const char *resource,
+                                          const void *fpsk_v)
+{
+  const fp_pair_t *fpsk = (const fp_pair_t *)(fpsk_v);
+  int match = 0;
+  smartlist_t *fpsks = NULL;
+  const char *fpsk_pfx = "fp-sk/";
+
+  /* Matches by authority fingerprint list start with "fp/" */
+
+  if (!strcmpstart(resource, fpsk_pfx)) {
+    /* Split the digest list into strings */
+    fpsks = smartlist_new();
+    dir_split_resource_into_fingerprint_pairs(resource + strlen(fpsk_pfx),
+                                              fpsks);
+    /* Comparison loop to see if it matches this digest */
+    SMARTLIST_FOREACH_BEGIN(fpsks, fp_pair_t *, i) {
+      /* Compare both halves of the fp-sk pair */
+      if (!memcmp(fpsk->first, i->first, DIGEST_LEN) &&
+          !memcmp(fpsk->second, i->second, DIGEST_LEN)) {
+        /*
+         * We have a match, add this dirconn to the last and don't
+         * bother checking any more digests.
+         */
+        match = 1;
+        break;
+      }
+    } SMARTLIST_FOREACH_END(i);
+    /* Now free the split-up resource */
+    SMARTLIST_FOREACH(fpsks, fp_pair_t *, i, tor_free(i));
+    smartlist_free(fpsks);
+    fpsks = NULL;
+  }
+
+  return match;
+}
+
+/** Return, in a newly allocated smartlist_t, pointers to all currently
+ * open dirconns which are downloading this authority certificate by its
+ * identity digest/signing key pair.  As with
+ * directory_find_dirconns_by_resource(), the caller should not assume the
+ * pointers will not be freed if the main loop runs, since they could be
+ * subsequently marked for close.
+ */
+
+smartlist_t *
+auth_cert_dls_find_dirconns_by_auth_id_and_sk(const char *id_digest,
+                                              const char *sk_digest)
+{
+  /*
+   * We have to scan for dirconns with purpose DIR_PURPOSE_FETCH_CERTIFICATE
+   * (see authority_certs_fetch_resource_impl() in routerlist.c) and
+   * resource strings of the form "fp-sk/<digest>-<digest>+<digest>-<digest>+
+   * ...+<digest>-<digest>" (see construction in
+   * authority_certs_fetch_missing() in routerlist.c)
+   */
+
+  fp_pair_t fpsk;
+  memcpy(fpsk.first, id_digest, DIGEST_LEN);
+  memcpy(fpsk.second, sk_digest, DIGEST_LEN);
+
+  return directory_find_dirconns_for_string_matcher(
+      DIR_PURPOSE_FETCH_CERTIFICATE,
+      auth_cert_by_fpsk_resource_string_matcher,
+      &fpsk);
 }
 
 /** Return true iff <b>ind</b> requires a multihop circuit. */
