@@ -690,10 +690,12 @@ dir_connection_t *consensus_ns_download_dirconn = NULL;
 dir_connection_t *consensus_microdesc_download_dirconn = NULL;
 dir_connection_t *cert_fp_download_dirconn = NULL;
 dir_connection_t *cert_fp_sk_download_dirconn = NULL;
+dir_connection_t *desc_download_dirconn = NULL;
 
 /* String constants for digests used in tests */
 const char *cert_fp_digest = "63CDD326DFEF0CA020BDD3FEB45A3286FE13A061";
 const char *cert_sk_digest = "AA69566029B1F023BA09451B8F1B10952384EB58";
+const char *desc_digest = "F39CCEEF8499DCBC68BF39A8CA1601A07C046B54";
 
 static void
 add_simulated_noise_to_download_dirconns(void)
@@ -768,7 +770,9 @@ setup_download_dirconns_mocks(void)
     "60372BB9E712BC161A0AE925D8969B8025587E1A",
     "311452D62F7F0EF1E8469BD8EAB760DCE06127D0",
     "85496F1A825186206006990CDFFF1C457897B95E",
-    "82394CD0DF52F99AF4B3B53F51474BA634AA2D15"
+    "82394CD0DF52F99AF4B3B53F51474BA634AA2D15",
+    "F559AF021B1E9EDE8950D7D1831BEBBFB469D847",
+    "76AA2511DD4A9C20771BF99B91F8DED3CFD34A81"
   };
 
   /* Set up the simulated connection array */
@@ -834,6 +838,19 @@ setup_download_dirconns_mocks(void)
   cert_fp_sk_download_dirconn = d;
   d = NULL;
 
+  /* Create simulated match for directory_find_dirconns_for_desc_digest() */
+  d = tor_malloc_zero(sizeof(*d));
+  d->base_.magic = DIR_CONNECTION_MAGIC;
+  d->base_.type = CONN_TYPE_DIR;
+  d->base_.state = DIR_CONN_STATE_CLIENT_READING;
+  d->base_.purpose = DIR_PURPOSE_FETCH_SERVERDESC;
+  d->router_purpose = ROUTER_PURPOSE_GENERAL;
+  tor_asprintf(&(d->requested_resource), "d/%s+%s+%s",
+               extra_fingerprints[6], desc_digest, extra_fingerprints[7]);
+  smartlist_add(mocked_connnection_array_for_download_dirconns, TO_CONN(d));
+  desc_download_dirconn = d;
+  d = NULL;
+
   /* Install the get_connection_array() mock */
   MOCK(get_connection_array, mock_get_connection_array_for_download_dirconns);
 }
@@ -851,6 +868,7 @@ clear_download_dirconns_mocks(void)
   consensus_microdesc_download_dirconn = NULL;
   cert_fp_download_dirconn = NULL;
   cert_fp_sk_download_dirconn = NULL;
+  desc_download_dirconn = NULL;
 
   /* Free the simulated dirconns */
   if (mocked_connnection_array_for_download_dirconns) {
@@ -1447,6 +1465,32 @@ test_download_status_desc(void *arg)
 }
 
 static void
+test_download_dirconns_desc(void *arg)
+{
+  smartlist_t *dcs = NULL;
+  char digest[DIGEST_LEN];
+
+  (void)arg;
+
+  setup_download_dirconns_mocks();
+
+  /* Check directory_find_dirconns_for_desc_digest() */
+  base16_decode(digest, DIGEST_LEN,
+                desc_digest, strlen(desc_digest));
+  dcs = directory_find_dirconns_for_desc_digest(digest);
+  tt_assert(dcs != NULL);
+  tt_int_op(smartlist_len(dcs), OP_EQ, 1);
+  tt_assert(smartlist_get(dcs, 0) == desc_download_dirconn);
+  smartlist_free(dcs);
+  dcs = NULL;
+
+ done:
+  clear_download_dirconns_mocks();
+
+  return;
+}
+
+static void
 test_download_status_bridge(void *arg)
 {
   /* We just need one of these to pass, it doesn't matter what's in it */
@@ -1564,6 +1608,7 @@ struct testcase_t controller_tests[] = {
   { "download_dirconns_cert", test_download_dirconns_cert, 0, NULL,
     NULL },
   { "download_status_desc", test_download_status_desc, 0, NULL, NULL },
+  { "download_dirconns_desc", test_download_dirconns_desc, 0, NULL, NULL },
   { "download_status_bridge", test_download_status_bridge, 0, NULL, NULL },
   END_OF_TESTCASES
 };
