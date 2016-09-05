@@ -1518,7 +1518,7 @@ test_download_dirconns_desc(void *arg)
   /* Check directory_find_dirconns_for_desc_digest() */
   base16_decode(digest, DIGEST_LEN,
                 desc_digest, strlen(desc_digest));
-  dcs = directory_find_dirconns_for_desc_digest(desc_digest);
+  dcs = directory_find_dirconns_for_desc_digest(digest);
   tt_assert(dcs != NULL);
   tt_int_op(smartlist_len(dcs), OP_EQ, 1);
   tt_assert(smartlist_get(dcs, 0) == desc_download_dirconn);
