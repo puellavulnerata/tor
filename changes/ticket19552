@@ -1,0 +1,4 @@
+  o Features (controller):
+    - Tor now knows how to find directory connections active for a given
+      download status, and download status GETINFO queries at the control
+      port can say how many exist.  Closes ticket 19552.
