@@ -231,7 +231,8 @@ static const char * dls_sample_1_str =
     "schedule DL_SCHED_GENERIC\n"
     "want-authority DL_WANT_ANY_DIRSERVER\n"
     "increment-on DL_SCHED_INCREMENT_FAILURE\n"
-    "backoff DL_SCHED_DETERMINISTIC\n";
+    "backoff DL_SCHED_DETERMINISTIC\n"
+    "n-conns-downloading 0\n";
 static const download_status_t dls_sample_2 =
   { 1467164400, 1, 2, DL_SCHED_CONSENSUS, DL_WANT_AUTHORITY,
     DL_SCHED_INCREMENT_FAILURE, DL_SCHED_DETERMINISTIC, 0, 0 };
@@ -242,7 +243,8 @@ static const char * dls_sample_2_str =
     "schedule DL_SCHED_CONSENSUS\n"
     "want-authority DL_WANT_AUTHORITY\n"
     "increment-on DL_SCHED_INCREMENT_FAILURE\n"
-    "backoff DL_SCHED_DETERMINISTIC\n";
+    "backoff DL_SCHED_DETERMINISTIC\n"
+    "n-conns-downloading 0\n";
 static const download_status_t dls_sample_3 =
   { 1467154400, 12, 25, DL_SCHED_BRIDGE, DL_WANT_ANY_DIRSERVER,
     DL_SCHED_INCREMENT_ATTEMPT, DL_SCHED_DETERMINISTIC, 0, 0 };
@@ -253,7 +255,8 @@ static const char * dls_sample_3_str =
     "schedule DL_SCHED_BRIDGE\n"
     "want-authority DL_WANT_ANY_DIRSERVER\n"
     "increment-on DL_SCHED_INCREMENT_ATTEMPT\n"
-    "backoff DL_SCHED_DETERMINISTIC\n";
+    "backoff DL_SCHED_DETERMINISTIC\n"
+    "n-conns-downloading 0\n";
 static const download_status_t dls_sample_4 =
   { 1467166600, 3, 0, DL_SCHED_GENERIC, DL_WANT_ANY_DIRSERVER,
     DL_SCHED_INCREMENT_FAILURE, DL_SCHED_RANDOM_EXPONENTIAL, 0, 0 };
@@ -266,7 +269,8 @@ static const char * dls_sample_4_str =
     "increment-on DL_SCHED_INCREMENT_FAILURE\n"
     "backoff DL_SCHED_RANDOM_EXPONENTIAL\n"
     "last-backoff-position 0\n"
-    "last-delay-used 0\n";
+    "last-delay-used 0\n"
+    "n-conns-downloading 0\n";
 static const download_status_t dls_sample_5 =
   { 1467164600, 3, 7, DL_SCHED_CONSENSUS, DL_WANT_ANY_DIRSERVER,
     DL_SCHED_INCREMENT_FAILURE, DL_SCHED_RANDOM_EXPONENTIAL, 1, 2112, };
@@ -279,7 +283,8 @@ static const char * dls_sample_5_str =
     "increment-on DL_SCHED_INCREMENT_FAILURE\n"
     "backoff DL_SCHED_RANDOM_EXPONENTIAL\n"
     "last-backoff-position 1\n"
-    "last-delay-used 2112\n";
+    "last-delay-used 2112\n"
+    "n-conns-downloading 0\n";
 static const download_status_t dls_sample_6 =
   { 1467164200, 4, 9, DL_SCHED_CONSENSUS, DL_WANT_AUTHORITY,
     DL_SCHED_INCREMENT_ATTEMPT, DL_SCHED_RANDOM_EXPONENTIAL, 3, 432 };
@@ -292,7 +297,8 @@ static const char * dls_sample_6_str =
     "increment-on DL_SCHED_INCREMENT_ATTEMPT\n"
     "backoff DL_SCHED_RANDOM_EXPONENTIAL\n"
     "last-backoff-position 3\n"
-    "last-delay-used 432\n";
+    "last-delay-used 432\n"
+    "n-conns-downloading 0\n";
 
 /* Simulated auth certs */
 static const char *auth_id_digest_1_str =

@@ -2459,6 +2459,7 @@ getinfo_helper_downloads(control_connection_t *control_conn,
   download_status_t *dl_to_emit = NULL;
   smartlist_t *digest_list = NULL;
   smartlist_t *dirconns_list = NULL;
+  char *tmp;
 
   /* Assert args are sane */
   tor_assert(control_conn != NULL);
@@ -2497,14 +2498,12 @@ getinfo_helper_downloads(control_connection_t *control_conn,
     *answer = download_status_to_string(dl_to_emit);
 
     /*
-     * TODO do something with dirconns_list.  At least emit the number
-     * of connections found; maybe also a list of them if there's
-     * some identifier we can use elsewhere to query about them.
-     *
-     * (see if the control interface already offers connection-status
-     * inquiries like that)
-     *
-     * for now, log how many conns we got
+     * XXX right now we just emit how many downloading dirconns we
+     * found for this download status; it would be useful if connections
+     * had global identifiers like channels do, and if there were GETINFO
+     * queries for connection status.  Then we could emit a list of
+     * connection IDs for subsequent controller queries so the client
+     * could get more detail.
      */
     if (dirconns_list) {
       log_debug(LD_CONTROL,
@@ -2512,6 +2511,12 @@ getinfo_helper_downloads(control_connection_t *control_conn,
                 "%d entries",
                 question,
                 smartlist_len(dirconns_list));
+      /* Append an n-conns-downloading line to *answer */
+      tor_asprintf(&tmp, "%s"
+                   "n-conns-downloading %d\n",
+                   *answer, smartlist_len(dirconns_list));
+      tor_free(*answer);
+      *answer = tmp;
     } else {
       log_debug(LD_CONTROL,
                 "Download status query (\"%s\") had no dirconn list",
