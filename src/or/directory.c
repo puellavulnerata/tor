@@ -678,7 +678,7 @@ desc_digest_resource_string_matcher(const char *resource,
   if (!strcmpstart(resource, "d/")) {
     /* Split the digest list into strings */
     fps = smartlist_new();
-    dir_split_resource_into_fingerprints(resource + 2, fps, NULL, 0);
+    dir_split_resource_into_fingerprints(resource + 2, fps, NULL, DSR_HEX);
     /* Comparison loop to see if it matches this digest */
     SMARTLIST_FOREACH_BEGIN(fps, char *, cp) {
       /*
