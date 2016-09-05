@@ -805,7 +805,7 @@ setup_download_dirconns_mocks(void)
   consensus_microdesc_download_dirconn = d;
   d = NULL;
 
-  /* Created simulated match for auth_cert_dls_find_dirconns_by_auth_id() */
+  /* Create simulated match for auth_cert_dls_find_dirconns_by_auth_id() */
   d = tor_malloc_zero(sizeof(*d));
   d->base_.magic = DIR_CONNECTION_MAGIC;
   d->base_.type = CONN_TYPE_DIR;
@@ -821,7 +821,7 @@ setup_download_dirconns_mocks(void)
   d = NULL;
 
   /*
-   * Created simulated match for
+   * Create simulated match for
    * auth_cert_dls_find_dirconns_by_auth_id_and_sk()
    */
   d = tor_malloc_zero(sizeof(*d));
