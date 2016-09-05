@@ -5,6 +5,7 @@
 #include "or.h"
 #include "control.h"
 #include "entrynodes.h"
+#include "main.h"
 #include "networkstatus.h"
 #include "rendservice.h"
 #include "routerlist.h"
@@ -669,6 +670,158 @@ clear_bridge_mocks(void)
   disable_descbr = 0;
 }
 
+/*
+ * Mocks for unit tests that search for dirconns downloading something;
+ * we mock get_connection_array, and then provide a simulated set of dirconns,
+ * and store pointers to the individual simulated dirconns which are supposed
+ * to match in each test.
+ */
+
+static void add_simulated_noise_to_download_dirconns(void);
+static void setup_download_dirconns_mocks(void);
+static void clear_download_dirconns_mocks(void);
+static smartlist_t * mock_get_connection_array_for_download_dirconns(void);
+
+/* Simulated connection array */
+static smartlist_t *mocked_connnection_array_for_download_dirconns = NULL;
+/* Match pointers to simulated connections */
+dir_connection_t *consensus_ns_download_dirconn = NULL;
+dir_connection_t *consensus_microdesc_download_dirconn = NULL;
+
+static void
+add_simulated_noise_to_download_dirconns(void)
+{
+  /* Three fake orconns, three dirconns which will match nothing */
+  or_connection_t *o = NULL;
+  dir_connection_t *d = NULL;
+
+  /* Fake orconn 1 */
+  o = tor_malloc_zero(sizeof(*o));
+  o->base_.magic = OR_CONNECTION_MAGIC;
+  o->base_.type = CONN_TYPE_OR;
+  o->base_.state = OR_CONN_STATE_CONNECTING;
+  smartlist_add(mocked_connnection_array_for_download_dirconns, TO_CONN(o));
+  o = NULL;
+
+  /* Fake dirconn 1 */
+  d = tor_malloc_zero(sizeof(*d));
+  d->base_.magic = DIR_CONNECTION_MAGIC;
+  d->base_.type = CONN_TYPE_DIR;
+  d->base_.state = DIR_CONN_STATE_CLIENT_READING;
+  d->base_.purpose = DIR_PURPOSE_FETCH_SERVERDESC;
+  d->requested_resource = tor_strdup("blahdeblah");
+  smartlist_add(mocked_connnection_array_for_download_dirconns, TO_CONN(d));
+  d = NULL;
+
+  /* Fake orconn 2 */
+  o = tor_malloc_zero(sizeof(*o));
+  o->base_.magic = OR_CONNECTION_MAGIC;
+  o->base_.type = CONN_TYPE_OR;
+  o->base_.state = OR_CONN_STATE_PROXY_HANDSHAKING;
+  smartlist_add(mocked_connnection_array_for_download_dirconns, TO_CONN(o));
+  o = NULL;
+
+  /* Fake dirconn 2 */
+  d = tor_malloc_zero(sizeof(*d));
+  d->base_.magic = DIR_CONNECTION_MAGIC;
+  d->base_.type = CONN_TYPE_DIR;
+  d->base_.state = DIR_CONN_STATE_CLIENT_READING;
+  d->base_.purpose = DIR_PURPOSE_FETCH_DETACHED_SIGNATURES;
+  d->requested_resource = tor_strdup("squatch");
+  smartlist_add(mocked_connnection_array_for_download_dirconns, TO_CONN(d));
+  d = NULL;
+
+  /* Fake orconn 3 */
+  o = tor_malloc_zero(sizeof(*o));
+  o->base_.magic = OR_CONNECTION_MAGIC;
+  o->base_.type = CONN_TYPE_OR;
+  o->base_.state = OR_CONN_STATE_OPEN;
+  smartlist_add(mocked_connnection_array_for_download_dirconns, TO_CONN(o));
+  o = NULL;
+
+  /* Fake dirconn 3 */
+  d = tor_malloc_zero(sizeof(*d));
+  d->base_.magic = DIR_CONNECTION_MAGIC;
+  d->base_.type = CONN_TYPE_DIR;
+  d->base_.state = DIR_CONN_STATE_CLIENT_READING;
+  d->base_.purpose = DIR_PURPOSE_FETCH_CERTIFICATE;
+  d->requested_resource = tor_strdup("gumph");
+  smartlist_add(mocked_connnection_array_for_download_dirconns, TO_CONN(d));
+  d = NULL;
+}
+
+static void
+setup_download_dirconns_mocks(void)
+{
+  dir_connection_t *d = NULL;
+
+  /* Set up the simulated connection array */
+  mocked_connnection_array_for_download_dirconns = smartlist_new();
+
+  /* Some non-matches */
+  add_simulated_noise_to_download_dirconns();
+
+  /* Create simulated matches for networkstatus FLAV_NS downloads */
+  d = tor_malloc_zero(sizeof(*d));
+  d->base_.magic = DIR_CONNECTION_MAGIC;
+  d->base_.type = CONN_TYPE_DIR;
+  d->base_.state = DIR_CONN_STATE_CLIENT_READING;
+  d->base_.purpose = DIR_PURPOSE_FETCH_CONSENSUS;
+  d->router_purpose = ROUTER_PURPOSE_GENERAL;
+  d->requested_resource = tor_strdup("ns");
+  smartlist_add(mocked_connnection_array_for_download_dirconns, TO_CONN(d));
+  consensus_ns_download_dirconn = d;
+  d = NULL;
+
+  /* Create simulated matches for networkstatus FLAV_MICRODESC downloads */
+  d = tor_malloc_zero(sizeof(*d));
+  d->base_.magic = DIR_CONNECTION_MAGIC;
+  d->base_.type = CONN_TYPE_DIR;
+  d->base_.state = DIR_CONN_STATE_CLIENT_READING;
+  d->base_.purpose = DIR_PURPOSE_FETCH_CONSENSUS;
+  d->router_purpose = ROUTER_PURPOSE_GENERAL;
+  d->requested_resource = tor_strdup("microdesc");
+  smartlist_add(mocked_connnection_array_for_download_dirconns, TO_CONN(d));
+  consensus_microdesc_download_dirconn = d;
+  d = NULL;
+
+  /* Install the get_connection_array() mock */
+  MOCK(get_connection_array, mock_get_connection_array_for_download_dirconns);
+}
+
+static void
+clear_download_dirconns_mocks(void)
+{
+  dir_connection_t *dc;
+
+  /* Unmock get_connection_array() */
+  UNMOCK(get_connection_array);
+
+  /* Null out pointers to matches */
+  consensus_ns_download_dirconn = NULL;
+  consensus_microdesc_download_dirconn = NULL;
+
+  /* Free the simulated dirconns */
+  if (mocked_connnection_array_for_download_dirconns) {
+    SMARTLIST_FOREACH_BEGIN(mocked_connnection_array_for_download_dirconns,
+                            connection_t *, c) {
+      /* Simulated dirconns have a requested_resource field */
+      if (c->type == CONN_TYPE_DIR) {
+        dc = TO_DIR_CONN(c);
+        tor_free(dc->requested_resource);
+      }
+      tor_free(c);
+    } SMARTLIST_FOREACH_END(c);
+    smartlist_free(mocked_connnection_array_for_download_dirconns);
+  }
+}
+
+static smartlist_t *
+mock_get_connection_array_for_download_dirconns(void)
+{
+  return mocked_connnection_array_for_download_dirconns;
+}
+
 static void
 test_download_status_consensus(void *arg)
 {
@@ -772,6 +925,37 @@ test_download_status_consensus(void *arg)
  done:
   clear_ns_mocks();
   tor_free(answer);
+
+  return;
+}
+
+static void
+test_download_dirconns_consensus(void *arg)
+{
+  smartlist_t *dcs = NULL;
+
+  (void)arg;
+
+  setup_download_dirconns_mocks();
+
+  /* Check for FLAV_NS downloads */
+  dcs = networkstatus_find_dirconns_downloading_flavor(FLAV_NS);
+  tt_assert(dcs != NULL);
+  tt_int_op(smartlist_len(dcs), OP_EQ, 1);
+  tt_assert(smartlist_get(dcs, 0) == consensus_ns_download_dirconn);
+  smartlist_free(dcs);
+  dcs = NULL;
+
+  /* Check for FLAV_MICRODESC downloads */
+  dcs = networkstatus_find_dirconns_downloading_flavor(FLAV_MICRODESC);
+  tt_assert(dcs != NULL);
+  tt_int_op(smartlist_len(dcs), OP_EQ, 1);
+  tt_assert(smartlist_get(dcs, 0) == consensus_microdesc_download_dirconn);
+  smartlist_free(dcs);
+  dcs = NULL;
+
+ done:
+  clear_download_dirconns_mocks();
 
   return;
 }
@@ -1285,6 +1469,8 @@ struct testcase_t controller_tests[] = {
   { "add_onion_helper_clientauth", test_add_onion_helper_clientauth, 0, NULL,
     NULL },
   { "download_status_consensus", test_download_status_consensus, 0, NULL,
+    NULL },
+  { "download_dirconns_consensus", test_download_dirconns_consensus, 0, NULL,
     NULL },
   { "download_status_cert", test_download_status_cert, 0, NULL,
     NULL },
