@@ -691,11 +691,17 @@ dir_connection_t *consensus_microdesc_download_dirconn = NULL;
 dir_connection_t *cert_fp_download_dirconn = NULL;
 dir_connection_t *cert_fp_sk_download_dirconn = NULL;
 dir_connection_t *desc_download_dirconn = NULL;
+dir_connection_t *bridgeauth_bridge_download_dirconn = NULL;
+dir_connection_t *direct_bridge_download_dirconn = NULL;
 
 /* String constants for digests used in tests */
 const char *cert_fp_digest = "63CDD326DFEF0CA020BDD3FEB45A3286FE13A061";
 const char *cert_sk_digest = "AA69566029B1F023BA09451B8F1B10952384EB58";
 const char *desc_digest = "F39CCEEF8499DCBC68BF39A8CA1601A07C046B54";
+const char *bridgeauth_bridge_digest =
+  "92F41CC5F525D577A5E34AB6F4BFE7E2ADBA411B";
+const char *direct_bridge_digest =
+  "58D649BA02F19E2F4201D49CA0EF0F6F3800F24A";
 
 static void
 add_simulated_noise_to_download_dirconns(void)
@@ -851,6 +857,39 @@ setup_download_dirconns_mocks(void)
   desc_download_dirconn = d;
   d = NULL;
 
+  /*
+   * Create simulated match for get_bridge_desc_dirconns_by_id() in the
+   * bridge auth case
+   */
+  d = tor_malloc_zero(sizeof(*d));
+  d->base_.magic = DIR_CONNECTION_MAGIC;
+  d->base_.type = CONN_TYPE_DIR;
+  d->base_.state = DIR_CONN_STATE_CLIENT_READING;
+  d->base_.purpose = DIR_PURPOSE_FETCH_SERVERDESC;
+  d->router_purpose = ROUTER_PURPOSE_BRIDGE;
+  tor_asprintf(&(d->requested_resource), "fp/%s.z",
+               bridgeauth_bridge_digest);
+  smartlist_add(mocked_connnection_array_for_download_dirconns, TO_CONN(d));
+  bridgeauth_bridge_download_dirconn = d;
+  d = NULL;
+
+  /*
+   * Create simulated match for get_bridge_desc_dirconns_by_id() in the
+   * direct case
+   */
+  d = tor_malloc_zero(sizeof(*d));
+  d->base_.magic = DIR_CONNECTION_MAGIC;
+  d->base_.type = CONN_TYPE_DIR;
+  d->base_.state = DIR_CONN_STATE_CLIENT_READING;
+  d->base_.purpose = DIR_PURPOSE_FETCH_SERVERDESC;
+  base16_decode(d->identity_digest, DIGEST_LEN,
+                direct_bridge_digest, strlen(direct_bridge_digest));
+  d->router_purpose = ROUTER_PURPOSE_BRIDGE;
+  tor_asprintf(&(d->requested_resource), "authority.z");
+  smartlist_add(mocked_connnection_array_for_download_dirconns, TO_CONN(d));
+  direct_bridge_download_dirconn = d;
+  d = NULL;
+
   /* Install the get_connection_array() mock */
   MOCK(get_connection_array, mock_get_connection_array_for_download_dirconns);
 }
@@ -869,6 +908,8 @@ clear_download_dirconns_mocks(void)
   cert_fp_download_dirconn = NULL;
   cert_fp_sk_download_dirconn = NULL;
   desc_download_dirconn = NULL;
+  bridgeauth_bridge_download_dirconn = NULL;
+  direct_bridge_download_dirconn = NULL;
 
   /* Free the simulated dirconns */
   if (mocked_connnection_array_for_download_dirconns) {
@@ -1593,6 +1634,42 @@ test_download_status_bridge(void *arg)
   return;
 }
 
+static void
+test_download_dirconns_bridge(void *arg)
+{
+  smartlist_t *dcs = NULL;
+  char digest[DIGEST_LEN];
+
+  (void)arg;
+
+  setup_download_dirconns_mocks();
+
+  /* Check get_bridge_desc_dirconns_by_id(), bridgeauth case */
+  base16_decode(digest, DIGEST_LEN,
+                bridgeauth_bridge_digest, strlen(bridgeauth_bridge_digest));
+  dcs = get_bridge_desc_dirconns_by_id(digest);
+  tt_assert(dcs != NULL);
+  tt_int_op(smartlist_len(dcs), OP_EQ, 1);
+  tt_assert(smartlist_get(dcs, 0) == bridgeauth_bridge_download_dirconn);
+  smartlist_free(dcs);
+  dcs = NULL;
+
+  /* Check get_bridge_desc_dirconns_by_id(), direct case */
+  base16_decode(digest, DIGEST_LEN,
+                direct_bridge_digest, strlen(direct_bridge_digest));
+  dcs = get_bridge_desc_dirconns_by_id(digest);
+  tt_assert(dcs != NULL);
+  tt_int_op(smartlist_len(dcs), OP_EQ, 1);
+  tt_assert(smartlist_get(dcs, 0) == direct_bridge_download_dirconn);
+  smartlist_free(dcs);
+  dcs = NULL;
+
+ done:
+  clear_download_dirconns_mocks();
+
+  return;
+}
+
 struct testcase_t controller_tests[] = {
   { "add_onion_helper_keyarg", test_add_onion_helper_keyarg, 0, NULL, NULL },
   { "rend_service_parse_port_config", test_rend_service_parse_port_config, 0,
@@ -1610,6 +1687,7 @@ struct testcase_t controller_tests[] = {
   { "download_status_desc", test_download_status_desc, 0, NULL, NULL },
   { "download_dirconns_desc", test_download_dirconns_desc, 0, NULL, NULL },
   { "download_status_bridge", test_download_status_bridge, 0, NULL, NULL },
+  { "download_dirconns_bridge", test_download_dirconns_bridge, 0, NULL, NULL },
   END_OF_TESTCASES
 };
 
