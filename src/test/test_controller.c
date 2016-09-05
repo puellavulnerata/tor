@@ -4,6 +4,7 @@
 #define CONTROL_PRIVATE
 #include "or.h"
 #include "control.h"
+#include "directory.h"
 #include "entrynodes.h"
 #include "main.h"
 #include "networkstatus.h"
@@ -687,6 +688,12 @@ static smartlist_t *mocked_connnection_array_for_download_dirconns = NULL;
 /* Match pointers to simulated connections */
 dir_connection_t *consensus_ns_download_dirconn = NULL;
 dir_connection_t *consensus_microdesc_download_dirconn = NULL;
+dir_connection_t *cert_fp_download_dirconn = NULL;
+dir_connection_t *cert_fp_sk_download_dirconn = NULL;
+
+/* String constants for digests used in tests */
+const char *cert_fp_digest = "63CDD326DFEF0CA020BDD3FEB45A3286FE13A061";
+const char *cert_sk_digest = "AA69566029B1F023BA09451B8F1B10952384EB58";
 
 static void
 add_simulated_noise_to_download_dirconns(void)
@@ -754,6 +761,15 @@ static void
 setup_download_dirconns_mocks(void)
 {
   dir_connection_t *d = NULL;
+  /* Extra fingerprints for simulated requested_resource fields */
+  const char *extra_fingerprints[] = {
+    "B380DD4D29CC29DFBB195680E874A1147A59998F",
+    "9015FF0A20B73D4E8CBC47DE0BD73557B0529FD7",
+    "60372BB9E712BC161A0AE925D8969B8025587E1A",
+    "311452D62F7F0EF1E8469BD8EAB760DCE06127D0",
+    "85496F1A825186206006990CDFFF1C457897B95E",
+    "82394CD0DF52F99AF4B3B53F51474BA634AA2D15"
+  };
 
   /* Set up the simulated connection array */
   mocked_connnection_array_for_download_dirconns = smartlist_new();
@@ -785,6 +801,39 @@ setup_download_dirconns_mocks(void)
   consensus_microdesc_download_dirconn = d;
   d = NULL;
 
+  /* Create simulated match for auth_cert_dls_find_dirconns_by_auth_id() */
+  d = tor_malloc_zero(sizeof(*d));
+  d->base_.magic = DIR_CONNECTION_MAGIC;
+  d->base_.type = CONN_TYPE_DIR;
+  d->base_.state = DIR_CONN_STATE_CLIENT_READING;
+  d->base_.purpose = DIR_PURPOSE_FETCH_CERTIFICATE;
+  d->router_purpose = ROUTER_PURPOSE_GENERAL;
+  tor_asprintf(&(d->requested_resource), "fp/%s+%s+%s",
+               extra_fingerprints[0],
+               cert_fp_digest,
+               extra_fingerprints[1]);
+  smartlist_add(mocked_connnection_array_for_download_dirconns, TO_CONN(d));
+  cert_fp_download_dirconn = d;
+  d = NULL;
+
+  /*
+   * Create simulated match for
+   * auth_cert_dls_find_dirconns_by_auth_id_and_sk()
+   */
+  d = tor_malloc_zero(sizeof(*d));
+  d->base_.magic = DIR_CONNECTION_MAGIC;
+  d->base_.type = CONN_TYPE_DIR;
+  d->base_.state = DIR_CONN_STATE_CLIENT_READING;
+  d->base_.purpose = DIR_PURPOSE_FETCH_CERTIFICATE;
+  d->router_purpose = ROUTER_PURPOSE_GENERAL;
+  tor_asprintf(&(d->requested_resource), "fp-sk/%s-%s+%s-%s+%s-%s",
+               extra_fingerprints[2], extra_fingerprints[3],
+               cert_fp_digest, cert_sk_digest,
+               extra_fingerprints[4], extra_fingerprints[5]);
+  smartlist_add(mocked_connnection_array_for_download_dirconns, TO_CONN(d));
+  cert_fp_sk_download_dirconn = d;
+  d = NULL;
+
   /* Install the get_connection_array() mock */
   MOCK(get_connection_array, mock_get_connection_array_for_download_dirconns);
 }
@@ -800,6 +849,8 @@ clear_download_dirconns_mocks(void)
   /* Null out pointers to matches */
   consensus_ns_download_dirconn = NULL;
   consensus_microdesc_download_dirconn = NULL;
+  cert_fp_download_dirconn = NULL;
+  cert_fp_sk_download_dirconn = NULL;
 
   /* Free the simulated dirconns */
   if (mocked_connnection_array_for_download_dirconns) {
@@ -1256,6 +1307,42 @@ test_download_status_cert(void *arg)
 }
 
 static void
+test_download_dirconns_cert(void *arg)
+{
+  smartlist_t *dcs = NULL;
+  char id_digest[DIGEST_LEN], sk_digest[DIGEST_LEN];
+
+  (void)arg;
+
+  setup_download_dirconns_mocks();
+
+  /* Check auth_cert_dls_find_dirconns_by_auth_id() */
+  base16_decode(id_digest, DIGEST_LEN,
+                cert_fp_digest, strlen(cert_fp_digest));
+  dcs = auth_cert_dls_find_dirconns_by_auth_id(id_digest);
+  tt_assert(dcs != NULL);
+  tt_int_op(smartlist_len(dcs), OP_EQ, 1);
+  tt_assert(smartlist_get(dcs, 0) == cert_fp_download_dirconn);
+  smartlist_free(dcs);
+  dcs = NULL;
+
+  /* Check auth_cert_dls_find_dirconns_by_auth_id_and_sk() */
+  base16_decode(sk_digest, DIGEST_LEN,
+                cert_sk_digest, strlen(cert_sk_digest));
+  dcs = auth_cert_dls_find_dirconns_by_auth_id_and_sk(id_digest, sk_digest);
+  tt_assert(dcs != NULL);
+  tt_int_op(smartlist_len(dcs), OP_EQ, 1);
+  tt_assert(smartlist_get(dcs, 0) == cert_fp_sk_download_dirconn);
+  smartlist_free(dcs);
+  dcs = NULL;
+
+ done:
+  clear_download_dirconns_mocks();
+
+  return;
+}
+
+static void
 test_download_status_desc(void *arg)
 {
   /* We just need one of these to pass, it doesn't matter what's in it */
@@ -1473,6 +1560,8 @@ struct testcase_t controller_tests[] = {
   { "download_dirconns_consensus", test_download_dirconns_consensus, 0, NULL,
     NULL },
   { "download_status_cert", test_download_status_cert, 0, NULL,
+    NULL },
+  { "download_dirconns_cert", test_download_dirconns_cert, 0, NULL,
     NULL },
   { "download_status_desc", test_download_status_desc, 0, NULL, NULL },
   { "download_status_bridge", test_download_status_bridge, 0, NULL, NULL },
