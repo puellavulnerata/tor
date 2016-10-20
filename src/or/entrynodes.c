@@ -76,9 +76,37 @@ struct guard_selection_s {
    */
   int dirty;
 
+  enum {
+    /*
+     * The pre-proposal 271 behavior; chosen_entry_guards is the only populated
+     * field
+     */
+    GUARD_SELECTION_OLD,
+    /*
+     * Proposal 271 behavior if neither UseBridges or a restricted state applies
+     */
+    GUARD_SELECTION_NORMAL,
+    /*
+     * Proposal 271, for bridges
+     */
+    GUARD_SELECTION_BRIDGES,
+    /*
+     * A restricted state for proposal 271
+     *
+     * XXX The proposal needs clarification on whether more than one of these
+     * can exist for different kinds of restriction on outgoing connections;
+     * in general if we do allow that, the number of these is potentially
+     * large and we'll need to encode a unique identifier of the restriction
+     * (canonicalize and hash config fields maybe?) when loading/storing
+     * these.
+     */
+    GUARD_SELECTION_RESTRICTED
+  } selection_type;
+
   /**
    * A list of our chosen entry guards, as entry_guard_t structures; this
-   * preserves the pre-Prop271 behavior.
+   * preserves the pre-Prop271 behavior.  It should only be non-NULL if
+   * selection_type == GUARD_SELECTION_OLD
    */
   smartlist_t *chosen_entry_guards;
 
@@ -116,7 +144,9 @@ guard_selection_new(void)
 {
   guard_selection_t *gs;
 
+  /* Default to the old behavior for now */
   gs = tor_malloc_zero(sizeof(*gs));
+  gs->selection_type = GUARD_SELECTION_OLD;
   gs->chosen_entry_guards = smartlist_new();
 
   return gs;
