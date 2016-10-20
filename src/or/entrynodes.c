@@ -103,6 +103,11 @@ struct guard_selection_s {
     GUARD_SELECTION_RESTRICTED
   } selection_type;
 
+  /*
+   * These fields are for the pre-proposal 271 behavior (GUARD_SELECTION_OLD
+   * only)
+   */
+
   /**
    * A list of our chosen entry guards, as entry_guard_t structures; this
    * preserves the pre-Prop271 behavior.  It should only be non-NULL if
@@ -115,6 +120,25 @@ struct guard_selection_s {
    * config's EntryNodes first?  This was formerly a global.
    */
   int should_add_entry_nodes;
+
+  /* These are for proposal 271 guard selection */
+
+  /*
+   * Proposal 271 specifies a list of guards, but it has no persistent state,
+   * being instead derived from the current consensus or configured bridge
+   * list.  For the sake of avoiding consistency-maintenance complexity we
+   * should not store a separate copy of it here.
+   *
+   * XXX should we implement a way to construct it on the fly as a list of
+   * entry_guard_t structures, given a particular guard_selection_t?  How
+   * does this work in the GUARD_SELECTION_RESTRICTED case?
+   */
+
+  /**
+   * A list of all guards we've ever tried in this context, as entry_guard_t
+   * structures.
+   */
+  smartlist_t *sampled_guards;
 };
 
 static smartlist_t *guard_contexts = NULL;
@@ -167,6 +191,66 @@ get_guard_selection_info(void)
 
   return curr_guard_context;
 }
+
+/*
+ * Proposal 271 guard selection functions
+ */
+
+/** Returns a new smartlist_t containing current guard info for a proposal
+ * 271 guard_selection_t; this will assert if you pass it something with
+ * GUARD_SELECTION_OLD.  This is the GUARDS input to the SAMPLED_GUARDS
+ * computation; i.e., the list of guards in the current consensus or
+ * the list of bridges.
+ *
+ * XXX what is this supposed to do in the GUARD_SELECTION_RESTRICTED case?
+ * Proposal 271 mentions keeping a separate guard_selection_t instance if
+ * a significant fraction of guards are unusuable due to configuration
+ * (do we switch states if a new consensus moves the proportion across the
+ * threshold?); does it follow we also use that configuration to filter the
+ * guard set from the current consensus before updating the configuration?
+ * What if UseBridges is set *and* other configuration restricts outgoing
+ * connections to some of the configured bridges?
+ *
+ * Returns a newly allocated smartlist containing entry_guard_t pointers.
+ */
+
+smartlist_t *
+compute_current_guard_list_for_guard_selection(guard_selection_t *gs)
+{
+  smartlist_t *guards = NULL;
+
+  /* Assert that we have a guard selection */
+  tor_assert(gs != NULL);
+  /*
+   * Assert that it's a supported type
+   *
+   * XXX support GUARD_SELECTION_RESTRICTED - i.e., apply all relevant
+   * restrictions here.
+   */
+  tor_assert(gs->selection_type == GUARD_SELECTION_NORMAL ||
+             gs->selection_type == GUARD_SELECTION_BRIDGES);
+
+  guards = smartlist_new();
+
+  switch (gs->selection_type) {
+    case GUARD_SELECTION_NORMAL:
+      break;
+    case GUARD_SELECTION_BRIDGES:
+      break;
+    case GUARD_SELECTION_OLD:
+    case GUARD_SELECTION_RESTRICTED:
+    default:
+      /* Can't happen */
+      break;
+  }
+
+  return guards;
+}
+
+/*
+ * GUARD_SELECTION_OLD / pre-proposal271 guard selection functions below
+ * here
+ */
 
 /** Return the list of entry guards for a guard_selection_t, creating it
  * if necessary. */

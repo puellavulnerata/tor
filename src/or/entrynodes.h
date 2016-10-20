@@ -208,5 +208,17 @@ MOCK_DECL(smartlist_t *, list_bridge_identities, (void));
 MOCK_DECL(download_status_t *, get_bridge_dl_status_by_id,
           (const char *digest));
 
+/* Proposal 271 specific interfaces */
+
+smartlist_t *compute_current_guard_list_for_guard_selection(
+    guard_selection_t *gs);
+/*
+ * We should also have something for sampling the current guard list without
+ * having to construct the whole list, parallel to add_an_entry_guard()
+ * for proposal 271
+ */
+
+/* TODO sampled_guards computation */
+
 #endif
 
