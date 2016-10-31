@@ -63,6 +63,12 @@ typedef struct {
   smartlist_t *socks_args;
 } bridge_info_t;
 
+/** A list of configured bridges. Whenever we actually get a descriptor
+ * for one, we add it as an entry guard.  Note that the order of bridges
+ * in this list does not necessarily correspond to the order of bridges
+ * in the torrc. */
+static smartlist_t *bridge_list = NULL;
+
 /** All the context for guard selection on a particular client */
 
 struct guard_selection_s {
@@ -83,7 +89,8 @@ struct guard_selection_s {
      */
     GUARD_SELECTION_OLD,
     /*
-     * Proposal 271 behavior if neither UseBridges or a restricted state applies
+     * Proposal 271 behavior if neither UseBridges or a restricted state
+     * applies
      */
     GUARD_SELECTION_NORMAL,
     /*
@@ -218,6 +225,7 @@ smartlist_t *
 compute_current_guard_list_for_guard_selection(guard_selection_t *gs)
 {
   smartlist_t *guards = NULL;
+  entry_guard_t *e = NULL;
 
   /* Assert that we have a guard selection */
   tor_assert(gs != NULL);
@@ -234,8 +242,47 @@ compute_current_guard_list_for_guard_selection(guard_selection_t *gs)
 
   switch (gs->selection_type) {
     case GUARD_SELECTION_NORMAL:
+      /*
+       * This is the GUARDS set of prop 271 in the normal case; it is
+       * just the set of all nodes in the current consensus with the
+       * Stable, Fast, V2Dir and Guard flags.
+       */
+      /* TODO */
       break;
     case GUARD_SELECTION_BRIDGES:
+      /*
+       * If UseBridges is enabled, the GUARDS input to the SAMPLED_GUARDS
+       * computation is the set of configured bridges instead.
+       */
+      if (bridge_list != NULL) {
+        /*
+         * Walk bridge list, and find entry_guard_t structs by the identity
+         * digest.
+         */
+        SMARTLIST_FOREACH_BEGIN(bridge_list, const bridge_info_t *, b) {
+          /*
+           * b is a bridge; look for an entry_guard_t for the same identity
+           * digest, if it has a specified identity digest; they get added
+           * in learned_bridge_descriptor()
+           */
+          if (!tor_digest_is_zero(b->identity)) {
+            /*
+             * it has a specified digest; try to find an entry_guard_t
+             *
+             * XXX with the current implementation of
+             * entry_guard_get_by_id_digest_for_guard_selection(), this is
+             * loop is quadratic time in the number of configured bridges.
+             */
+            e = entry_guard_get_by_id_digest_for_guard_selection(gs,
+                b->identity);
+            if (e) {
+              /* Okay, got one - add it to the list */
+              smartlist_add(guards, e);
+            }
+            /* else should we warn/consistency check? can this ever happen? */
+          }
+        } SMARTLIST_FOREACH_END(b);
+      }
       break;
     case GUARD_SELECTION_OLD:
     case GUARD_SELECTION_RESTRICTED:
@@ -2047,12 +2094,6 @@ guard_get_guardfraction_bandwidth(guardfraction_bandwidth_t *guardfraction_bw,
 
   guardfraction_bw->non_guard_bw = orig_bandwidth - (int) guard_bw;
 }
-
-/** A list of configured bridges. Whenever we actually get a descriptor
- * for one, we add it as an entry guard.  Note that the order of bridges
- * in this list does not necessarily correspond to the order of bridges
- * in the torrc. */
-static smartlist_t *bridge_list = NULL;
 
 /** Mark every entry of the bridge list to be removed on our next call to
  * sweep_bridge_list unless it has first been un-marked. */
