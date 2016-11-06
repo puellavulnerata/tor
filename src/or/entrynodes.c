@@ -144,8 +144,15 @@ struct guard_selection_s {
   /**
    * A list of all entry_guard_t structures used by this guard selection
    * context, in any of the other lists, whether or not written to disk.
+   * This should always be the union of guards and sampled_guards.
    */
   smartlist_t *all_guards;
+
+  /**
+   * A list of entry_guard_t structures for just the current guards (either
+   * from the consensus or bridges, depending on which context this is).
+   */
+  smartlist_t *guards;
 
   /**
    * A list of all guards we've ever tried in this context, as entry_guard_t
@@ -278,6 +285,15 @@ compute_current_guard_list_for_guard_selection(guard_selection_t *gs)
              * XXX with the current implementation of
              * entry_guard_get_by_id_digest_for_guard_selection(), this is
              * loop is quadratic time in the number of configured bridges.
+             *
+             * TODO right now add_an_entry_guard() only knows how to work with
+             * the pre-prop271 guard selection, so this will always stay
+             * unpopulated; should we change it to know how to update the
+             * GUARD_SELECTION_BRIDGES case (in which case perhaps we can
+             * just copy/return the guards list from the struct) or change
+             * learned_bridge_descriptor() to invoke this to update the
+             * guard selection in the prop271 case, and move some of the
+             * logic here?
              */
             e = entry_guard_get_by_id_digest_for_guard_selection(gs,
                 b->identity);
@@ -2796,6 +2812,7 @@ learned_bridge_descriptor(routerinfo_t *ri, int from_cache)
                    fmt_and_decorate_addr(&bridge->addr),
                    (int) bridge->port);
       }
+      /* TODO figure out prop 271 stuff */
       add_an_entry_guard(get_guard_selection_info(), node, 1, 1, 0, 0);
 
       log_notice(LD_DIR, "new bridge descriptor '%s' (%s): %s", ri->nickname,
@@ -2976,6 +2993,11 @@ guard_selection_free(guard_selection_t *gs)
   }
 
   /* Free the prop271 stuff, if present */
+  if (gs->guards) {
+    smartlist_free(gs->guards);
+    gs->guards = NULL;
+  }
+
   if (gs->sampled_guards) {
     smartlist_free(gs->sampled_guards);
     gs->sampled_guards = NULL;
