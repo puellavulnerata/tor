@@ -213,6 +213,46 @@ get_guard_selection_info(void)
 }
 
 /*
+ * Shared guard selection functions
+ */
+
+/** If <b>digest</b> matches the identity of any node in the
+ * chosen_entry_guards or all_guards list for the provided guard selection
+ * state, return that node. Else return NULL. */
+entry_guard_t *
+entry_guard_get_by_id_digest_for_guard_selection(guard_selection_t *gs,
+                                                 const char *digest)
+{
+  tor_assert(gs != NULL);
+
+  /* Check if we're in the pre-prop271 case of the new code */
+
+  if (gs->selection_type == GUARD_SELECTION_OLD) {
+    /* Old case; use chosen_entry_guards */
+    tor_assert(gs->chosen_entry_guards != NULL);
+
+    SMARTLIST_FOREACH(gs->chosen_entry_guards, entry_guard_t *, entry,
+                      if (tor_memeq(digest, entry->identity, DIGEST_LEN))
+                        return entry;
+                     );
+  } else {
+    /* This is the proposal 271 case */
+    tor_assert(gs->all_guards != NULL);
+
+    /*
+     * XXX all_guards might be a lot longer than chosen_entry_guards; should
+     * we index it?
+     */
+    SMARTLIST_FOREACH(gs->all_guards, entry_guard_t *, entry,
+                      if (tor_memeq(digest, entry->identity, DIGEST_LEN))
+                        return entry;
+                     );
+  }
+
+  return NULL;
+}
+
+/*
  * Proposal 271 guard selection functions
  */
 
@@ -570,22 +610,6 @@ num_live_entry_guards(int for_directory)
 {
   return num_live_entry_guards_for_guard_selection(
       get_guard_selection_info(), for_directory);
-}
-
-/** If <b>digest</b> matches the identity of any node in the
- * entry_guards list for the provided guard selection state,
- return that node. Else return NULL. */
-entry_guard_t *
-entry_guard_get_by_id_digest_for_guard_selection(guard_selection_t *gs,
-                                                 const char *digest)
-{
-  tor_assert(gs != NULL);
-
-  SMARTLIST_FOREACH(gs->chosen_entry_guards, entry_guard_t *, entry,
-                    if (tor_memeq(digest, entry->identity, DIGEST_LEN))
-                      return entry;
-                   );
-  return NULL;
 }
 
 /** If <b>digest</b> matches the identity of any node in the
