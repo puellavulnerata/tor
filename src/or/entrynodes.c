@@ -142,6 +142,12 @@ struct guard_selection_s {
    */
 
   /**
+   * A list of all entry_guard_t structures used by this guard selection
+   * context, in any of the other lists, whether or not written to disk.
+   */
+  smartlist_t *all_guards;
+
+  /**
    * A list of all guards we've ever tried in this context, as entry_guard_t
    * structures.
    */
@@ -2961,11 +2967,29 @@ guard_selection_free(guard_selection_t *gs)
 {
   if (!gs) return;
 
+  /* Free the pre-prop271 stuff, if present */
   if (gs->chosen_entry_guards) {
     SMARTLIST_FOREACH(gs->chosen_entry_guards, entry_guard_t *, e,
                       entry_guard_free(e));
     smartlist_free(gs->chosen_entry_guards);
     gs->chosen_entry_guards = NULL;
+  }
+
+  /* Free the prop271 stuff, if present */
+  if (gs->sampled_guards) {
+    smartlist_free(gs->sampled_guards);
+    gs->sampled_guards = NULL;
+  }
+
+  if (gs->all_guards) {
+    /*
+     * This should be a list of all entry_guard_t structures used in any
+     * of the other prop271 lists, so it suffices to free them once here
+     */
+    SMARTLIST_FOREACH(gs->all_guards, entry_guard_t *, e,
+                      entry_guard_free(e));
+    smartlist_free(gs->all_guards);
+    gs->all_guards = NULL;
   }
 
   tor_free(gs);
