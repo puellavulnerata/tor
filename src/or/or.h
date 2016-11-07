@@ -4457,6 +4457,9 @@ typedef struct {
 
   /** If 1, we skip all OOS checks. */
   int DisableOOSCheck;
+
+  /** Use the new (proposal 271) guard selection algorithm */
+  int UseNewGuardAlgorithm;
 } or_options_t;
 
 /** Persistent state for an onion router, as saved to disk. */

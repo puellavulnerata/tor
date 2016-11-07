@@ -438,6 +438,7 @@ static config_var_t option_vars_[] = {
   V(UseEntryGuardsAsDirGuards,   BOOL,     "1"),
   V(UseGuardFraction,            AUTOBOOL, "auto"),
   V(UseMicrodescriptors,         AUTOBOOL, "auto"),
+  V(UseNewGuardAlgorithm,        BOOL,     "0"),
   OBSOLETE("UseNTorHandshake"),
   V(User,                        STRING,   NULL),
   OBSOLETE("UserspaceIOCPBuffers"),
